@@ -360,7 +360,7 @@ da senin soracağın soruya verilecek bir yanıt yok.
   ve varsayımını bir yan cümlede söyle"""
 
 DEFAULTS = {
-    "ui_language": "auto",          # auto | tr | en
+    "ui_language": "tr",                # tr | en | auto
     "gemini_api_key": "",
     "gemini_transcribe_model": "gemini-3.5-flash-lite",
     "gemini_cleanup_model": "gemini-3.5-flash-lite",

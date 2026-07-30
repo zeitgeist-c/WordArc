@@ -15,6 +15,8 @@ def resolve(code):
         return code
     env = (os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES")
            or os.environ.get("LANG") or "")
+    if not env:
+        return "tr"
     return "tr" if env.lower().startswith("tr") else "en"
 
 
