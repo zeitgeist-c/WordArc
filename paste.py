@@ -109,6 +109,7 @@ def copy_bytes(data):
             user32.SetClipboardData(CF_UNICODETEXT, handle)
             return
         payload = (text + "\0").encode("utf-16-le")
+        kernel32.GlobalUnlock(handle)
         kernel32.GlobalFree(handle)
         handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(payload))
         ptr = kernel32.GlobalLock(handle)
