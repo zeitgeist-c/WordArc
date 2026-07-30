@@ -123,6 +123,7 @@ class MeetingPipeline(QObject):
                 self.conf.openrouter_key(),
                 self.conf["meeting_model"],
                 self.conf.meeting_prompt(),
+                gemini_key=self.conf.gemini_key(),
                 reasoning=self.conf["meeting_reasoning"],
                 base_url=self.conf["openrouter_base_url"],
                 timeout=600,
@@ -213,6 +214,7 @@ class MeetingPipeline(QObject):
                 conf.openrouter_key(),
                 conf["cleanup_model"],
                 prompt,
+                gemini_key=conf.gemini_key(),
                 reasoning=conf["cleanup_reasoning"],
                 base_url=conf["openrouter_base_url"],
             ))
