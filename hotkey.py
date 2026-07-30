@@ -4,7 +4,7 @@ import ctypes
 import ctypes.wintypes as w
 import threading
 
-from PyQt6.QtCore import QObject, QCoreApplication, pyqtSignal
+from PyQt6.QtCore import QObject, Qt, QCoreApplication, pyqtSignal
 from PyQt6.QtWidgets import QWidget
 
 from i18n import t
@@ -119,7 +119,7 @@ class _HotkeyWindow(QWidget):
     def __init__(self, owner):
         super().__init__()
         self.owner = owner
-        self.setWindowFlags(0)
+        self.setWindowFlags(Qt.WindowType.Widget)
         self.resize(0, 0)
         self.move(-10000, -10000)
         self.show()
