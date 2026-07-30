@@ -1,4 +1,4 @@
-r"""Settings storage in %APPDATA%\Dikte\config.json"""
+r"""Settings storage in %APPDATA%\Verbatim\config.json"""
 
 import hashlib
 import json
@@ -13,9 +13,9 @@ def _win_path(env, fallback):
     return pathlib.Path(os.environ.get(env) or os.path.expanduser(fallback))
 
 
-CONFIG_DIR = _win_path("APPDATA", "~") / "Dikte"
+CONFIG_DIR = _win_path("APPDATA", "~") / "Verbatim"
 CONFIG_FILE = CONFIG_DIR / "config.json"
-DATA_DIR = _win_path("LOCALAPPDATA", "~") / "Dikte"
+DATA_DIR = _win_path("LOCALAPPDATA", "~") / "Verbatim"
 HISTORY_FILE = DATA_DIR / "history.jsonl"
 RECORDINGS_DIR = DATA_DIR / "recordings"
 MEETINGS_DIR = DATA_DIR / "meetings"
@@ -296,7 +296,7 @@ PARTICIPANTS_RULE_TR = ("\n\nTOPLANTIDAKİ KİŞİLER\n{participants}\n"
                         "yazımla kullan; yine de bir satırı ancak transkript açık "
                         "ediyorsa bunlardan birine bağla.")
 
-ASSISTANT_PROMPT_EN = """This request reached you from Dikte, a dictation tool.
+ASSISTANT_PROMPT_EN = """This request reached you from Verbatim, a dictation tool.
 What you are reading was spoken out loud and turned into text by a speech model,
 so a word here and there may have come through wrong. Read it for what was
 meant, not for what it says letter by letter.
@@ -328,7 +328,7 @@ follow, and no way to answer a question you ask back.
 - If the request is ambiguous in a way that changes the answer, give the answer
   under the likelier reading and name the assumption in a clause"""
 
-ASSISTANT_PROMPT_TR = """Bu istek sana Dikte adlı bir dikte uygulamasından geldi.
+ASSISTANT_PROMPT_TR = """Bu istek sana Verbatim adlı bir dikte uygulamasından geldi.
 Okuduğun metin sesli olarak söylendi ve bir konuşma modeli tarafından yazıya
 çevrildi; yer yer bir kelime yanlış geçmiş olabilir. Harfi harfine ne yazdığına
 değil, ne denmek istendiğine bak.
@@ -361,19 +361,15 @@ da senin soracağın soruya verilecek bir yanıt yok.
 
 DEFAULTS = {
     "ui_language": "auto",          # auto | tr | en
-    "openrouter_api_key": "",
-    "openrouter_base_url": "https://openrouter.ai/api/v1",
     "gemini_api_key": "",
     "gemini_transcribe_model": "gemini-3.5-flash-lite",
     "gemini_cleanup_model": "gemini-3.5-flash-lite",
     "gemini_meeting_model": "gemini-3.5-flash-lite",
     "gemini_assistant_model": "gemini-3.5-flash-lite",
-    "transcribe_provider": "gemini",  # gemini | openrouter
-    "openrouter_transcribe_model": "openai/whisper-1",
     "language": "tr",
     "transcribe_prompt": "",
     "cleanup_enabled": True,
-    "cleanup_model": "google/gemini-3.5-flash-lite",
+    "cleanup_model": "gemini-3.5-flash-lite",
     "cleanup_reasoning": "",        # empty -> whatever the model does by default
     "cleanup_prompt": "",           # empty -> language-specific default
     "auto_paste": True,
@@ -387,7 +383,6 @@ DEFAULTS = {
     "min_voiced_seconds": 0.3,
     "filter_hallucinations": True,
     "shortcut": "Ctrl+Space",
-    "evdev_hotkey": False,
     "overlay_corner": "bottom-left",
     "keep_audio": False,
     "history_limit": 200,
@@ -402,7 +397,7 @@ DEFAULTS = {
     "meeting_language": "",         # empty -> the dictation speech language
     "meeting_max_seconds": 14400,   # 4 hours
     "meeting_cleanup": True,
-    "meeting_model": "google/gemini-3.5-flash",
+    "meeting_model": "gemini-3.5-flash-lite",
     "meeting_reasoning": "",
     "meeting_prompt": "",           # empty -> language-specific default
     "meeting_self_name": "",        # empty -> "Me" in the interface language
@@ -413,12 +408,11 @@ DEFAULTS = {
 
     # --- speaking a command to an agent -------------------------------------
     "assistant_shortcut": "",       # empty -> tray only
-    "assistant_provider": "claude",  # claude | codex | openrouter
+    "assistant_provider": "claude",  # claude | codex
     "assistant_model": "sonnet",    # Claude Code: an alias, or a full model id
     "assistant_permission_mode": "auto",
     "assistant_codex_model": "",    # empty -> whatever Codex is set to
     "assistant_codex_sandbox": "workspace-write",
-    "assistant_openrouter_model": "google/gemini-3.5-flash",
     "assistant_reasoning": "",      # empty -> the model's own default
     "assistant_dir": "",            # empty -> the home directory
     "assistant_prompt": "",         # empty -> language-specific default
@@ -462,7 +456,7 @@ class Config:
         except FileNotFoundError:
             pass
         except (json.JSONDecodeError, OSError) as exc:
-            print(f"dikte: could not read settings ({exc}), using defaults")
+            print(f"verbatim: could not read settings ({exc}), using defaults")
         self.data["overlay_corner"] = _CORNER_MIGRATION.get(
             self.data["overlay_corner"], self.data["overlay_corner"]
         )
@@ -488,36 +482,13 @@ class Config:
     def get(self, key, default=None):
         return self.data.get(key, DEFAULTS.get(key, default))
 
-    def openrouter_key(self):
-        return self["openrouter_api_key"].strip() or os.environ.get("OPENROUTER_API_KEY", "").strip()
-
     def gemini_key(self):
         return self["gemini_api_key"].strip() or os.environ.get("GEMINI_API_KEY", "").strip()
 
     def transcribe_target(self):
-        """Key, endpoint and model for whichever provider does speech to text."""
-        if self["transcribe_provider"] == "openrouter":
-            return api.Target("openrouter", "OpenRouter", self.openrouter_key(),
-                              self["openrouter_base_url"],
-                              self["openrouter_transcribe_model"])
+        """Key, endpoint and model for Gemini speech to text."""
         return api.Target("gemini", "Gemini", self.gemini_key(),
                           "", self["gemini_transcribe_model"])
-
-    def transcribe_segments_target(self):
-        """A target that supports timestamped segments (always OpenRouter whisper-1).
-
-        Gemini does not return segment timestamps, so this method returns an
-        OpenRouter target whenever segments are needed. Falls back with an
-        informative error if no OpenRouter key is configured.
-        """
-        or_key = self.openrouter_key()
-        if not or_key:
-            raise api.ApiError(t(
-                "Gemini does not support timestamped segments. Set an OpenRouter "
-                "API key and use whisper-1 for segment support."))
-        return api.Target("openrouter", "OpenRouter", or_key,
-                          self["openrouter_base_url"],
-                          api.timestamp_model("openrouter"))
 
     def cleanup_prompt(self, with_timestamps=False, with_speakers=False,
                        subtitles=False):

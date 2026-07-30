@@ -62,7 +62,7 @@ def stereo_levels(chunk):
 
 
 def write_wav(pcm, rate=RATE, channels=CHANNELS, width=SAMPLE_WIDTH):
-    fd, path = tempfile.mkstemp(prefix="dikte-", suffix=".wav")
+    fd, path = tempfile.mkstemp(prefix="verbatim-", suffix=".wav")
     with open(fd, "wb") as raw, wave.open(raw, "wb") as wav:
         wav.setnchannels(channels)
         wav.setsampwidth(width)

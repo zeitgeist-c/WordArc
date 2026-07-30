@@ -1,15 +1,15 @@
-# Dikte for Windows — Implementation Plan
+# Verbatim for Windows — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A feature-for-feature Windows port of [yusufipk/dikte](https://github.com/yusufipk/dikte) — a press-to-talk voice-to-text dictation tool distributed as a single self-contained `dikte.exe` with bundled `ffmpeg.exe`.
+**Goal:** A feature-for-feature Windows port of [yusufipk/dikte](https://github.com/yusufipk/dikte) — a press-to-talk voice-to-text dictation tool distributed as a single self-contained `Verbatim.exe` with bundled `ffmpeg.exe`.
 
-**Architecture:** A Windows-only hard-fork port. Pure-logic modules that talk only to the network or filesystem (`api`, `worker`, `vad`, `assistant`, `filetranscribe`, `meeting`, `overlay`) are carried over from upstream with at most one-line edits; platform-bound modules (`audio`, `paste`, `hotkey`) are rewritten against Win32/sounddevice; `config`, `i18n`, `dikte`, `settings_ui` get targeted Windows edits; three new helpers (`trayicon`, `ffmpeg_path`, `wasapi_loopback`) are added. Spec: `docs/specs/2026-07-30-dikte-windows-design.md`.
+**Architecture:** A Windows-only hard-fork port. Pure-logic modules that talk only to the network or filesystem (`api`, `worker`, `vad`, `assistant`, `filetranscribe`, `meeting`, `overlay`) are carried over from upstream with at most one-line edits; platform-bound modules (`audio`, `paste`, `hotkey`) are rewritten against Win32/sounddevice; `config`, `i18n`, `Verbatim`, `settings_ui` get targeted Windows edits; three new helpers (`trayicon`, `ffmpeg_path`, `wasapi_loopback`) are added. Spec: `docs/specs/2026-07-30-Verbatim-windows-design.md`.
 
 **Tech Stack:** Python 3.11, PyQt6, sounddevice (WASAPI/PortAudio), ctypes Win32 (clipboard/SendInput/RegisterHotKey/WASAPI loopback), stdlib urllib (OpenAI/OpenRouter), PyInstaller (`--onefile`), unittest for tests.
 
 **Conventions:**
-- Project root: `C:\Users\user\Projeler\Dikte`.
+- Project root: `C:\Users\user\projects\Verbatim`.
 - All commands run from the project root unless noted.
 - Tests use the stdlib `unittest` (zero install) executed via `python -m unittest <path> -v`.
 - "Carry over from upstream" means download the file from its `raw.githubusercontent.com/yusufipk/dikte/master/<file>` URL and save it locally; the URL is given in the task.
@@ -21,8 +21,8 @@
 ## File Structure
 
 ```
-C:\Users\user\Projeler\Dikte\
-├── dikte.py            entry point (carryover + minor edits)
+C:\Users\user\projects\Verbatim\
+├── Verbatim.py            entry point (carryover + minor edits)
 ├── api.py              OpenAI/OpenRouter (verbatim carryover)
 ├── worker.py           transcribe→cleanup→paste pipeline (verbatim)
 ├── vad.py              silence/hallucination (verbatim)
@@ -42,7 +42,7 @@ C:\Users\user\Projeler\Dikte\
 ├── trayicon.py         (same as above; one file)
 ├── requirements.txt    PyQt6, sounddevice
 ├── dev-requirements.txt  (none — unittest is stdlib; pytest optional)
-├── dikte.spec          PyInstaller build spec
+├── Verbatim.spec          PyInstaller build spec
 ├── install.ps1         Start Menu + autostart installer
 ├── ffmpeg.exe          bundled binary (provided by user; not committed by gitignore rule — see Task 22)
 ├── LICENSE             GPL-3.0 (carryover)
@@ -81,7 +81,7 @@ __pycache__/
 build/
 dist/
 ffmpeg.exe
-dikte.spec.bak
+Verbatim.spec.bak
 ```
 (ffmpeg.exe is gitignored — it is a large binary downloaded into the repo at build time, not committed.)
 
@@ -143,7 +143,7 @@ For each row below, edit `i18n.py` replacing the **English source key** (left co
 | `"Could not write the desktop file: {error}"` | (delete) |
 | `"Could not write kglobalshortcutsrc: {error}"` | (delete) |
 | `"Cannot read /dev/input. Your user needs to be in the 'input' group:\n  sudo usermod -aG input $USER   (then log out and back in)"` | `"Could not register the shortcut. Another program may already be using it: {shortcut}"` |
-| `"Keep audio files (~/.local/share/dikte/recordings)"` | `"Keep audio files (%LOCALAPPDATA%\\Dikte\\recordings)"` |
+| `"Keep audio files (~/.local/share/Verbatim/recordings)"` | `"Keep audio files (%LOCALAPPDATA%\\Verbatim\\recordings)"` |
 
 For each kept row, set the TR value to a Turkish translation of the new English text, e.g.:
 - `"Could not open the microphone."` → `"Mikrofon açılamadı."`
@@ -160,7 +160,7 @@ For each kept row, set the TR value to a Turkish translation of the new English 
 - `"Works the moment you save — no logout needed. The key does not reach the focused application."` → `"Kaydeder kaydetmez çalışır — oturumu yenilemek gerekmez. Tuş odaktaki uygulamaya iletilmez."`
 - `"The shortcut is registered with Windows and takes effect immediately."` → `"Kısayol Windows'a kaydedilir ve anında etkili olur."`
 - `"Could not register the shortcut. Another program may already be using it: {shortcut}"` → `"Kısayol kaydedilemedi. Başka bir program kullanıyor olabilir: {shortcut}"`
-- `"Keep audio files (%LOCALAPPDATA%\\Dikte\\recordings)"` → `"Ses kayıtlarını sakla (%LOCALAPPDATA%\\Dikte\\recordings)"`
+- `"Keep audio files (%LOCALAPPDATA%\\Verbatim\\recordings)"` → `"Ses kayıtlarını sakla (%LOCALAPPDATA%\\Verbatim\\recordings)"`
 
 - [ ] **Step 3: Write the test**
 
@@ -234,9 +234,9 @@ def _xdg(var, default):
     return pathlib.Path(os.environ.get(var) or os.path.expanduser(default))
 
 
-CONFIG_DIR = _xdg("XDG_CONFIG_HOME", "~/.config") / "dikte"
+CONFIG_DIR = _xdg("XDG_CONFIG_HOME", "~/.config") / "Verbatim"
 CONFIG_FILE = CONFIG_DIR / "config.json"
-DATA_DIR = _xdg("XDG_DATA_HOME", "~/.local/share") / "dikte"
+DATA_DIR = _xdg("XDG_DATA_HOME", "~/.local/share") / "Verbatim"
 ```
 Replace with:
 ```python
@@ -244,9 +244,9 @@ def _win_path(env, fallback):
     return pathlib.Path(os.environ.get(env) or os.path.expanduser(fallback))
 
 
-CONFIG_DIR = _win_path("APPDATA", "~") / "Dikte"
+CONFIG_DIR = _win_path("APPDATA", "~") / "Verbatim"
 CONFIG_FILE = CONFIG_DIR / "config.json"
-DATA_DIR = _win_path("LOCALAPPDATA", "~") / "Dikte"
+DATA_DIR = _win_path("LOCALAPPDATA", "~") / "Verbatim"
 ```
 
 - [ ] **Step 3: Drop the `os.chmod` from `save()`**
@@ -275,10 +275,10 @@ import config as cfg
 
 class TestConfigPaths(unittest.TestCase):
     def test_config_dir_uses_appdata(self):
-        self.assertEqual(cfg.CONFIG_DIR.name, "Dikte")
-        self.assertIn("Dikte", str(cfg.CONFIG_DIR))
+        self.assertEqual(cfg.CONFIG_DIR.name, "Verbatim")
+        self.assertIn("Verbatim", str(cfg.CONFIG_DIR))
     def test_data_dir_uses_localappdata(self):
-        self.assertEqual(cfg.DATA_DIR.name, "Dikte")
+        self.assertEqual(cfg.DATA_DIR.name, "Verbatim")
 
 class TestConfigLoadSave(unittest.TestCase):
     def setUp(self):
@@ -934,7 +934,7 @@ git commit -m "feat(paste): rewrite clipboard + paste with Win32 ctypes SendInpu
 from PyQt6.QtCore import Qt, QRectF, QPointF
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 
-# Linux icon-name → semantic state, used by dikte.py's _set_icon(name).
+# Linux icon-name → semantic state, used by Verbatim.py's _set_icon(name).
 _IDLE = "audio-input-microphone"
 _REC = "media-record"
 _BUSY = "view-refresh"
@@ -1176,7 +1176,7 @@ class WindowsHotkey(QObject):
         self._names.clear()
 
 
-# Backwards-compat alias so dikte.py's `hotkey.EvdevHotkey`-style references
+# Backwards-compat alias so Verbatim.py's `hotkey.EvdevHotkey`-style references
 # can be renamed minimally.
 EvdevHotkey = WindowsHotkey
 
@@ -1530,7 +1530,7 @@ def stereo_levels(chunk):
 
 
 def write_wav(pcm, rate=RATE, channels=CHANNELS, width=SAMPLE_WIDTH):
-    fd, path = tempfile.mkstemp(prefix="dikte-", suffix=".wav")
+    fd, path = tempfile.mkstemp(prefix="Verbatim-", suffix=".wav")
     with open(fd, "wb") as raw, wave.open(raw, "wb") as wav:
         wav.setnchannels(channels)
         wav.setsampwidth(width)
@@ -2247,15 +2247,15 @@ git commit -m "feat(settings_ui): drop KDE shortcut widgets; shortcut applies on
 
 ---
 
-### Task 18: `dikte.py` — carryover + Windows edits
+### Task 18: `Verbatim.py` — carryover + Windows edits
 
 **Files:**
-- Create: `dikte.py`
+- Create: `Verbatim.py`
 - Test: manual (Task 21)
 
-- [ ] **Step 1: Carry over `dikte.py` from upstream**
+- [ ] **Step 1: Carry over `Verbatim.py` from upstream**
 
-Carry over from: `https://raw.githubusercontent.com/yusufipk/dikte/master/dikte.py`. Save verbatim.
+Carry over from: `https://raw.githubusercontent.com/yusufipk/dikte/master/Verbatim.py`. Save verbatim.
 
 - [ ] **Step 2: Remove the XWayland/xcb block at the top**
 
@@ -2285,11 +2285,11 @@ from PyQt6.QtCore import QTimer, QElapsedTimer  # noqa: E402
 
 Find:
 ```python
-SERVER_NAME = "dikte-" + str(os.getuid())
+SERVER_NAME = "Verbatim-" + str(os.getuid())
 ```
 Replace with:
 ```python
-SERVER_NAME = "dikte-" + getpass.getuser()
+SERVER_NAME = "Verbatim-" + getpass.getuser()
 ```
 
 - [ ] **Step 4: Reduce the hotkey-echo dedup to nothing (Windows has no KDE echo)**
@@ -2334,7 +2334,7 @@ Find and delete the `_retire_listener` method entirely:
         self.conf["evdev_hotkey"] = False
         self.conf.save()
         self.tray.showMessage(
-            "Dikte",
+            "Verbatim",
             t("The KDE shortcut is live now, so the built-in listener has been "
               "turned off. It was doubling every key press."),
             QSystemTrayIcon.MessageIcon.Information, 8000,
@@ -2399,7 +2399,7 @@ Replace with:
         import trayicon
         self.tray.setIcon(trayicon.icon(name if name else "audio-input-microphone"))
 ```
-Remove the now-unused `QIcon` import if it is no longer referenced elsewhere in `dikte.py` (check the line `from PyQt6.QtGui import QAction, QIcon`; keep `QAction`, drop `QIcon`). Replace with:
+Remove the now-unused `QIcon` import if it is no longer referenced elsewhere in `Verbatim.py` (check the line `from PyQt6.QtGui import QAction, QIcon`; keep `QAction`, drop `QIcon`). Replace with:
 ```python
 from PyQt6.QtGui import QAction  # noqa: E402
 ```
@@ -2463,15 +2463,15 @@ def ask_command():
 - [ ] **Step 10: Import smoke test**
 
 ```powershell
-$env:QT_QPA_PLATFORM="offscreen"; python -c "from PyQt6.QtWidgets import QApplication; import dikte; app=QApplication([]); print('dikte import OK')"
+$env:QT_QPA_PLATFORM="offscreen"; python -c "from PyQt6.QtWidgets import QApplication; import Verbatim; app=QApplication([]); print('Verbatim import OK')"
 ```
-Expected: prints `dikte import OK`, no exception.
+Expected: prints `Verbatim import OK`, no exception.
 
 - [ ] **Step 11: Commit**
 
 ```powershell
-git add dikte.py
-git commit -m "feat(dikte): Windows entry point — getuser, RegisterHotKey-only, Popen restart, trayicon"
+git add Verbatim.py
+git commit -m "feat(Verbatim): Windows entry point — getuser, RegisterHotKey-only, Popen restart, trayicon"
 ```
 
 ---
@@ -2502,27 +2502,27 @@ git commit -m "test: full suite green" --allow-empty
 - [ ] **Step 1: Write `install.ps1`**
 
 ```powershell
-# Dikte installer for Windows: Start Menu shortcut + autostart.
+# Verbatim installer for Windows: Start Menu shortcut + autostart.
 param([string]$Shortcut = "Ctrl+Space")
 
 $ErrorActionPreference = "Stop"
-$AppDir = "$env:LOCALAPPDATA\Programs\Dikte"
-$Exe = "$AppDir\dikte.exe"
+$AppDir = "$env:LOCALAPPDATA\Programs\Verbatim"
+$Exe = "$AppDir\Verbatim.exe"
 $StartMenu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
-$ShortcutPath = "$StartMenu\Dikte.lnk"
+$ShortcutPath = "$StartMenu\Verbatim.lnk"
 $AutostartKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 
-Write-Host "Installing Dikte" -Foreground Cyan
+Write-Host "Installing Verbatim" -Foreground Cyan
 Write-Host "----------------"
 
 New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
-if (Test-Path "$PSScriptRoot\dikte.exe") {
-    Copy-Item "$PSScriptRoot\dikte.exe" $Exe -Force
-    Write-Host "  [OK] dikte.exe copied to $Exe"
-} elseif (Test-Path "$PSScriptRoot\dikte.py") {
-    Write-Host "  [!] dikte.exe not found next to install.ps1; run 'pyinstaller dikte.spec' first."
+if (Test-Path "$PSScriptRoot\Verbatim.exe") {
+    Copy-Item "$PSScriptRoot\Verbatim.exe" $Exe -Force
+    Write-Host "  [OK] Verbatim.exe copied to $Exe"
+} elseif (Test-Path "$PSScriptRoot\Verbatim.py") {
+    Write-Host "  [!] Verbatim.exe not found next to install.ps1; run 'pyinstaller Verbatim.spec' first."
 } else {
-    Write-Host "  [!] No dikte.exe or dikte.py found here."
+    Write-Host "  [!] No Verbatim.exe or Verbatim.py found here."
     exit 1
 }
 
@@ -2534,23 +2534,23 @@ $lnk.IconLocation = "$Exe,0"
 $lnk.Save()
 Write-Host "  [OK] Start Menu shortcut created"
 
-$existing = Get-ItemProperty -Path $AutostartKey -Name "Dikte" -ErrorAction SilentlyContinue
+$existing = Get-ItemProperty -Path $AutostartKey -Name "Verbatim" -ErrorAction SilentlyContinue
 if (-not $existing) {
-    New-ItemProperty -Path $AutostartKey -Name "Dikte" -Value $Exe -PropertyType String | Out-Null
+    New-ItemProperty -Path $AutostartKey -Name "Verbatim" -Value $Exe -PropertyType String | Out-Null
     Write-Host "  [OK] Autostart entry added"
 } else {
-    Set-ItemProperty -Path $AutostartKey -Name "Dikte" -Value $Exe
+    Set-ItemProperty -Path $AutostartKey -Name "Verbatim" -Value $Exe
     Write-Host "  [OK] Autostart entry updated"
 }
 
 Write-Host ""
-Write-Host "  Done. Start it from the Start Menu, or run dikte.exe directly." -Foreground Green
+Write-Host "  Done. Start it from the Start Menu, or run Verbatim.exe directly." -Foreground Green
 Write-Host "  The settings window opens on first run; add your OpenAI and OpenRouter keys."
 ```
 
 - [ ] **Step 2: Write `README.md`**
 
-A short English README: describe press `Ctrl+Space` → talk → press again → paste; OpenAI/OpenRouter keys in Settings; bundled ffmpeg; `install.ps1` for Start Menu + autostart; `python dikte.py` to run from source; build with `pyinstaller dikte.spec`. Keep under ~500 words. Refer to upstream README for feature detail.
+A short English README: describe press `Ctrl+Space` → talk → press again → paste; OpenAI/OpenRouter keys in Settings; bundled ffmpeg; `install.ps1` for Start Menu + autostart; `python Verbatim.py` to run from source; build with `pyinstaller Verbatim.spec`. Keep under ~500 words. Refer to upstream README for feature detail.
 
 - [ ] **Step 3: Write `README.tr.md`**
 
@@ -2572,7 +2572,7 @@ git commit -m "docs: Windows install.ps1 + readme (EN/TR)"
 - [ ] **Step 1: Run from source**
 
 ```powershell
-python dikte.py
+python Verbatim.py
 ```
 Expected: a tray icon appears; settings window opens (no API key); entering keys and saving persists them.
 
@@ -2598,7 +2598,7 @@ Settings → Agent: provider OpenRouter, ensure OpenRouter key is set, set a sho
 
 - [ ] **Step 7: Meeting**
 
-Tray → Record a meeting. Speak ~30 s. Tray → End the meeting and write it up. Expected: `%LOCALAPPDATA%\Dikte\meetings\<base>.md` is written with headed sections; tray notification appears.
+Tray → Record a meeting. Speak ~30 s. Tray → End the meeting and write it up. Expected: `%LOCALAPPDATA%\Verbatim\meetings\<base>.md` is written with headed sections; tray notification appears.
 
 - [ ] **Step 8: File transcription**
 
@@ -2610,11 +2610,11 @@ Settings → History shows the entry from Step 2; right-click → Delete removes
 
 - [ ] **Step 10: Hotkey conflict**
 
-In another app bind `Ctrl+Space`, run Dikte. Expected: Dikte reports the conflict via `failed.emit` and the tray menu still toggles.
+In another app bind `Ctrl+Space`, run Verbatim. Expected: Verbatim reports the conflict via `failed.emit` and the tray menu still toggles.
 
 - [ ] **Step 11: Restart**
 
-Tray → Restart. Expected: `dikte.exe` relaunches cleanly (or `python dikte.py` re-runs under dev).
+Tray → Restart. Expected: `Verbatim.exe` relaunches cleanly (or `python Verbatim.py` re-runs under dev).
 
 No commit — verification only. If a step fails, open a fix task and re-run.
 
@@ -2623,7 +2623,7 @@ No commit — verification only. If a step fails, open a fix task and re-run.
 ### Task 22: PyInstaller build
 
 **Files:**
-- Create: `dikte.spec`
+- Create: `Verbatim.spec`
 - Binary placed (not committed): `ffmpeg.exe` in project root
 
 - [ ] **Step 1: Install PyInstaller**
@@ -2634,9 +2634,9 @@ python -m pip install pyinstaller
 
 - [ ] **Step 2: Place `ffmpeg.exe` in the project root**
 
-The user obtains a static `ffmpeg.exe` (e.g. from gyan.dev essentials build) and puts it at `C:\Users\user\Projeler\Dikte\ffmpeg.exe`. It is gitignored (Task 1).
+The user obtains a static `ffmpeg.exe` (e.g. from gyan.dev essentials build) and puts it at `C:\Users\user\projects\Verbatim\ffmpeg.exe`. It is gitignored (Task 1).
 
-- [ ] **Step 3: Write `dikte.spec`**
+- [ ] **Step 3: Write `Verbatim.spec`**
 
 ```python
 # -*- mode: python ; coding: utf-8 -*-
@@ -2644,7 +2644,7 @@ import os
 block_cipher = None
 
 a = Analysis(
-    ['dikte.py'],
+    ['Verbatim.py'],
     pathex=[],
     binaries=[],
     datas=[('ffmpeg.exe', '.')],
@@ -2662,7 +2662,7 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
     pyz, a.scripts, a.binaries, a.zipfiles, a.datas, [],
-    name='dikte',
+    name='Verbatim',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -2681,25 +2681,25 @@ exe = EXE(
 
 > If `--onefile` is not honoured by the spec as written, invoke PyInstaller from the CLI instead:
 > ```powershell
-> python -m PyInstaller --onefile --windowed --add-data "ffmpeg.exe;." --collect-all sounddevice --name dikte dikte.py
+> python -m PyInstaller --onefile --windowed --add-data "ffmpeg.exe;." --collect-all sounddevice --name Verbatim Verbatim.py
 > ```
-> This produces `dist\dikte.exe`.
+> This produces `dist\Verbatim.exe`.
 
 - [ ] **Step 4: Build**
 
 ```powershell
-python -m PyInstaller dikte.spec --noconfirm
+python -m PyInstaller Verbatim.spec --noconfirm
 ```
-Expected: `dist\dikte.exe` exists; size ~100–120 MB.
+Expected: `dist\Verbatim.exe` exists; size ~100–120 MB.
 
 - [ ] **Step 5: Run the built exe**
 
-Double-click `dist\dikte.exe`. Expected: tray icon appears; settings window opens on first run. Re-run the smoke parts of Task 21 Steps 2, 7, 8 against the frozen exe.
+Double-click `dist\Verbatim.exe`. Expected: tray icon appears; settings window opens on first run. Re-run the smoke parts of Task 21 Steps 2, 7, 8 against the frozen exe.
 
 - [ ] **Step 6: Commit the spec**
 
 ```powershell
-git add dikte.spec
+git add Verbatim.spec
 git commit -m "build: PyInstaller one-file spec with bundled ffmpeg.exe"
 ```
 
@@ -2716,7 +2716,7 @@ Expected: all green.
 
 - [ ] **Step 2: Cross-check the feature checklist (spec §5)**
 
-Walk each `[x]` item in `docs/specs/2026-07-30-dikte-windows-design.md` §5 against the running app; tick any that were missed and open fix tasks.
+Walk each `[x]` item in `docs/specs/2026-07-30-Verbatim-windows-design.md` §5 against the running app; tick any that were missed and open fix tasks.
 
 - [ ] **Step 3: Commit remaining changes**
 
@@ -2729,10 +2729,10 @@ git commit -m "chore: final polish after end-to-end verification"
 
 ## Self-Review
 
-**1. Spec coverage:** Spec §3 module map → Tasks 2–17 cover every module (i18n T2, config T3, api T4, vad T5, worker T16, assistant T13, filetranscribe T7, meeting T15, overlay T14, audio T12, paste T8, hotkey T10, config edits T3, dikte T18, settings_ui T17, trayicon T9, ffmpeg_path T6, wasapi_loopback T11). Spec §4.1–§4.9 ─ each subsection maps to a task: §4.1 T12, §4.2 T8, §4.3 T10, §4.4 T3, §4.5 T18, §4.6 T9, §4.7 T6/T7, §4.8 T2, §4.9 T17. Spec §2 distribution → T20/T22. Spec §5 checklist → verified T21/T23. Spec §8 verification → T21. Out-of-scope §10 ─ not implemented (correct).
+**1. Spec coverage:** Spec §3 module map → Tasks 2–17 cover every module (i18n T2, config T3, api T4, vad T5, worker T16, assistant T13, filetranscribe T7, meeting T15, overlay T14, audio T12, paste T8, hotkey T10, config edits T3, Verbatim T18, settings_ui T17, trayicon T9, ffmpeg_path T6, wasapi_loopback T11). Spec §4.1–§4.9 ─ each subsection maps to a task: §4.1 T12, §4.2 T8, §4.3 T10, §4.4 T3, §4.5 T18, §4.6 T9, §4.7 T6/T7, §4.8 T2, §4.9 T17. Spec §2 distribution → T20/T22. Spec §5 checklist → verified T21/T23. Spec §8 verification → T21. Out-of-scope §10 ─ not implemented (correct).
 
 **2. Placeholder scan:** No "TBD"/"implement later". The one labelled stub is `wasapi_loopback.open()` which deliberately raises `OSError` per the documented two-stage fallback (spec §4.1 path 2 + §9 risk) — this is a designed stub, not a placeholder. The PyInstaller spec includes both a `.spec` and a CLI fallback command to avoid any ambiguity.
 
-**3. Type consistency:** `audio.Recorder` signals `level/stopped/failed` and methods `start/cancel/stop` match `worker.py` expectations (unchanged, Task 16). `audio.MeetingRecorder` signals `levels/stopped/died/failed` match `dikte.py` (unchanged, Task 18). `paste.copy/copy_bytes/read_clipboard/press/PasteError` signatures match `worker.py`. `hotkey.WindowsHotkey.start/stop/running/triggered/failed` plus `EvdevHotkey` alias match `dikte.py`'s `self.evdev` usage. `trayicon.icon(name)` matches the `name` strings `dikte.py._set_icon` is called with (`"audio-input-microphone"`, `"media-record"`, `"view-refresh"`). `ffmpeg_path.ffmpeg()` used by `filetranscribe._to_wav`. Config keys referenced in `settings_ui` (`shortcut`, `assistant_shortcut`, `meeting_shortcut`) are read by the simplified `_refresh_*` methods (Task 17). `evdev_hotkey` is kept in `DEFAULTS` (Task 3 keeps it verbatim) but unread by the Windows UI (Task 17 deletes its load/save lines and the checkbox).
+**3. Type consistency:** `audio.Recorder` signals `level/stopped/failed` and methods `start/cancel/stop` match `worker.py` expectations (unchanged, Task 16). `audio.MeetingRecorder` signals `levels/stopped/died/failed` match `Verbatim.py` (unchanged, Task 18). `paste.copy/copy_bytes/read_clipboard/press/PasteError` signatures match `worker.py`. `hotkey.WindowsHotkey.start/stop/running/triggered/failed` plus `EvdevHotkey` alias match `Verbatim.py`'s `self.evdev` usage. `trayicon.icon(name)` matches the `name` strings `Verbatim.py._set_icon` is called with (`"audio-input-microphone"`, `"media-record"`, `"view-refresh"`). `ffmpeg_path.ffmpeg()` used by `filetranscribe._to_wav`. Config keys referenced in `settings_ui` (`shortcut`, `assistant_shortcut`, `meeting_shortcut`) are read by the simplified `_refresh_*` methods (Task 17). `evdev_hotkey` is kept in `DEFAULTS` (Task 3 keeps it verbatim) but unread by the Windows UI (Task 17 deletes its load/save lines and the checkbox).
 
 No gaps found. Plan is complete.

@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
-"""Dikte: press Ctrl+Space, talk, press again to transcribe, clean up and paste.
+"""Verbatim: press Ctrl+Space, talk, press again to transcribe, clean up and paste.
 
 Usage:
-  dikte.py               run in the background (tray icon)
-  dikte.py toggle        start / stop recording
-  dikte.py cancel        discard the current recording
-  dikte.py ask           start / stop recording a command for the agent
-  dikte.py ask-cancel    call off the command the agent is working on
-  dikte.py ask-reset     forget the conversation the agent has been following
-  dikte.py meeting       start / end a meeting recording
-  dikte.py meeting-cancel  discard the meeting being recorded
-  dikte.py settings      open the settings window
-  dikte.py restart       reload the running instance
-  dikte.py quit          shut the application down
+  verbatim.py            run in the background (tray icon)
+  verbatim.py toggle     start / stop recording
+  verbatim.py cancel     discard the current recording
+  verbatim.py ask        start / stop recording a command for the agent
+  verbatim.py ask-cancel call off the command the agent is working on
+  verbatim.py ask-reset  forget the conversation the agent has been following
+  verbatim.py meeting    start / end a meeting recording
+  verbatim.py meeting-cancel  discard the meeting being recorded
+  verbatim.py settings   open the settings window
+  verbatim.py restart    reload the running instance
+  verbatim.py quit       shut the application down
 """
+
+__version__ = "0.2.3"
 
 import getpass
 import os
@@ -37,7 +39,7 @@ from overlay import Overlay  # noqa: E402
 from settings_ui import SettingsWindow  # noqa: E402
 from worker import Pipeline  # noqa: E402
 
-SERVER_NAME = "dikte-" + getpass.getuser()
+SERVER_NAME = "verbatim-" + getpass.getuser()
 IDLE, RECORDING, BUSY = "idle", "recording", "busy"
 # Dictation and a command for the agent are two runs of the same machinery, kept
 # apart so that neither waits on the other: an agent can spend a minute thinking,
@@ -59,7 +61,7 @@ ECHO_MS = 0
 PEEK_MS = 12000
 
 
-class Dikte:
+class Verbatim:
     def __init__(self, app):
         self.app = app
         self.conf = cfg.Config()
@@ -173,7 +175,7 @@ class Dikte:
         self.menu.addAction(self.quit_action)
 
         self.tray.setContextMenu(self.menu)
-        self.tray.setToolTip(t("Dikte: ready"))
+        self.tray.setToolTip(t("Verbatim: ready"))
         self.tray.activated.connect(self._tray_clicked)
         self._set_icon("audio-input-microphone")
 
@@ -221,9 +223,9 @@ class Dikte:
 
     def _refresh_tray(self):
         labels = {
-            IDLE: ("Start recording", "audio-input-microphone", "Dikte: ready"),
-            RECORDING: ("Stop and transcribe", "media-record", "Dikte: recording"),
-            BUSY: ("Working…", "view-refresh", "Dikte: working"),
+            IDLE: ("Start recording", "audio-input-microphone", "Verbatim: ready"),
+            RECORDING: ("Stop and transcribe", "media-record", "Verbatim: recording"),
+            BUSY: ("Working…", "view-refresh", "Verbatim: working"),
         }
         label, icon, tip = labels[self.state]
         agent = assistant.display_name(self.conf)
@@ -257,9 +259,9 @@ class Dikte:
         if self.state == IDLE and self.ask_state != IDLE:
             agent = assistant.display_name(self.conf)
             if self.ask_state == RECORDING:
-                icon, tip = "media-record", t("Dikte: recording for {name}", name=agent)
+                icon, tip = "media-record", t("Verbatim: recording for {name}", name=agent)
             else:
-                icon, tip = "view-refresh", t("Dikte: talking to {name}", name=agent)
+                icon, tip = "view-refresh", t("Verbatim: talking to {name}", name=agent)
 
         meeting_labels = {
             M_IDLE: "Record a meeting",
@@ -274,10 +276,10 @@ class Dikte:
         # so it would otherwise own the icon for most of the day.
         if self.state == IDLE and self.ask_state == IDLE and self.meeting_state != M_IDLE:
             if self.meeting_state == M_RECORDING:
-                icon, tip = "media-record", t("Dikte: in a meeting")
+                icon, tip = "media-record", t("Verbatim: in a meeting")
             else:
                 icon = "view-refresh"
-                tip = self.meeting_message or t("Dikte: writing the meeting up")
+                tip = self.meeting_message or t("Verbatim: writing the meeting up")
             self._set_icon(icon)
             self.tray.setToolTip(tip)
             return
@@ -468,7 +470,7 @@ class Dikte:
             self.overlay.set_seconds(seconds)
         if self.state == IDLE:
             self.tray.setToolTip(
-                t("Dikte: in a meeting ({time})", time=_clock(seconds))
+                t("Verbatim: in a meeting ({time})", time=_clock(seconds))
             )
         if seconds >= self.conf["meeting_max_seconds"]:
             self.stop_meeting()
@@ -487,7 +489,7 @@ class Dikte:
         if not self.meetings.run(entry):
             self._set_meeting_state(M_IDLE)
             self.tray.showMessage(
-                "Dikte",
+                "Verbatim",
                 t("Recording saved. The previous meeting is still being written "
                   "up, so start this one from Settings → Minutes when it is done."),
                 QSystemTrayIcon.MessageIcon.Information, 10000,
@@ -505,7 +507,7 @@ class Dikte:
         doc_path, _ = cfg.meeting_paths(base)
         self.overlay.show_done(t("Meeting written up: {title}", title=title), 5000)
         self.tray.showMessage(
-            t("Dikte: the meeting is written up"), f"{title}\n{doc_path}",
+            t("Verbatim: the meeting is written up"), f"{title}\n{doc_path}",
             QSystemTrayIcon.MessageIcon.Information, 10000,
         )
 
@@ -514,7 +516,7 @@ class Dikte:
         first_line = error.strip().splitlines()[0]
         self.overlay.show_error(t("Meeting failed: {error}", error=first_line))
         self.tray.showMessage(
-            t("Dikte: the meeting could not be written up"),
+            t("Verbatim: the meeting could not be written up"),
             t("{error}\n\nThe recording has been kept. Settings → Minutes can "
               "try again.", error=error),
             QSystemTrayIcon.MessageIcon.Warning, 12000,
@@ -532,7 +534,7 @@ class Dikte:
         if self.meeting_state != M_RECORDING:
             return
         self.tray.showMessage(
-            "Dikte",
+            "Verbatim",
             t("The recording stopped on its own; the sound device may have gone "
               "away. Keeping what was captured."),
             QSystemTrayIcon.MessageIcon.Warning, 10000,
@@ -554,7 +556,7 @@ class Dikte:
                 t("Pasted raw, cleanup failed: {error}", error=warning.splitlines()[0])
             )
             self.tray.showMessage(
-                t("Dikte: cleanup failed"), warning,
+                t("Verbatim: cleanup failed"), warning,
                 QSystemTrayIcon.MessageIcon.Warning, 10000,
             )
         else:
@@ -574,7 +576,7 @@ class Dikte:
                   name=agent, error=warning.splitlines()[0])
             )
             self.tray.showMessage(
-                t("Dikte: {name} could not do all of it", name=agent),
+                t("Verbatim: {name} could not do all of it", name=agent),
                 f"{warning}\n\n{text}", QSystemTrayIcon.MessageIcon.Warning, 10000,
             )
         else:
@@ -607,7 +609,7 @@ class Dikte:
         first_line = message.strip().splitlines()[0]
         overlay.show_error(first_line)
         if len(message) > len(first_line):
-            self.tray.showMessage("Dikte", message, QSystemTrayIcon.MessageIcon.Warning, 8000)
+            self.tray.showMessage("Verbatim", message, QSystemTrayIcon.MessageIcon.Warning, 8000)
 
     # ---- settings ---------------------------------------------------------
 
@@ -710,8 +712,8 @@ def main():
         return 2
 
     app = QApplication(sys.argv)
-    app.setApplicationName("Dikte")
-    app.setDesktopFileName("dikte")
+    app.setApplicationName("Verbatim")
+    app.setDesktopFileName("verbatim")
     app.setQuitOnLastWindowClosed(False)
 
     # No command and an instance already running: bring its settings forward.
@@ -723,9 +725,9 @@ def main():
         return 0
 
     if not QSystemTrayIcon.isSystemTrayAvailable():
-        print("dikte: no system tray found, running anyway")
+        print("verbatim: no system tray found, running anyway")
 
-    dikte = Dikte(app)
+    verbatim = Verbatim(app)
 
     server = QLocalServer()
     # Qt puts the socket in /tmp, so keep it to this user: commands like
@@ -733,7 +735,7 @@ def main():
     server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
     QLocalServer.removeServer(SERVER_NAME)
     if not server.listen(SERVER_NAME):
-        print(f"dikte: could not open the IPC socket: {server.errorString()}")
+        print(f"verbatim: could not open the IPC socket: {server.errorString()}")
 
     def on_connection():
         conn = server.nextPendingConnection()
@@ -743,17 +745,17 @@ def main():
         def read():
             payload = bytes(conn.readAll()).decode("utf-8", "replace").strip()
             handler = {
-                "toggle": dikte.toggle,
-                "start": dikte.start,
-                "stop": dikte.stop,
-                "cancel": dikte.cancel,
-                "ask": dikte.toggle_ask,
-                "ask-cancel": dikte.cancel_ask,
-                "ask-reset": dikte.reset_conversation,
-                "meeting": dikte.toggle_meeting,
-                "meeting-cancel": dikte.cancel_meeting,
-                "settings": dikte.open_settings,
-                "restart": dikte.restart,
+                "toggle": verbatim.toggle,
+                "start": verbatim.start,
+                "stop": verbatim.stop,
+                "cancel": verbatim.cancel,
+                "ask": verbatim.toggle_ask,
+                "ask-cancel": verbatim.cancel_ask,
+                "ask-reset": verbatim.reset_conversation,
+                "meeting": verbatim.toggle_meeting,
+                "meeting-cancel": verbatim.cancel_meeting,
+                "settings": verbatim.open_settings,
+                "restart": verbatim.restart,
                 "quit": app.quit,
             }.get(payload)
             if handler:
@@ -763,18 +765,18 @@ def main():
         conn.readyRead.connect(read)
 
     server.newConnection.connect(on_connection)
-    app.aboutToQuit.connect(dikte.shutdown)
+    app.aboutToQuit.connect(verbatim.shutdown)
 
     # No key for the chosen transcription provider means nothing can work yet,
     # so the settings window is the only useful thing to open.
-    if command == "settings" or not dikte.conf.transcribe_target().api_key:
-        dikte.open_settings()
+    if command == "settings" or not verbatim.conf.transcribe_target().api_key:
+        verbatim.open_settings()
     elif command == "toggle":
-        QTimer.singleShot(0, dikte.toggle)
+        QTimer.singleShot(0, verbatim.toggle)
     elif command == "ask":
-        QTimer.singleShot(0, dikte.toggle_ask)
+        QTimer.singleShot(0, verbatim.toggle_ask)
     elif command == "meeting":
-        QTimer.singleShot(0, dikte.toggle_meeting)
+        QTimer.singleShot(0, verbatim.toggle_meeting)
 
     return app.exec()
 

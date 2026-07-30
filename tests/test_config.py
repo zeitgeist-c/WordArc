@@ -3,10 +3,10 @@ import config as cfg
 
 class TestConfigPaths(unittest.TestCase):
     def test_config_dir_uses_appdata(self):
-        self.assertEqual(cfg.CONFIG_DIR.name, "Dikte")
-        self.assertIn("Dikte", str(cfg.CONFIG_DIR))
+        self.assertEqual(cfg.CONFIG_DIR.name, "Verbatim")
+        self.assertIn("Verbatim", str(cfg.CONFIG_DIR))
     def test_data_dir_uses_localappdata(self):
-        self.assertEqual(cfg.DATA_DIR.name, "Dikte")
+        self.assertEqual(cfg.DATA_DIR.name, "Verbatim")
 
 class TestConfigLoadSave(unittest.TestCase):
     def setUp(self):
@@ -14,18 +14,20 @@ class TestConfigLoadSave(unittest.TestCase):
         self.old_cfg = cfg.CONFIG_DIR
         self.old_file = cfg.CONFIG_FILE
         self.old_data = cfg.DATA_DIR
+        self.old_history = cfg.HISTORY_FILE
         cfg.CONFIG_DIR = pathlib.Path(self.tmp.name) / "cfg"
         cfg.CONFIG_FILE = cfg.CONFIG_DIR / "config.json"
         cfg.DATA_DIR = pathlib.Path(self.tmp.name) / "data"
+        cfg.HISTORY_FILE = cfg.DATA_DIR / "history.jsonl"
         cfg.DATA_DIR.mkdir(parents=True, exist_ok=True)
     def tearDown(self):
         cfg.CONFIG_DIR = self.old_cfg
         cfg.CONFIG_FILE = self.old_file
         cfg.DATA_DIR = self.old_data
+        cfg.HISTORY_FILE = self.old_data / "history.jsonl"
         self.tmp.cleanup()
     def test_defaults_loaded(self):
         c = cfg.Config()
-        self.assertEqual(c["transcribe_provider"], "gemini")
         self.assertEqual(c["language"], "tr")
     def test_save_then_load(self):
         c = cfg.Config()
@@ -35,10 +37,8 @@ class TestConfigLoadSave(unittest.TestCase):
         self.assertEqual(c2["gemini_api_key"], "ai-test")
     def test_unknown_keys_ignored(self):
         cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        cfg.CONFIG_FILE.write_text(json.dumps({"transcribe_provider": "openrouter",
-                 "unknown_key": "ignored"}), encoding="utf-8")
+        cfg.CONFIG_FILE.write_text(json.dumps({"unknown_key": "ignored"}), encoding="utf-8")
         c = cfg.Config()
-        self.assertEqual(c["transcribe_provider"], "openrouter")
         self.assertNotIn("unknown_key", c.data)
 
 class TestPromptAssembly(unittest.TestCase):

@@ -26,22 +26,16 @@ class TestAssistantSession(unittest.TestCase):
         self.assistant.write_session("claude", session="abc")
         self.assistant.clear_session()
         self.assertEqual(self.assistant.read_session("claude", 3600), "")
-    def test_messages_round_trip(self):
-        msgs = [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi"}]
-        self.assistant.write_session("openrouter", messages=msgs)
-        out = self.assistant.read_messages("openrouter", 3600)
-        self.assertEqual(out, msgs)
 
 class TestProviderHelpers(unittest.TestCase):
     def test_provider_default(self):
         import assistant, config as cfg
         c = cfg.Config()
-        self.assertIn(assistant.provider(c), ("claude", "codex", "openrouter"))
+        self.assertIn(assistant.provider(c), ("claude", "codex"))
     def test_executable_mapping(self):
         import assistant
         self.assertEqual(assistant.executable("claude"), "claude")
         self.assertEqual(assistant.executable("codex"), "codex")
-        self.assertEqual(assistant.executable("openrouter"), "")
 
 if __name__ == "__main__":
     unittest.main()

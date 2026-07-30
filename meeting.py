@@ -34,7 +34,7 @@ from i18n import t
 # Where the document stops being prose and starts being the transcript. It is a
 # comment, so it never shows up in a rendered document, and it is what a retry
 # reads the transcript back out of.
-TRANSCRIPT_MARKER = "<!-- dikte:transcript -->"
+TRANSCRIPT_MARKER = "<!-- verbatim:transcript -->"
 
 # A microphone that hears the other side through the speakers puts the same
 # sentence on both channels. Ours is the copy to drop, and it is a copy when it
@@ -105,7 +105,7 @@ class MeetingPipeline(QObject):
             if not transcript:
                 if not wav_path.exists():
                     raise api.ApiError(t("The recording is gone: {path}", path=wav_path))
-                workdir = tempfile.mkdtemp(prefix="dikte-meeting-")
+                workdir = tempfile.mkdtemp(prefix="verbatim-meeting-")
                 transcript = self._transcribe(str(wav_path), workdir)
                 if self.conf["meeting_cleanup"]:
                     self._check()
@@ -120,12 +120,10 @@ class MeetingPipeline(QObject):
             self._say(t("Writing the minutes…"))
             minutes = api.cleanup(
                 transcript,
-                self.conf.openrouter_key(),
+                self.conf.gemini_key(),
                 self.conf["meeting_model"],
                 self.conf.meeting_prompt(),
-                gemini_key=self.conf.gemini_key(),
                 reasoning=self.conf["meeting_reasoning"],
-                base_url=self.conf["openrouter_base_url"],
                 timeout=600,
             )
             title = self._write(doc_path, minutes, transcript, entry)
@@ -158,37 +156,40 @@ class MeetingPipeline(QObject):
     def _transcribe(self, wav_path, workdir):
         conf = self.conf
         mine, theirs = split_channels(wav_path, workdir)
-        target = conf.transcribe_segments_target()
+        api_key = conf.gemini_key()
+        model = conf["gemini_transcribe_model"]
         language = conf["meeting_language"] or conf["language"]
         hint = conf.meeting_hint()
 
-        segments = []
+        texts = []
         for path, speaker in ((mine, "mine"), (theirs, "theirs")):
             side = t("you") if speaker == "mine" else t("the others")
-            # A directory each: the chunk files are named by their index, and
-            # the second channel would otherwise write over the first one's.
             chunk_dir = os.path.join(workdir, speaker)
             os.makedirs(chunk_dir, exist_ok=True)
             chunks = filetranscribe.split_wav(path, chunk_dir)
+            pieces = []
             for index, (chunk_path, offset) in enumerate(chunks, start=1):
                 self._check()
                 self._say(t("Transcribing {side}: {index}/{count}…",
                             side=side, index=index, count=len(chunks)))
-                # Nobody spoke on this side for these ten minutes: an API call
-                # would cost money to be told so, and can invent a sentence.
                 if self._silent(chunk_path):
                     continue
-                segments.extend(
-                    (start + offset, end + offset, text, speaker)
-                    for start, end, text in api.transcribe_segments(
-                        target, chunk_path, language=language, prompt=hint
-                    )
+                text = api.transcribe(
+                    api_key, model, chunk_path, language=language, prompt=hint
                 )
-        if not segments:
+                if text.strip():
+                    pieces.append(text.strip())
+            if pieces:
+                texts.append({"speaker": speaker, "text": " ".join(pieces)})
+        if not texts:
             raise api.ApiError(t("Neither side of the recording had any speech in it."))
 
         names = conf.speaker_names()
-        return render_turns(merge_turns(segments), *names)
+        labels = {"mine": names[0], "theirs": names[1]}
+        parts = []
+        for entry in texts:
+            parts.append(f"{labels[entry['speaker']]}:\n{entry['text']}")
+        return "\n\n".join(parts)
 
     def _silent(self, path):
         if not self.conf["skip_silent"]:
@@ -211,12 +212,10 @@ class MeetingPipeline(QObject):
                             index=index, count=len(blocks)))
             out.append(api.cleanup(
                 block,
-                conf.openrouter_key(),
+                conf.gemini_key(),
                 conf["cleanup_model"],
                 prompt,
-                gemini_key=conf.gemini_key(),
                 reasoning=conf["cleanup_reasoning"],
-                base_url=conf["openrouter_base_url"],
             ))
         return "\n".join(out)
 

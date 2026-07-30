@@ -1,35 +1,26 @@
-"""OpenRouter and Gemini calls, stdlib only.
+"""Gemini API calls, stdlib only.
 
-Transcription runs on either provider: OpenRouter mirrors the OpenAI-compatible
-/audio/transcriptions endpoint with multipart form data, while Gemini uses its
-generateContent endpoint with base64-encoded audio. Cleanup and chat go through
-the same Gemini endpoint or OpenRouter's chat/completions.
+Transcription uses Gemini's generateContent endpoint with base64-encoded audio.
+Cleanup and chat go through the same endpoint.
 """
 
 import base64
-import collections
 import json
-import mimetypes
 import os
-import secrets
 import urllib.error
 import urllib.request
 
 from i18n import t
 
-APP_URL = "https://github.com/yusufipk/dikte"
-USER_AGENT = f"dikte/1.0 (+{APP_URL})"
-OPENROUTER_URL = "https://openrouter.ai/api/v1"
+APP_URL = "https://github.com/yusufipk/verbatim"
+USER_AGENT = f"verbatim/1.0 (+{APP_URL})"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta"
 GEMINI_API_KEY_ENV = "GEMINI_API_KEY"
 
+Target = type("Target", (), {"__init__": lambda self, provider, service, api_key, base_url, model: (setattr(self, "provider", provider), setattr(self, "service", service), setattr(self, "api_key", api_key), setattr(self, "base_url", base_url), setattr(self, "model", model))[0]}) if False else None
+# Simple namedtuple replacement for Target
+import collections
 Target = collections.namedtuple("Target", "provider service api_key base_url model")
-
-
-def timestamp_model(provider):
-    if provider == "gemini":
-        raise ApiError(t("Gemini does not support timestamped segments."))
-    return "openai/whisper-1"
 
 
 class ApiError(Exception):
@@ -80,68 +71,26 @@ def _extract_error(body):
     return body[:300]
 
 
-def _multipart(fields, file_field, file_path):
-    """Build a multipart/form-data body; returns (body, content-type)."""
-    boundary = "----dikte" + secrets.token_hex(16)
-    out = bytearray()
-    for name, value in fields:
-        if value is None or value == "":
-            continue
-        out += f"--{boundary}\r\n".encode()
-        out += f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode()
-        out += str(value).encode("utf-8") + b"\r\n"
-
-    filename = os.path.basename(file_path)
-    ctype = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-    with open(file_path, "rb") as fh:
-        payload = fh.read()
-    out += f"--{boundary}\r\n".encode()
-    out += (
-        f'Content-Disposition: form-data; name="{file_field}"; filename="{filename}"\r\n'
-        f"Content-Type: {ctype}\r\n\r\n"
-    ).encode()
-    out += payload + b"\r\n"
-    out += f"--{boundary}--\r\n".encode()
-    return bytes(out), f"multipart/form-data; boundary={boundary}"
-
-
-def _headers(provider, api_key, content_type=None):
-    headers = {"Authorization": f"Bearer {api_key}", "User-Agent": USER_AGENT}
-    if content_type:
-        headers["Content-Type"] = content_type
-    if provider == "openrouter":
-        headers["HTTP-Referer"] = APP_URL
-        headers["X-Title"] = "Dikte"
-    return headers
-
-
-def _transcribe_request(target, wav_path, language, prompt, response_format,
-                        granularity=None, timeout=300):
-    if not target.api_key:
-        raise ApiError(t("{service} API key is empty. Add it in Settings.",
-                         service=target.service))
-    fields = [("model", target.model), ("response_format", response_format)]
-    if language and language != "auto":
-        fields.append(("language", language))
-    if prompt:
-        fields.append(("prompt", prompt))
-    if granularity:
-        fields.append(("timestamp_granularities[]", granularity))
-    body, ctype = _multipart(fields, "file", wav_path)
+def _get_json(url, headers, timeout=20):
+    req = urllib.request.Request(url, headers=headers)
     try:
-        return _request(
-            f"{target.base_url.rstrip('/')}/audio/transcriptions", body,
-            _headers(target.provider, target.api_key, ctype), timeout=timeout,
-        )
-    except ApiError as exc:
-        raise explain(exc, target.service) from None
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")
+        raise ApiError(f"HTTP {exc.code}: {_extract_error(body)}", exc.code) from exc
+    except urllib.error.URLError as exc:
+        raise ApiError(t("Could not connect: {reason}", reason=exc.reason)) from exc
+    except json.JSONDecodeError as exc:
+        raise ApiError(t("Could not parse the response: {error}", error=exc)) from exc
 
 
-def gemini_transcribe(api_key, model, wav_path, language="", prompt="", timeout=300):
+# --- transcription ---------------------------------------------------------
+
+def transcribe(api_key, model, wav_path, language="", prompt="", timeout=300):
     """Transcribe audio via Gemini generateContent (base64 inline)."""
     if not api_key:
-        raise ApiError(t("{service} API key is empty. Add it in Settings.",
-                         service="Gemini"))
+        raise ApiError(t("Gemini API key is empty. Add it in Settings."))
     with open(wav_path, "rb") as f:
         audio_data = base64.b64encode(f.read()).decode("ascii")
     instruction = "Transcribe the audio exactly as spoken, word for word."
@@ -174,51 +123,12 @@ def gemini_transcribe(api_key, model, wav_path, language="", prompt="", timeout=
     return text
 
 
-def transcribe(target, wav_path, language="", prompt="", timeout=300):
-    if target.provider == "gemini":
-        return gemini_transcribe(target.api_key, target.model, wav_path,
-                                  language, prompt, timeout)
-    data = _transcribe_request(
-        target, wav_path, language, prompt, "json", timeout=timeout
-    )
-    text = (data.get("text") or "").strip()
-    if not text:
-        raise ApiError(t("Transcript came back empty."))
-    return text
-
-
-def transcribe_segments(target, wav_path, language="", prompt="", timeout=300):
-    """[(start_seconds, end_seconds, text)] using whisper-1's verbose response."""
-    if target.provider == "gemini":
-        raise ApiError(t("Gemini does not support timestamped segments. Use the file "
-                         "transcription without timestamps, or switch to OpenRouter "
-                         "with whisper-1."))
-    data = _transcribe_request(
-        target._replace(model=timestamp_model(target.provider)),
-        wav_path, language, prompt, "verbose_json",
-        granularity="segment", timeout=timeout,
-    )
-    segments = data.get("segments") or []
-    out = []
-    for seg in segments:
-        text = (seg.get("text") or "").strip()
-        if text:
-            start = float(seg.get("start") or 0.0)
-            end = float(seg.get("end") or 0.0)
-            out.append((start, max(end, start), text))
-    if not out:
-        text = (data.get("text") or "").strip()
-        if not text:
-            raise ApiError(t("Transcript came back empty."))
-        out = [(0.0, 0.0, text)]
-    return out
-
+# --- chat / cleanup ---------------------------------------------------------
 
 def gemini_chat(messages, api_key, model, system_prompt="", timeout=180):
-    """Direct Gemini chat, no OpenRouter. Used for cleanup, agent, minutes."""
+    """Direct Gemini chat. Used for cleanup, agent, minutes."""
     if not api_key:
-        raise ApiError(t("{service} API key is empty. Add it in Settings.",
-                         service="Gemini"))
+        raise ApiError(t("Gemini API key is empty. Add it in Settings."))
     gemini_msgs = []
     for m in messages:
         role = "model" if m["role"] == "assistant" else m["role"]
@@ -242,137 +152,26 @@ def gemini_chat(messages, api_key, model, system_prompt="", timeout=180):
     return text
 
 
-def cleanup(text, api_key, model, system_prompt, provider="", gemini_key="",
-            reasoning="", base_url="", timeout=180):
-    """Clean transcript text using a chat model via OpenRouter or Gemini."""
-    if not provider:
-        provider = "gemini" if model.startswith("gemini-") else "openrouter"
-    if provider == "gemini":
-        if not gemini_key:
-            gemini_key = api_key
-        messages = [{"role": "user", "content": text}]
-        return gemini_chat(messages, gemini_key, model, system_prompt, timeout)
+def cleanup(text, api_key, model, system_prompt, reasoning="", timeout=180):
+    """Clean transcript text using Gemini."""
     if not api_key:
-        raise ApiError(t("{service} API key is empty. Add it in Settings.",
-                         service="OpenRouter"))
-    payload = {
-        "model": model,
-        "temperature": 0,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"<transcript>\n{text}\n</transcript>"},
-        ],
-    }
-    if reasoning:
-        payload["reasoning"] = {"effort": reasoning, "exclude": True}
-    url = (base_url or OPENROUTER_URL).rstrip("/") + "/chat/completions"
-    try:
-        data = _request(
-            url,
-            json.dumps(payload).encode("utf-8"),
-            _headers("openrouter", api_key, "application/json"),
-            timeout=timeout,
-        )
-    except ApiError as exc:
-        raise explain(exc, "OpenRouter") from None
-    choices = data.get("choices") or []
-    if not choices:
-        raise ApiError(_extract_error(json.dumps(data)))
-    content = ((choices[0].get("message") or {}).get("content") or "").strip()
-    if not content:
-        raise ApiError(t("The cleanup model returned an empty reply."))
-    return content
+        raise ApiError(t("Gemini API key is empty. Add it in Settings."))
+    messages = [{"role": "user", "content": text}]
+    return gemini_chat(messages, api_key, model, system_prompt, timeout)
 
 
-def chat(messages, api_key, model, system_prompt, provider="", gemini_key="",
-         reasoning="", base_url="", timeout=180):
-    """A conversation, rather than one transcript rewritten, via OpenRouter or Gemini."""
-    if not provider:
-        provider = "gemini" if model.startswith("gemini-") else "openrouter"
-    if provider == "gemini":
-        if not gemini_key:
-            gemini_key = api_key
-        return gemini_chat(messages, gemini_key, model, system_prompt, timeout)
+def chat(messages, api_key, model, system_prompt, reasoning="", timeout=180):
+    """A conversation via Gemini."""
     if not api_key:
-        raise ApiError(t("{service} API key is empty. Add it in Settings.",
-                         service="OpenRouter"))
-    payload = {
-        "model": model,
-        "messages": [{"role": "system", "content": system_prompt}] + list(messages),
-    }
-    if reasoning:
-        payload["reasoning"] = {"effort": reasoning, "exclude": True}
-    url = (base_url or OPENROUTER_URL).rstrip("/") + "/chat/completions"
-    try:
-        data = _request(
-            url,
-            json.dumps(payload).encode("utf-8"),
-            _headers("openrouter", api_key, "application/json"),
-            timeout=timeout,
-        )
-    except ApiError as exc:
-        raise explain(exc, "OpenRouter") from None
-    choices = data.get("choices") or []
-    if not choices:
-        raise ApiError(_extract_error(json.dumps(data)))
-    content = ((choices[0].get("message") or {}).get("content") or "").strip()
-    if not content:
-        raise ApiError(t("The model returned an empty reply."))
-    return content
+        raise ApiError(t("Gemini API key is empty. Add it in Settings."))
+    return gemini_chat(messages, api_key, model, system_prompt, timeout)
 
 
-def _get_json(url, headers, timeout=20):
-    req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", "replace")
-        raise ApiError(f"HTTP {exc.code}: {_extract_error(body)}", exc.code) from exc
-    except urllib.error.URLError as exc:
-        raise ApiError(t("Could not connect: {reason}", reason=exc.reason)) from exc
-    except json.JSONDecodeError as exc:
-        raise ApiError(t("Could not parse the response: {error}", error=exc)) from exc
-
-
-def openrouter_key_status(api_key):
-    """Check the key against OpenRouter's own /key endpoint."""
-    if not api_key:
-        raise ApiError(t("{service} API key is empty. Add it in Settings.",
-                         service="OpenRouter"))
-    try:
-        data = _get_json(f"{OPENROUTER_URL}/key",
-                         {"Authorization": f"Bearer {api_key}", "User-Agent": USER_AGENT})
-    except ApiError as exc:
-        raise explain(exc, "OpenRouter") from None
-    info = data.get("data") or {}
-    limit, usage = info.get("limit"), info.get("usage")
-    if limit is None:
-        return t("Key works, no spending limit set.")
-    return t("Key works. Used {usage} of {limit}.",
-             usage=round(float(usage or 0), 3), limit=round(float(limit), 3))
-
-
-def openrouter_models(api_key="", transcription=False):
-    """Model ids available on OpenRouter (no key required)."""
-    url = f"{OPENROUTER_URL}/models"
-    if transcription:
-        url += "?output_modalities=transcription"
-    headers = {"User-Agent": USER_AGENT}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    models = _get_json(url, headers).get("data", [])
-    if transcription:
-        models = [m for m in models
-                  if "transcription" in (m.get("architecture") or {}).get(
-                      "output_modalities", [])]
-    return sorted(m["id"] for m in models if m.get("id"))
-
+# --- model list -------------------------------------------------------------
 
 def gemini_models(api_key):
     if not api_key:
-        raise ApiError(t("{service} API key is empty. Add it in Settings.",
-                         service="Gemini"))
+        raise ApiError(t("Gemini API key is empty. Add it in Settings."))
     try:
         data = _get_json(
             f"{GEMINI_URL}/models?key={api_key}",
