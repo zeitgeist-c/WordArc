@@ -361,13 +361,12 @@ da senin soracağın soruya verilecek bir yanıt yok.
 
 DEFAULTS = {
     "ui_language": "auto",          # auto | tr | en
-    "openai_api_key": "",
-    "openai_base_url": "https://api.openai.com/v1",
     "openrouter_api_key": "",
     "openrouter_base_url": "https://openrouter.ai/api/v1",
-    "transcribe_provider": "openai",  # openai | openrouter
-    "transcribe_model": "gpt-4o-transcribe",           # used when provider is openai
-    "openrouter_transcribe_model": "openai/gpt-4o-transcribe",
+    "gemini_api_key": "",
+    "gemini_transcribe_model": "gemini-2.0-flash-001",
+    "transcribe_provider": "gemini",  # gemini | openrouter
+    "openrouter_transcribe_model": "google/gemini-2.0-flash-001",
     "language": "tr",
     "transcribe_prompt": "",
     "cleanup_enabled": True,
@@ -486,12 +485,11 @@ class Config:
     def get(self, key, default=None):
         return self.data.get(key, DEFAULTS.get(key, default))
 
-    def openai_key(self):
-        """Fall back to the environment when no key is stored."""
-        return self["openai_api_key"].strip() or os.environ.get("OPENAI_API_KEY", "").strip()
-
     def openrouter_key(self):
         return self["openrouter_api_key"].strip() or os.environ.get("OPENROUTER_API_KEY", "").strip()
+
+    def gemini_key(self):
+        return self["gemini_api_key"].strip() or os.environ.get("GEMINI_API_KEY", "").strip()
 
     def transcribe_target(self):
         """Key, endpoint and model for whichever provider does speech to text."""
@@ -499,8 +497,8 @@ class Config:
             return api.Target("openrouter", "OpenRouter", self.openrouter_key(),
                               self["openrouter_base_url"],
                               self["openrouter_transcribe_model"])
-        return api.Target("openai", "OpenAI", self.openai_key(),
-                          self["openai_base_url"], self["transcribe_model"])
+        return api.Target("gemini", "Gemini", self.gemini_key(),
+                          "", self["gemini_transcribe_model"])
 
     def cleanup_prompt(self, with_timestamps=False, with_speakers=False,
                        subtitles=False):
