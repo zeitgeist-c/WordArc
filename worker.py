@@ -120,7 +120,7 @@ class Pipeline(QObject):
                     # a rejected key would otherwise look like working dictation.
                     text = raw
                     warning = str(exc)
-                    print(f"dikte: cleanup failed: {exc}", file=sys.stderr)
+                    print(f"verbatim: cleanup failed: {exc}", file=sys.stderr)
 
             question = ""
             if ask:
@@ -161,13 +161,13 @@ class Pipeline(QObject):
             try:
                 cfg.trim_history(conf["history_limit"])
             except OSError as exc:
-                print(f"dikte: could not trim the history: {exc}", file=sys.stderr)
+                print(f"verbatim: could not trim the history: {exc}", file=sys.stderr)
             self.finished.emit(raw, text, warning)
 
         except assistant.Cancelled:
             self.cancelled.emit()
         except (api.ApiError, paste.PasteError, assistant.AssistantError) as exc:
-            print(f"dikte: {exc}", file=sys.stderr)
+            print(f"verbatim: {exc}", file=sys.stderr)
             self.failed.emit(str(exc))
         except Exception as exc:  # never fail silently
             traceback.print_exc()
