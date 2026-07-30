@@ -77,7 +77,7 @@ class FileTranscriber(QObject):
             if len(chunks) > 1:
                 self.progress.emit(t("Splitting into {count} chunks…", count=len(chunks)))
 
-            target = conf.transcribe_target()
+            target = conf.transcribe_segments_target() if timestamps else conf.transcribe_target()
             pieces = []
             segments = []
             for index, (chunk_path, offset) in enumerate(chunks, start=1):

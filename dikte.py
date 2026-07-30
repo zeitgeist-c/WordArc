@@ -255,10 +255,11 @@ class Dikte:
         # The agent speaks through the icon only when dictation has nothing to
         # say, since dictation is the one being waited on in front of a screen.
         if self.state == IDLE and self.ask_state != IDLE:
+            agent = assistant.display_name(self.conf)
             if self.ask_state == RECORDING:
-                icon, tip = "media-record", "Dikte: recording for Claude"
+                icon, tip = "media-record", t("Dikte: recording for {name}", name=agent)
             else:
-                icon, tip = "view-refresh", "Dikte: talking to Claude"
+                icon, tip = "view-refresh", t("Dikte: talking to {name}", name=agent)
 
         meeting_labels = {
             M_IDLE: "Record a meeting",

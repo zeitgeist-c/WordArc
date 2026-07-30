@@ -369,7 +369,7 @@ DEFAULTS = {
     "gemini_meeting_model": "gemini-3.5-flash-lite",
     "gemini_assistant_model": "gemini-3.5-flash-lite",
     "transcribe_provider": "gemini",  # gemini | openrouter
-    "openrouter_transcribe_model": "google/gemini-3.5-flash-lite",
+    "openrouter_transcribe_model": "openai/whisper-1",
     "language": "tr",
     "transcribe_prompt": "",
     "cleanup_enabled": True,
@@ -502,6 +502,22 @@ class Config:
                               self["openrouter_transcribe_model"])
         return api.Target("gemini", "Gemini", self.gemini_key(),
                           "", self["gemini_transcribe_model"])
+
+    def transcribe_segments_target(self):
+        """A target that supports timestamped segments (always OpenRouter whisper-1).
+
+        Gemini does not return segment timestamps, so this method returns an
+        OpenRouter target whenever segments are needed. Falls back with an
+        informative error if no OpenRouter key is configured.
+        """
+        or_key = self.openrouter_key()
+        if not or_key:
+            raise api.ApiError(t(
+                "Gemini does not support timestamped segments. Set an OpenRouter "
+                "API key and use whisper-1 for segment support."))
+        return api.Target("openrouter", "OpenRouter", or_key,
+                          self["openrouter_base_url"],
+                          api.timestamp_model("openrouter"))
 
     def cleanup_prompt(self, with_timestamps=False, with_speakers=False,
                        subtitles=False):

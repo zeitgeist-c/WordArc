@@ -158,7 +158,7 @@ class MeetingPipeline(QObject):
     def _transcribe(self, wav_path, workdir):
         conf = self.conf
         mine, theirs = split_channels(wav_path, workdir)
-        target = conf.transcribe_target()
+        target = conf.transcribe_segments_target()
         language = conf["meeting_language"] or conf["language"]
         hint = conf.meeting_hint()
 

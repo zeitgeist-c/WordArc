@@ -43,7 +43,7 @@ TRANSCRIBE_MODELS = {
 CLEANUP_MODELS = [
     "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
     "google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite",
-    "google/gemini-3.5-flash-lite", "anthropic/claude-haiku-4.5",
+    "anthropic/claude-haiku-4.5",
     "meta-llama/llama-3.3-70b-instruct",
 ]
 # Minutes are a harder job than cleanup: an hour of talk has to be read whole
@@ -234,7 +234,7 @@ class SettingsWindow(QDialog):
         )
         form.addRow("", self.filter_hallucinations)
 
-        self.keep_audio = QCheckBox(t("Keep audio files (~/.local/share/dikte/recordings)"))
+        self.keep_audio = QCheckBox(t("Keep audio files (%LOCALAPPDATA%\\Dikte\\recordings)"))
         form.addRow("", self.keep_audio)
         return page
 
@@ -1106,13 +1106,24 @@ class SettingsWindow(QDialog):
     def _load_models(self):
         self.refresh_models.setEnabled(False)
         self.models_label.setText(t("Fetching model list…"))
-        key = self.openrouter_key.text().strip() or self.conf.openrouter_key()
+        # Detect provider from the current cleanup model name.
+        model = self.cleanup_model.currentText().strip()
+        if model.startswith("gemini-"):
+            key = self.gemini_key.text().strip() or self.conf.gemini_key()
 
-        def work():
-            try:
-                self._models_loaded.emit(api.openrouter_models(key), "")
-            except api.ApiError as exc:
-                self._models_loaded.emit([], str(exc))
+            def work():
+                try:
+                    self._models_loaded.emit(api.gemini_models(key), "")
+                except api.ApiError as exc:
+                    self._models_loaded.emit([], str(exc))
+        else:
+            key = self.openrouter_key.text().strip() or self.conf.openrouter_key()
+
+            def work():
+                try:
+                    self._models_loaded.emit(api.openrouter_models(key), "")
+                except api.ApiError as exc:
+                    self._models_loaded.emit([], str(exc))
 
         threading.Thread(target=work, daemon=True).start()
 

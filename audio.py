@@ -337,24 +337,28 @@ def _match_input_device(target):
 
 
 def _match_loopback_device(target):
-    """Index of the default output's WASAPI loopback, or None.
+    """Index of the matching output's WASAPI loopback, or None.
 
-    PortAudio exposes loopback capture devices on Windows under WASAPI. We pick
-    one whose name contains the default output's name, falling back to None
+    PortAudio exposes loopback capture devices on Windows under WASAPI. When a
+    specific target device name is given, its loopback sibling is looked up.
+    Otherwise the default output's loopback is returned. Falls back to None
     (the ctypes path is then attempted by the caller).
     """
     try:
-        default_out = sd.default.device[1]
-        if default_out is None:
-            return None
-        out_name = sd.query_devices(default_out)["name"].lower()
+        if target:
+            out_name = target.lower()
+        else:
+            default_out = sd.default.device[1]
+            if default_out is None:
+                return None
+            out_name = sd.query_devices(default_out)["name"].lower()
     except Exception:
         return None
     for i, d in enumerate(sd.query_devices()):
         name = (d.get("name") or "").lower()
         if d["max_input_channels"] > 0 and name == out_name + " (loopback)":
             return i
-    # Fallback: any device whose name contains the default output + "loopback"
+    # Fallback: any device whose name contains the target + "loopback"
     for i, d in enumerate(sd.query_devices()):
         name = (d.get("name") or "").lower()
         if d["max_input_channels"] > 0 and "loopback" in name and out_name in name:
