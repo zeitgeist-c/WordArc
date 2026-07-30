@@ -3,7 +3,7 @@
 from PyQt6.QtCore import Qt, QRectF, QPointF
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 
-# Linux icon-name → semantic state, used by dikte.py's _set_icon(name).
+# Linux icon-name → semantic state, used by verbatim.py's _set_icon(name).
 _IDLE = "audio-input-microphone"
 _REC = "media-record"
 _BUSY = "view-refresh"

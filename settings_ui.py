@@ -29,43 +29,25 @@ LANGUAGES = [
     ("German", "de"), ("French", "fr"), ("Spanish", "es"), ("Arabic", "ar"),
 ]
 CORNERS = ["bottom-left", "bottom-right", "top-left", "top-right"]
-TRANSCRIBE_PROVIDERS = [("Google Gemini", "gemini"), ("OpenRouter", "openrouter")]
 # Starting points for the model box; "Fetch model list" replaces them with
-# whatever the provider offers today.
-TRANSCRIBE_MODELS = {
-    "gemini": ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
-    "openrouter": [
-        "openai/whisper-1", "openai/whisper-large-v3",
-        "openai/whisper-large-v3-turbo", "google/chirp-3",
-        "mistralai/voxtral-mini-transcribe", "deepgram/nova-3",
-    ],
-}
+# whatever Gemini offers today.
+TRANSCRIBE_MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
 CLEANUP_MODELS = [
     "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
-    "google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite",
-    "anthropic/claude-haiku-4.5",
-    "meta-llama/llama-3.3-70b-instruct",
 ]
 # Minutes are a harder job than cleanup: an hour of talk has to be read whole
 # and turned into decisions, so the starting points are the larger models.
 MEETING_MODELS = [
     "gemini-3.5-flash-lite", "gemini-3.1-pro-preview",
     "gemini-3.1-flash-lite",
-    "google/gemini-3.5-flash", "google/gemini-3.1-pro-preview",
-    "anthropic/claude-sonnet-5", "x-ai/grok-4.5",
 ]
 ASSISTANT_PROVIDERS = [
-    ("Claude Code", "claude"), ("Codex", "codex"), ("OpenRouter", "openrouter"),
+    ("Claude Code", "claude"), ("Codex", "codex"),
 ]
 # Aliases resolve to the newest model of that name, so they age better than an
 # id does; a full id can be typed in when a particular one is wanted.
 ASSISTANT_MODELS = ["sonnet", "opus", "haiku", "fable"]
 CODEX_MODELS = ["gpt-5.4-codex", "gpt-5.4", "o4-mini"]
-# Starting points only; the box is editable and OpenRouter has hundreds.
-ASSISTANT_OR_MODELS = [
-    "google/gemini-3.5-flash", "anthropic/claude-sonnet-5",
-    "x-ai/grok-4.5", "google/gemini-3.1-pro-preview",
-]
 # What Claude Code may do without being able to ask. It cannot ask: there is no
 # window to answer in, so a mode that would have prompted denies instead.
 PERMISSION_MODES = [
@@ -84,8 +66,8 @@ MEETING_STATUS = {
     "transcribed": "transcript ready, minutes missing",
     "failed": "failed",
 }
-# How hard the cleanup model may think before it answers, in OpenRouter's own
-# effort levels. A model that ignores the field simply answers as it always did.
+# How hard the cleanup model may think before it answers.
+# A model that ignores the field simply answers as it always did.
 REASONING_LEVELS = [
     ("Model's own default", ""), ("Off", "none"), ("Minimal", "minimal"),
     ("Low", "low"), ("Medium", "medium"), ("High", "high"),
@@ -111,7 +93,6 @@ class SettingsWindow(QDialog):
     _models_loaded = pyqtSignal(list, str)
     _transcribe_models_loaded = pyqtSignal(list, str)
     _test_done = pyqtSignal(bool, str)
-    _or_test_done = pyqtSignal(bool, str)
 
     def __init__(self, conf, launch_command, meeting_command=None,
                  meetings=None, ask_command=None, parent=None):
@@ -123,8 +104,6 @@ class SettingsWindow(QDialog):
         self.meetings = meetings
         # Each provider keeps its own transcription model, so switching the
         # provider back and forth never overwrites the other one's.
-        self._models = {"gemini": "", "openrouter": ""}
-        self._shown_provider = ""
         self.transcriber = FileTranscriber(conf, self)
         self.setWindowTitle(t("Dikte Settings"))
         self.resize(680, 640)
@@ -154,7 +133,6 @@ class SettingsWindow(QDialog):
         self._models_loaded.connect(self._on_models_loaded)
         self._transcribe_models_loaded.connect(self._on_transcribe_models_loaded)
         self._test_done.connect(self._on_test_done)
-        self._or_test_done.connect(self._on_or_test_done)
         self.transcriber.progress.connect(self._on_file_progress)
         self.transcriber.finished.connect(self._on_file_finished)
         self.transcriber.failed.connect(self._on_file_failed)
@@ -242,8 +220,7 @@ class SettingsWindow(QDialog):
         page = QWidget()
         outer = QVBoxLayout(page)
 
-        # Keys first, then the two jobs, because OpenRouter can now do both of
-        # them and a key no longer belongs to a single job.
+        # API keys first, then model selection.
         keys = QGroupBox(t("Keys"))
         keys_form = QFormLayout(keys)
         self.gemini_key = QLineEdit()
@@ -255,27 +232,14 @@ class SettingsWindow(QDialog):
         self.gemini_test_label.setWordWrap(True)
         keys_form.addRow("Gemini", self._row(self.gemini_key, self.gemini_test_button))
         keys_form.addRow("", self.gemini_test_label)
-
-        self.openrouter_key = QLineEdit()
-        self.openrouter_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.openrouter_key.setPlaceholderText(t("sk-or-… (falls back to OPENROUTER_API_KEY)"))
-        self.or_test_button = QPushButton(t("Test"))
-        self.or_test_button.clicked.connect(self._test_openrouter)
-        self.or_test_label = QLabel("")
-        self.or_test_label.setWordWrap(True)
-        keys_form.addRow("OpenRouter", self._row(self.openrouter_key, self.or_test_button))
-        keys_form.addRow("", self.or_test_label)
         outer.addWidget(keys)
 
         stt = QGroupBox(t("Speech to text"))
         stt_form = QFormLayout(stt)
-        self.transcribe_provider = QComboBox()
-        for label, value in TRANSCRIBE_PROVIDERS:
-            self.transcribe_provider.addItem(label, value)
-        stt_form.addRow(t("Provider"), self.transcribe_provider)
 
         self.transcribe_model = QComboBox()
         self.transcribe_model.setEditable(True)
+        self.transcribe_model.addItems(TRANSCRIBE_MODELS)
         self.refresh_transcribe_models = QPushButton(t("Fetch model list"))
         self.refresh_transcribe_models.clicked.connect(self._load_transcribe_models)
         stt_form.addRow(t("Model"),
@@ -285,7 +249,6 @@ class SettingsWindow(QDialog):
         self.transcribe_status = QLabel("")
         self.transcribe_status.setWordWrap(True)
         stt_form.addRow(self.transcribe_status)
-        self.transcribe_provider.currentIndexChanged.connect(self._provider_changed)
         outer.addWidget(stt)
 
         orr = QGroupBox(t("Transcript cleanup"))
@@ -310,7 +273,7 @@ class SettingsWindow(QDialog):
         )
         orr_form.addRow(t("Thinking"), self.cleanup_reasoning)
 
-        self.models_label = QLabel(t("Runs on OpenRouter."))
+        self.models_label = QLabel("")
         self.models_label.setWordWrap(True)
         orr_form.addRow(self.models_label)
         outer.addWidget(orr)
@@ -452,23 +415,6 @@ class SettingsWindow(QDialog):
             self.assistant_codex_sandbox.addItem(t(label), value)
         codex_form.addRow(t("Sandbox"), self.assistant_codex_sandbox)
         layout.addWidget(self.codex_box)
-
-        self.openrouter_box = QGroupBox("OpenRouter")
-        or_form = QFormLayout(self.openrouter_box)
-        self.assistant_openrouter_model = QComboBox()
-        self.assistant_openrouter_model.setEditable(True)
-        self.assistant_openrouter_model.addItems(ASSISTANT_OR_MODELS)
-        or_form.addRow(t("Model"), self.assistant_openrouter_model)
-        or_note = QLabel(t(
-            "A plain question and a plain answer, over the OpenRouter key you "
-            "already have. It runs no commands, opens no files and reaches none "
-            "of your services, so it can tell you what the capital of Peru is "
-            "but not what is in your calendar. Working directory and permissions "
-            "above mean nothing here."
-        ))
-        or_note.setWordWrap(True)
-        or_form.addRow(or_note)
-        layout.addWidget(self.openrouter_box)
 
         thread = QGroupBox(t("The conversation"))
         thread_form = QFormLayout(thread)
@@ -890,12 +836,7 @@ class SettingsWindow(QDialog):
         self.keep_audio.setChecked(conf["keep_audio"])
 
         self.gemini_key.setText(conf["gemini_api_key"])
-        self.openrouter_key.setText(conf["openrouter_api_key"])
-        self._models = {"gemini": conf["gemini_transcribe_model"],
-                        "openrouter": conf["openrouter_transcribe_model"]}
-        self._shown_provider = ""
-        self._select_data(self.transcribe_provider, conf["transcribe_provider"])
-        self._provider_changed()  # selecting index 0 fires no signal
+        self.transcribe_model.setCurrentText(conf["gemini_transcribe_model"])
         self.cleanup_enabled.setChecked(conf["cleanup_enabled"])
         self.cleanup_model.setCurrentText(conf["cleanup_model"])
         self._select_data(self.cleanup_reasoning, conf["cleanup_reasoning"])
@@ -911,7 +852,6 @@ class SettingsWindow(QDialog):
         self._select_data(self.assistant_permission, conf["assistant_permission_mode"])
         self.assistant_codex_model.setCurrentText(conf["assistant_codex_model"])
         self._select_data(self.assistant_codex_sandbox, conf["assistant_codex_sandbox"])
-        self.assistant_openrouter_model.setCurrentText(conf["assistant_openrouter_model"])
         self._assistant_provider_changed()  # selecting index 0 fires no signal
         self._select_data(self.assistant_reasoning, conf["assistant_reasoning"])
         self.assistant_dir.setText(conf["assistant_dir"])
@@ -970,14 +910,8 @@ class SettingsWindow(QDialog):
         conf["keep_audio"] = self.keep_audio.isChecked()
 
         conf["gemini_api_key"] = self.gemini_key.text().strip()
-        conf["openrouter_api_key"] = self.openrouter_key.text().strip()
-
-        provider = self.transcribe_provider.currentData() or "gemini"
-        self._models[provider] = self.transcribe_model.currentText().strip()
-        conf["transcribe_provider"] = provider
-        for key, name in (("gemini", "gemini_transcribe_model"),
-                          ("openrouter", "openrouter_transcribe_model")):
-            conf[name] = self._models[key].strip() or cfg.DEFAULTS[name]
+        conf["gemini_transcribe_model"] = (self.transcribe_model.currentText().strip()
+                                           or cfg.DEFAULTS["gemini_transcribe_model"])
 
         conf["cleanup_enabled"] = self.cleanup_enabled.isChecked()
         conf["cleanup_model"] = self.cleanup_model.currentText().strip()
@@ -1005,11 +939,7 @@ class SettingsWindow(QDialog):
             "" if codex_model == t("Codex's own default") else codex_model
         )
         conf["assistant_codex_sandbox"] = (self.assistant_codex_sandbox.currentData()
-                                           or "workspace-write")
-        conf["assistant_openrouter_model"] = (
-            self.assistant_openrouter_model.currentText().strip()
-            or cfg.DEFAULTS["assistant_openrouter_model"]
-        )
+                                            or "workspace-write")
         conf["assistant_reasoning"] = self.assistant_reasoning.currentData() or ""
         conf["assistant_dir"] = self.assistant_dir.text().strip()
         conf["assistant_timeout"] = self.assistant_timeout.value()
@@ -1047,7 +977,7 @@ class SettingsWindow(QDialog):
         try:
             cfg.trim_history(conf["history_limit"])
         except OSError as exc:
-            print(f"dikte: could not trim the history ({exc})")
+                print(f"verbatim: could not trim the history ({exc})")
         self._load_history()  # the trim may just have dropped rows from the list
         self.applied.emit()
         QMessageBox.information(self, t("Dikte Settings"), t("Saved successfully."))
@@ -1059,33 +989,14 @@ class SettingsWindow(QDialog):
 
     # ---- api helpers -----------------------------------------------------
 
-    def _provider_changed(self):
-        """Swap the model box over to the newly chosen provider's own model."""
-        if self._shown_provider:
-            self._models[self._shown_provider] = self.transcribe_model.currentText().strip()
-        provider = self.transcribe_provider.currentData() or "gemini"
-        self._shown_provider = provider
-        self.transcribe_model.clear()
-        self.transcribe_model.addItems(TRANSCRIBE_MODELS[provider])
-        self.transcribe_model.setCurrentText(self._models[provider])
-        self.transcribe_status.setText("")
-
     def _load_transcribe_models(self):
-        """The model list of whichever provider is selected."""
-        provider = self.transcribe_provider.currentData() or "gemini"
         self.refresh_transcribe_models.setEnabled(False)
         self.transcribe_status.setText(t("Fetching model list…"))
-        openrouter_key = self.openrouter_key.text().strip() or self.conf.openrouter_key()
-        gemini_key = self.gemini_key.text().strip() or self.conf.gemini_key()
+        key = self.gemini_key.text().strip() or self.conf.gemini_key()
 
         def work():
             try:
-                if provider == "openrouter":
-                    models = api.openrouter_models(openrouter_key, transcription=True)
-                elif provider == "gemini":
-                    models = api.gemini_models(gemini_key)
-                else:
-                    models = []
+                models = api.gemini_models(key)
                 self._transcribe_models_loaded.emit(models, "")
             except api.ApiError as exc:
                 self._transcribe_models_loaded.emit([], str(exc))
@@ -1106,24 +1017,13 @@ class SettingsWindow(QDialog):
     def _load_models(self):
         self.refresh_models.setEnabled(False)
         self.models_label.setText(t("Fetching model list…"))
-        # Detect provider from the current cleanup model name.
-        model = self.cleanup_model.currentText().strip()
-        if model.startswith("gemini-"):
-            key = self.gemini_key.text().strip() or self.conf.gemini_key()
+        key = self.gemini_key.text().strip() or self.conf.gemini_key()
 
-            def work():
-                try:
-                    self._models_loaded.emit(api.gemini_models(key), "")
-                except api.ApiError as exc:
-                    self._models_loaded.emit([], str(exc))
-        else:
-            key = self.openrouter_key.text().strip() or self.conf.openrouter_key()
-
-            def work():
-                try:
-                    self._models_loaded.emit(api.openrouter_models(key), "")
-                except api.ApiError as exc:
-                    self._models_loaded.emit([], str(exc))
+        def work():
+            try:
+                self._models_loaded.emit(api.gemini_models(key), "")
+            except api.ApiError as exc:
+                self._models_loaded.emit([], str(exc))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -1154,23 +1054,6 @@ class SettingsWindow(QDialog):
                 self._test_done.emit(False, str(exc))
 
         threading.Thread(target=work, daemon=True).start()
-
-    def _test_openrouter(self):
-        self.or_test_button.setEnabled(False)
-        self.or_test_label.setText(t("Trying…"))
-        key = self.openrouter_key.text().strip() or self.conf.openrouter_key()
-
-        def work():
-            try:
-                self._or_test_done.emit(True, api.openrouter_key_status(key))
-            except api.ApiError as exc:
-                self._or_test_done.emit(False, str(exc))
-
-        threading.Thread(target=work, daemon=True).start()
-
-    def _on_or_test_done(self, ok, message):
-        self.or_test_button.setEnabled(True)
-        self.or_test_label.setText(("✓ " if ok else "✗ ") + message)
 
     def _on_test_done(self, ok, message):
         self.gemini_test_button.setEnabled(True)
@@ -1284,7 +1167,6 @@ class SettingsWindow(QDialog):
         provider = self.assistant_provider.currentData() or "claude"
         self.claude_box.setVisible(provider == "claude")
         self.codex_box.setVisible(provider == "codex")
-        self.openrouter_box.setVisible(provider == "openrouter")
         self._refresh_assistant_status()
 
     def _refresh_assistant_status(self):
@@ -1293,7 +1175,7 @@ class SettingsWindow(QDialog):
         found = shutil.which(binary) if binary else ""
         if not binary:
             self.assistant_found.setText(
-                t("Needs no program installed, only the OpenRouter key.")
+                t("Needs no program installed, only an API key.")
             )
         elif found:
             self.assistant_found.setText(t("Found: {path}", path=found))

@@ -1,25 +1,4 @@
 """Handing a dictation to an agent as a command, and pasting back its answer.
-
-Three of them, because not everyone has the same one installed:
-
-  Claude Code   `claude -p`, the session you would have opened yourself
-  Codex         `codex exec`, the same idea from the other shop
-  OpenRouter    a plain chat request, over the key that is already configured
-
-The first two are the whole machine: they run commands, read files, and reach
-whatever skills and services you have connected, which is what makes "put that
-in my calendar on Thursday" a thing you can say. OpenRouter cannot touch any of
-that, and is there so that a question still gets an answer on a machine with
-neither CLI installed.
-
-Whichever it is, the reply is pasted exactly where the transcript would have
-been, and the conversation carries across dictations so that "and move that to
-Friday" knows what "that" is.
-
-The two CLIs are read as they stream rather than waited out. A command that
-reaches for the calendar or the web takes long enough that a still indicator is
-indistinguishable from a hang, so every tool they pick up is named in the corner
-while they work.
 """
 
 import json
@@ -34,12 +13,7 @@ import config as cfg
 from i18n import t
 
 SESSION_FILE = cfg.DATA_DIR / "assistant.json"
-PROVIDERS = ("claude", "codex", "openrouter")
-
-# How many messages of an OpenRouter conversation are carried forward. The two
-# CLIs keep their own history and need no such number; here every turn is resent
-# in full, so the window has to end somewhere.
-MAX_HISTORY = 24
+PROVIDERS = ("claude", "codex")
 
 # What to say in the indicator for a tool, keyed by the name the CLI uses.
 # Anything unlisted is named as it comes, which beats a generic "working" for
@@ -100,7 +74,7 @@ def executable(name):
 
 def display_name(conf):
     """What to call the thing being asked, in the tray and in the corner."""
-    return {"claude": "Claude", "codex": "Codex"}.get(provider(conf), "OpenRouter")
+    return {"claude": "Claude", "codex": "Codex"}.get(provider(conf), "Claude")
 
 
 # --- the conversation -----------------------------------------------------
@@ -129,16 +103,8 @@ def read_session(name, max_age_seconds):
     return str(_read_row(name, max_age_seconds).get("session", ""))
 
 
-def read_messages(name, max_age_seconds):
-    """The conversation so far, for the provider that does not."""
-    messages = _read_row(name, max_age_seconds).get("messages")
-    return messages if isinstance(messages, list) else []
-
-
-def write_session(name, session="", messages=None):
+def write_session(name, session=""):
     row = {"provider": name, "session": session, "ts": time.time()}
-    if messages is not None:
-        row["messages"] = messages[-MAX_HISTORY:]
     try:
         cfg.DATA_DIR.mkdir(parents=True, exist_ok=True)
         with open(SESSION_FILE, "w", encoding="utf-8") as fh:
@@ -161,7 +127,7 @@ def session_age():
             row = json.load(fh)
     except (OSError, json.JSONDecodeError, ValueError):
         return None
-    if not isinstance(row, dict) or not (row.get("session") or row.get("messages")):
+    if not isinstance(row, dict) or not row.get("session"):
         return None
     return time.time() - row.get("ts", 0)
 
@@ -183,9 +149,6 @@ def ask(prompt, conf, on_stage=None, should_stop=None):
     one, and only the denial explains why it did not do what it was asked to.
     """
     name = provider(conf)
-    if name == "openrouter":
-        return _ask_openrouter(prompt, conf, on_stage)
-
     binary = executable(name)
     if not shutil.which(binary):
         raise AssistantError(t(
@@ -323,33 +286,6 @@ def _codex_label(item):
     if item_type == "mcp_tool_call":
         return t("Using {name}…", name=item.get("server") or item.get("tool") or "a tool")
     return t("Using {name}…", name=item_type or "a tool")
-
-
-# --- OpenRouter -----------------------------------------------------------
-
-def _ask_openrouter(prompt, conf, on_stage):
-    """No tools, no files, no calendar: a question and an answer.
-
-    It is the fallback for a machine with neither CLI on it, so it says what it
-    knows and nothing else. The conversation is ours to keep here, since there
-    is no session on the other end to resume.
-    """
-    if on_stage:
-        on_stage(t("Thinking…"))
-    history = read_messages("openrouter", conf["assistant_session_minutes"] * 60)
-    messages = history + [{"role": "user", "content": prompt}]
-    try:
-        answer = api.chat(
-            messages, conf.openrouter_key(), conf["assistant_openrouter_model"],
-            conf.assistant_prompt(), reasoning=conf["assistant_reasoning"],
-            base_url=conf["openrouter_base_url"],
-            timeout=conf["assistant_timeout"],
-        )
-    except api.ApiError as exc:
-        raise AssistantError(str(exc)) from exc
-    write_session("openrouter",
-                  messages=messages + [{"role": "assistant", "content": answer}])
-    return answer, ""
 
 
 # --- running a CLI --------------------------------------------------------

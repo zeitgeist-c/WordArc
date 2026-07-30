@@ -1,9 +1,9 @@
-# Dikte for Windows — Design Spec
+# Verbatim for Windows — Design Spec
 
 - **Date:** 2026-07-30
 - **Source project:** [yusufipk/dikte](https://github.com/yusufipk/dikte) (Linux / KDE Plasma 6 / Wayland, GPL-3.0)
 - **Target:** Windows 10 (22H2) and Windows 11, x64
-- **Goal:** A feature-for-feature Windows port of Dikte, a press-to-talk
+- **Goal:** A feature-for-feature Windows port of Verbatim, a press-to-talk
   voice-to-text dictation tool. Press `Ctrl+Space`, talk, press again: the
   recording is transcribed by OpenAI or OpenRouter, cleaned up by an OpenRouter
   model, and pasted into whatever window had focus.
@@ -19,7 +19,7 @@ Three routes were considered:
   `if windows:` branch would run through every module and the code would read
   as two programs stapled together.
 - **B) A Windows-only port (chosen).** A new codebase under
-  `C:\Users\user\Projeler\Dikte`. Modules that are pure logic and talk only to
+  `C:\Users\user\projects\Verbatim`. Modules that are pure logic and talk only to
   the network or the filesystem are carried over nearly verbatim; the
   platform-bound modules (`audio.py`, `paste.py`, `hotkey.py`) are rewritten
   against Windows APIs. The upstream repo is the reference, not a dependency.
@@ -33,7 +33,7 @@ knows the Linux version recognises the Windows one.
 
 ## 2. Distribution
 
-- Single self-contained `dikte.exe` built with PyInstaller (`--onefile
+- Single self-contained `Verbatim.exe` built with PyInstaller (`--onefile
   --windowed`).
 - No Python installation required on the user's machine.
 - `ffmpeg.exe` (~70 MB) is bundled inside the executable so file transcription
@@ -42,8 +42,8 @@ knows the Linux version recognises the Windows one.
   system PortAudio.
 - `install.ps1` (delivered alongside the `.exe`) creates a Start Menu shortcut
   and a `Run` registry entry (or a Startup-folder shortcut) for autostart, and
-  is optional — double-clicking `dikte.exe` is enough to run.
-- During development the program also runs from source: `python dikte.py`.
+  is optional — double-clicking `Verbatim.exe` is enough to run.
+- During development the program also runs from source: `python Verbatim.py`.
 
 ## 3. Module-by-module change map
 
@@ -61,8 +61,8 @@ knows the Linux version recognises the Windows one.
 | `audio.py` | **Rewritten** | `sounddevice` with the WASAPI host API; meetings use a WASAPI loopback stream for the system output |
 | `paste.py` | **Rewritten** | ctypes Win32 clipboard + `SendInput` key injection; no third-party library |
 | `hotkey.py` | **Rewritten** | `RegisterHotKey` via a hidden `QWidget`'s `nativeEvent`; the key is swallowed (does not reach the focused app) |
-| `config.py` | Minor | paths move to `%APPDATA%\Dikte` and `%LOCALAPPDATA%\Dikte`; `chmod 600` is dropped (the user profile ACL already restricts access) |
-| `dikte.py` | Minor | `os.getuid()` → `getpass.getuser()`; the `QT_QPA_PLATFORM=xcb` block is removed; `restart()` uses `subprocess.Popen` + `app.quit()` instead of `os.execv` |
+| `config.py` | Minor | paths move to `%APPDATA%\Verbatim` and `%LOCALAPPDATA%\Verbatim`; `chmod 600` is dropped (the user profile ACL already restricts access) |
+| `Verbatim.py` | Minor | `os.getuid()` → `getpass.getuser()`; the `QT_QPA_PLATFORM=xcb` block is removed; `restart()` uses `subprocess.Popen` + `app.quit()` instead of `os.execv` |
 | `install.sh` | Replaced by `install.ps1` | Start Menu shortcut, autostart |
 | — (new) | `trayicon.py` | draws the tray icon as a vector `QPixmap` for each state (idle/recording/busy/meeting) |
 | — (new) | `ffmpeg_path.py` | resolves the bundled `ffmpeg.exe` location for PyInstaller and dev runs |
@@ -176,8 +176,8 @@ Three operations, all via `ctypes.windll.user32` / `kernel32`:
 
 ### 4.4 `config.py`
 
-- `CONFIG_DIR = Path(os.environ["APPDATA"]) / "Dikte"`
-- `DATA_DIR = Path(os.environ["LOCALAPPDATA"]) / "Dikte"`
+- `CONFIG_DIR = Path(os.environ["APPDATA"]) / "Verbatim"`
+- `DATA_DIR = Path(os.environ["LOCALAPPDATA"]) / "Verbatim"`
 - `HISTORY_FILE`, `RECORDINGS_DIR`, `MEETINGS_DIR`, `MEETINGS_FILE`,
   `SESSION_FILE` all sit under `DATA_DIR`.
 - `os.chmod(tmp, 0o600)` in `save()` is dropped (a no-op or error on Windows);
@@ -196,15 +196,15 @@ Three operations, all via `ctypes.windll.user32` / `kernel32`:
   `TIMESTAMP_RULE_*`, `SPEAKER_RULE_*`, `PARTICIPANTS_RULE_*`) and the
   `DEFAULTS` dict are carried over verbatim.
 
-### 4.5 `dikte.py`
+### 4.5 `Verbatim.py`
 
-- `SERVER_NAME = "dikte-" + getpass.getuser()` (no `os.getuid()` on Windows).
+- `SERVER_NAME = "Verbatim-" + getpass.getuser()` (no `os.getuid()` on Windows).
   `QLocalServer`/`QLocalSocket` work as-is on Windows (named pipes).
 - The `if XDG_SESSION_TYPE == "wayland": QT_QPA_PLATFORM=xcb` block is removed
   (Windows uses native Qt).
 - `restart()` replaces `os.execv(...)` with `subprocess.Popen([sys.executable,
   ...])` followed by `app.quit()`. Under PyInstaller `sys.executable` is
-  `dikte.exe`; under source it is `python.exe`.
+  `Verbatim.exe`; under source it is `python.exe`.
 - `launch_command()` / `meeting_command()` / `ask_command()` return
   `f'"{sys.executable}" toggle'` etc. (quoted, to survive spaces in the path).
 - The tray icon is built through the new `trayicon.py` helper (see §4.6)
@@ -268,7 +268,7 @@ updated to match; the set of keys does not change:
 | `Could not write kglobalshortcutsrc: {error}` | (removed) |
 | `Could not parse the shortcut: {shortcut}` | `Could not parse the shortcut: {shortcut}` (kept) |
 | `Cannot read /dev/input. Your user needs to be in the 'input' group: ...` | `Could not register the shortcut. Another program may already be using it: {shortcut}` |
-| `Keep audio files (~/.local/share/dikte/recordings)` | `Keep audio files (%LOCALAPPDATA%\\Dikte\\recordings)` |
+| `Keep audio files (~/.local/share/Verbatim/recordings)` | `Keep audio files (%LOCALAPPDATA%\\Verbatim\\recordings)` |
 
 The Turkish translations for these keys are updated to translate the new
 English source text. The `CLAUDE_TOOLS`/`CODEX_ITEMS` tool-stage labels (used
@@ -306,15 +306,15 @@ device dropdowns. So `meeting.py` needs no edits.
 Every feature listed in the upstream README is present on Windows:
 
 - [x] `Ctrl+Space` start/stop dictation; tray icon click also stops
-- [x] Cancel a recording (tray menu / `dikte cancel`)
-- [x] Speak a command to an agent (tray menu / `dikte ask`): Claude Code,
+- [x] Cancel a recording (tray menu / `Verbatim cancel`)
+- [x] Speak a command to an agent (tray menu / `Verbatim ask`): Claude Code,
       Codex, OpenRouter, with conversation continuity across dictations and a
       session timeout
-- [x] Reset the agent conversation (`dikte ask-reset`)
-- [x] Cancel the agent (`dikte ask-cancel`)
+- [x] Reset the agent conversation (`Verbatim ask-reset`)
+- [x] Cancel the agent (`Verbatim ask-cancel`)
 - [x] Meeting recording: microphone + system loopback into a stereo WAV,
       channel-based speaker labelling, minute generation by a second model,
-      saved under `%LOCALAPPDATA%\Dikte\meetings`
+      saved under `%LOCALAPPDATA%\Verbatim\meetings`
 - [x] Meeting cancel and meeting retry-from-transcript
 - [x] Audio/video file transcription with optional `[mm:ss]` timestamps,
       ffmpeg chunking for long files, `.txt` and `.srt` output, subtitle-style
@@ -360,17 +360,17 @@ ffmpeg child to interrupt.)
 ## 7. Build pipeline
 
 - `requirements.txt` pins `PyQt6` and `sounddevice`.
-- `dikte.spec` (PyInstaller):
+- `Verbatim.spec` (PyInstaller):
   - `--onefile --windowed`
   - `datas=[('ffmpeg.exe', '.')]`
   - `--collect-submodules sounddevice` and `--collect-binaries sounddevice` so
     PortAudio_64.dll is included.
-  - `name='dikte'`, `console=False`.
-- `install.ps1` (optional): copies `dikte.exe` to
-  `%LOCALAPPDATA%\Programs\Dikte\`, creates a Start Menu shortcut, and writes
-  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Dikte` pointing at the
+  - `name='Verbatim'`, `console=False`.
+- `install.ps1` (optional): copies `Verbatim.exe` to
+  `%LOCALAPPDATA%\Programs\Verbatim\`, creates a Start Menu shortcut, and writes
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Verbatim` pointing at the
   copied path.
-- Build verification: `pyinstaller dikte.spec` produces `dist\dikte.exe`;
+- Build verification: `pyinstaller Verbatim.spec` produces `dist\Verbatim.exe`;
   running it should show the tray icon.
 
 ## 8. Verification plan
@@ -388,7 +388,7 @@ checklist in §5:
    401)" from the next dictation.
 6. Ayarlar → Agent: `Ctrl+Alt+S`, speak "bugün nedir?" → Claude/Codex answer
    or OpenRouter answer pasted; second command "ya yarın?" carries context.
-7. Meeting: record ~30 s, stop → `%LOCALAPPDATA%\Dikte\meetings\<base>.md`
+7. Meeting: record ~30 s, stop → `%LOCALAPPDATA%\Verbatim\meetings\<base>.md`
    written with headed sections; tray notification appears.
 8. Meeting with the mic unplugged mid-recording → "the recording stopped on
    its own" warning, partial WAV kept.
@@ -397,11 +397,11 @@ checklist in §5:
 10. Settings → History: shows the entry from step 1; right-click → Delete
     removes it; Size limit trims oldest beyond it.
 11. Settings → General → UI language toggle TR/EN → all strings switch.
-12. Hotkey conflict: set another app to grab `Ctrl+Space`, run Dikte → the
+12. Hotkey conflict: set another app to grab `Ctrl+Space`, run Verbatim → the
     shortcut tab reports the conflict and stays usable from the tray.
-13. Restart from the tray menu relaunches `dikte.exe` cleanly.
-14. Build: `pyinstaller dikte.spec` on a clean checkout produces a
-    double-clickable `dist\dikte.exe` that passes steps 1, 7 and 9.
+13. Restart from the tray menu relaunches `Verbatim.exe` cleanly.
+14. Build: `pyinstaller Verbatim.spec` on a clean checkout produces a
+    double-clickable `dist\Verbatim.exe` that passes steps 1, 7 and 9.
 
 ## 9. Risks and mitigations
 
@@ -424,7 +424,7 @@ checklist in §5:
 - **PyInstaller onefile startup time.** ~1–2 s while the bundled ffmpeg is
   unpacked; a splash screen is optional and not in scope.
 - **Single-instance IPC.** `QLocalServer` uses a named pipe on Windows
-  (`\\.\pipe\dikte-<user>`); the `UserAccessOption` socket option maps to a
+  (`\\.\pipe\Verbatim-<user>`); the `UserAccessOption` socket option maps to a
   pipe ACL that keeps it to the current user, matching the Linux intent.
 
 ## 10. Out of scope

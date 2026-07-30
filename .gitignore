@@ -5,4 +5,4 @@ __pycache__/
 build/
 dist/
 ffmpeg.exe
-dikte.spec.bak
+verbatim.spec.bak

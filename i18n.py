@@ -37,8 +37,8 @@ def t(text, **kwargs):
 # by the sentence, so it arrives already inflected. English takes the name as it
 # is and puts the preposition in the sentence, where it belongs.
 _TR_CASES = {
-    "dative": {"Claude": "Claude'a", "Codex": "Codex'e", "OpenRouter": "OpenRouter'a", "Gemini": "Gemini'ye"},
-    "accusative": {"Claude": "Claude'u", "Codex": "Codex'i", "OpenRouter": "OpenRouter'ı", "Gemini": "Gemini'yi"},
+    "dative": {"Claude": "Claude'a", "Codex": "Codex'e", "Gemini": "Gemini'ye"},
+    "accusative": {"Claude": "Claude'u", "Codex": "Codex'i", "Gemini": "Gemini'yi"},
 }
 
 
@@ -57,9 +57,9 @@ TR = {
     "Settings…": "Ayarlar…",
     "Restart": "Yeniden başlat",
     "Quit": "Çık",
-    "Dikte: ready": "Dikte: hazır",
-    "Dikte: recording": "Dikte: kaydediyor",
-    "Dikte: working": "Dikte: işleniyor",
+    "Verbatim: ready": "Verbatim: hazır",
+    "Verbatim: recording": "Verbatim: kaydediyor",
+    "Verbatim: working": "Verbatim: işleniyor",
 
     # --- overlay / pipeline -------------------------------------------
     "Transcribing…": "Yazıya çevriliyor…",
@@ -70,7 +70,7 @@ TR = {
     "{action}: {preview}": "{action}: {preview}",
     "Cleanup skipped: {error}": "Temizleme atlandı: {error}",
     "Pasted raw, cleanup failed: {error}": "Ham metin yapıştırıldı, temizleme başarısız: {error}",
-    "Dikte: cleanup failed": "Dikte: temizleme başarısız",
+    "Verbatim: cleanup failed": "Verbatim: temizleme başarısız",
     "{service} rejected the API key (HTTP {code}). Open Settings and check it.":
         "{service} API anahtarını reddetti (HTTP {code}). Ayarlar'ı açıp kontrol et.",
     "{service} says the account is out of credit (HTTP 402).":
@@ -112,13 +112,11 @@ TR = {
     "The cleanup model returned an empty reply.": "Temizleme modeli boş yanıt döndü.",
     "Gemini returned no candidates.": "Gemini yanıt döndürmedi.",
     "Gemini returned an empty reply.": "Gemini boş yanıt döndürdü.",
-    "Gemini does not support timestamped segments.": "Gemini zaman damgalı bölümleri desteklemiyor.",
-    "Gemini does not support timestamped segments. Use the file transcription without timestamps, or switch to OpenRouter with whisper-1.": "Gemini zaman damgalı bölümleri desteklemiyor. Zaman damgasız dosya transkripsiyonu kullanın veya OpenRouter ve whisper-1'e geçin.",
     "Could not connect: {reason}": "Bağlantı kurulamadı: {reason}",
     "Could not parse the response: {error}": "Yanıt çözümlenemedi: {error}",
 
     # --- settings: tabs and general ------------------------------------
-    "Dikte Settings": "Dikte Ayarları",
+    "Verbatim Settings": "Verbatim Ayarları",
     "General": "Genel",
     "API and models": "API ve modeller",
     "Cleanup rules": "Temizleme kuralları",
@@ -131,8 +129,8 @@ TR = {
     "Automatic (system)": "Otomatik (sistem)",
     "Turkish": "Türkçe",
     "English": "İngilizce",
-    "Restart Dikte for the language change to reach every window.":
-        "Dil değişikliğinin her pencereye işlemesi için Dikte'yi yeniden başlat.",
+    "Restart Verbatim for the language change to reach every window.":
+        "Dil değişikliğinin her pencereye işlemesi için Verbatim'i yeniden başlat.",
     "Microphone": "Mikrofon",
     "Default microphone": "Varsayılan mikrofon",
     "Speech language": "Konuşma dili",
@@ -157,8 +155,8 @@ TR = {
     "Skip silent recordings (don't call the API)":
         "Sessiz kayıtları atla (API'ye gönderme)",
     "Silence threshold": "Sessizlik eşiği",
-    "Keep audio files (%LOCALAPPDATA%\\Dikte\\recordings)":
-        "Ses kayıtlarını sakla (%LOCALAPPDATA%\\Dikte\\recordings)",
+    "Keep audio files (%LOCALAPPDATA%\\Verbatim\\recordings)":
+        "Ses kayıtlarını sakla (%LOCALAPPDATA%\\Verbatim\\recordings)",
 
     # --- settings: api --------------------------------------------------
     "Keys": "Anahtarlar",
@@ -166,15 +164,10 @@ TR = {
     "Transcript cleanup": "Transkripti temizleme",
     "API key": "API anahtarı",
     "Model": "Model",
-    "Provider": "Sağlayıcı",
     "AIza… (falls back to GEMINI_API_KEY)": "AIza… (boşsa GEMINI_API_KEY kullanılır)",
-    "sk-or-… (falls back to OPENROUTER_API_KEY)": "sk-or-… (boşsa OPENROUTER_API_KEY kullanılır)",
     "Google Gemini": "Google Gemini",
     "Test": "Test et",
     "Trying…": "Deneniyor…",
-    "Runs on OpenRouter.": "OpenRouter üzerinde çalışır.",
-    "Connection works. {count} audio models visible.":
-        "Bağlantı tamam. {count} ses modeli görünüyor.",
     "Connection works. {count} models visible.":
         "Bağlantı tamam. {count} model görünüyor.",
     "Clean the transcript with a model": "Transkripti bir modelle temizle",
@@ -313,12 +306,12 @@ TR = {
     "Stopping…": "Durduruluyor…",
     "Stopped.": "Durduruldu.",
     "{name} starts fresh next time.": "{name} bir sonrakine sıfırdan başlayacak.",
-    "Dikte: talking to {name}": "Dikte: {name} ile konuşuyor",
-    "Dikte: recording for {name}": "Dikte: {name} için kaydediyor",
+    "Verbatim: talking to {name}": "Verbatim: {name} ile konuşuyor",
+    "Verbatim: recording for {name}": "Verbatim: {name} için kaydediyor",
     "Asking {name}…": "{name} soruluyor…",
     "{name}: {preview}": "{name}: {preview}",
     "{name} answered, but: {error}": "{name} cevapladı, ama: {error}",
-    "Dikte: {name} could not do all of it": "Dikte: {name} her şeyi yapamadı",
+    "Verbatim: {name} could not do all of it": "Verbatim: {name} her şeyi yapamadı",
     "Running a command…": "Komut çalıştırıyor…",
     "Reading…": "Okuyor…",
     "Looking through files…": "Dosyalara bakıyor…",
@@ -374,17 +367,8 @@ TR = {
         "Her şeyi okusun, çalışma dizinine yazsın",
     "Read only": "Yalnızca okusun",
     "No sandbox at all": "Kum havuzu hiç olmasın",
-    "A plain question and a plain answer, over the OpenRouter key you already "
-    "have. It runs no commands, opens no files and reaches none of your "
-    "services, so it can tell you what the capital of Peru is but not what is "
-    "in your calendar. Working directory and permissions above mean nothing "
-    "here.":
-        "Elindeki OpenRouter anahtarı üzerinden düz bir soru ve düz bir cevap. "
-        "Komut çalıştırmaz, dosya açmaz, servislerinin hiçbirine erişmez; yani "
-        "Peru'nun başkentini söyler ama takviminde ne olduğunu söyleyemez. "
-        "Yukarıdaki çalışma dizini ve izinler burada bir şey ifade etmez.",
-    "Needs no program installed, only the OpenRouter key.":
-        "Kurulu bir programa değil, yalnızca OpenRouter anahtarına ihtiyaç duyar.",
+    "Needs no program installed, only an API key.":
+        "Kurulu bir programa değil, yalnızca bir API anahtarına ihtiyaç duyar.",
     "{binary} is not on your PATH, so this cannot run yet. Install it, or pick "
     "another one above.":
         "{binary} PATH'te değil, dolayısıyla bu henüz çalışamaz. Kur ya da "
@@ -447,14 +431,14 @@ TR = {
     "Writing the meeting up…": "Tutanak çıkarılıyor…",
     "Discard the meeting": "Toplantıyı iptal et",
     "Ending the meeting…": "Toplantı bitiriliyor…",
-    "Dikte: in a meeting": "Dikte: toplantıda",
-    "Dikte: in a meeting ({time})": "Dikte: toplantıda ({time})",
-    "Dikte: writing the meeting up": "Dikte: tutanak çıkarıyor",
+    "Verbatim: in a meeting": "Verbatim: toplantıda",
+    "Verbatim: in a meeting ({time})": "Verbatim: toplantıda ({time})",
+    "Verbatim: writing the meeting up": "Verbatim: tutanak çıkarıyor",
     "Meeting recorded, writing it up…": "Toplantı kaydedildi, tutanak çıkarılıyor…",
     "Meeting written up: {title}": "Tutanak hazır: {title}",
-    "Dikte: the meeting is written up": "Dikte: tutanak hazır",
+    "Verbatim: the meeting is written up": "Verbatim: tutanak hazır",
     "Meeting failed: {error}": "Toplantı başarısız: {error}",
-    "Dikte: the meeting could not be written up": "Dikte: tutanak çıkarılamadı",
+    "Verbatim: the meeting could not be written up": "Verbatim: tutanak çıkarılamadı",
     "{error}\n\nThe recording has been kept. Settings → Minutes can try again.":
         "{error}\n\nSes kaydı duruyor. Ayarlar → Tutanaklar üzerinden yeniden "
         "denenebilir.",

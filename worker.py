@@ -110,12 +110,10 @@ class Pipeline(QObject):
                 try:
                     text = api.cleanup(
                         raw,
-                        conf.openrouter_key(),
+                        conf.gemini_key(),
                         conf["cleanup_model"],
                         conf.cleanup_prompt(),
-                        gemini_key=conf.gemini_key(),
                         reasoning=conf["cleanup_reasoning"],
-                        base_url=conf["openrouter_base_url"],
                     )
                 except api.ApiError as exc:
                     # Keep the transcript, but never let the failure pass unseen:

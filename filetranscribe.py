@@ -68,7 +68,7 @@ class FileTranscriber(QObject):
         conf = self.conf
         workdir = None
         try:
-            workdir = tempfile.mkdtemp(prefix="dikte-file-")
+            workdir = tempfile.mkdtemp(prefix="verbatim-file-")
             self.progress.emit(t("Converting audio…"))
             wav_path = _to_wav(path, workdir)
             self._check()
@@ -77,7 +77,8 @@ class FileTranscriber(QObject):
             if len(chunks) > 1:
                 self.progress.emit(t("Splitting into {count} chunks…", count=len(chunks)))
 
-            target = conf.transcribe_segments_target() if timestamps else conf.transcribe_target()
+            api_key = conf.gemini_key()
+            model = conf["gemini_transcribe_model"]
             pieces = []
             segments = []
             for index, (chunk_path, offset) in enumerate(chunks, start=1):
@@ -85,25 +86,16 @@ class FileTranscriber(QObject):
                 self.progress.emit(
                     t("Transcribing chunk {index}/{count}…", index=index, count=len(chunks))
                 )
+                text = api.transcribe(
+                    api_key, model, chunk_path,
+                    language=conf["language"],
+                    prompt=conf["transcribe_prompt"],
+                )
                 if timestamps:
-                    segments.extend(
-                        (start + offset, end + offset, line)
-                        for start, end, line in api.transcribe_segments(
-                            target,
-                            chunk_path,
-                            language=conf["language"],
-                            prompt=conf["transcribe_prompt"],
-                        )
-                    )
-                    pieces = [f"[{format_timestamp(start)}] {line}"
-                              for start, _, line in segments]
+                    stamp = format_timestamp(offset)
+                    pieces.append(f"[{stamp}] {text.strip()}")
                 else:
-                    pieces.append(api.transcribe(
-                        target,
-                        chunk_path,
-                        language=conf["language"],
-                        prompt=conf["transcribe_prompt"],
-                    ))
+                    pieces.append(text)
 
             text = "\n".join(pieces) if timestamps else " ".join(pieces)
 
@@ -130,12 +122,10 @@ class FileTranscriber(QObject):
             self._check()
             out.append(api.cleanup(
                 block,
-                conf.openrouter_key(),
+                conf.gemini_key(),
                 conf["cleanup_model"],
                 prompt,
-                gemini_key=conf.gemini_key(),
                 reasoning=conf["cleanup_reasoning"],
-                base_url=conf["openrouter_base_url"],
             ))
         return ("\n" if timestamps else "\n\n").join(out)
 
