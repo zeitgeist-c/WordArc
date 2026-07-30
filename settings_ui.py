@@ -29,28 +29,28 @@ LANGUAGES = [
     ("German", "de"), ("French", "fr"), ("Spanish", "es"), ("Arabic", "ar"),
 ]
 CORNERS = ["bottom-left", "bottom-right", "top-left", "top-right"]
-TRANSCRIBE_PROVIDERS = [("OpenAI", "openai"), ("OpenRouter", "openrouter")]
+TRANSCRIBE_PROVIDERS = [("Google Gemini", "gemini"), ("OpenRouter", "openrouter")]
 # Starting points for the model box; "Fetch model list" replaces them with
 # whatever the provider offers today.
 TRANSCRIBE_MODELS = {
-    "openai": ["gpt-4o-transcribe", "gpt-4o-mini-transcribe", "whisper-1"],
+    "gemini": ["gemini-2.0-flash-001", "gemini-2.5-flash-preview-04-17",
+               "gemini-1.5-flash-002", "gemini-1.5-pro-002"],
     "openrouter": [
-        "openai/gpt-4o-transcribe", "openai/gpt-4o-mini-transcribe",
         "openai/whisper-1", "openai/whisper-large-v3",
-        "openai/whisper-large-v3-turbo", "mistralai/voxtral-mini-transcribe",
-        "deepgram/nova-3", "google/chirp-3",
+        "openai/whisper-large-v3-turbo", "google/chirp-3",
+        "mistralai/voxtral-mini-transcribe", "deepgram/nova-3",
     ],
 }
 CLEANUP_MODELS = [
     "google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite",
     "google/gemini-2.5-flash-lite", "anthropic/claude-haiku-4.5",
-    "openai/gpt-5-mini", "meta-llama/llama-3.3-70b-instruct",
+    "meta-llama/llama-3.3-70b-instruct",
 ]
 # Minutes are a harder job than cleanup: an hour of talk has to be read whole
 # and turned into decisions, so the starting points are the larger models.
 MEETING_MODELS = [
     "google/gemini-3.5-flash", "google/gemini-3.1-pro-preview",
-    "anthropic/claude-sonnet-5", "openai/gpt-5.4", "x-ai/grok-4.5",
+    "anthropic/claude-sonnet-5", "x-ai/grok-4.5",
 ]
 ASSISTANT_PROVIDERS = [
     ("Claude Code", "claude"), ("Codex", "codex"), ("OpenRouter", "openrouter"),
@@ -61,7 +61,7 @@ ASSISTANT_MODELS = ["sonnet", "opus", "haiku", "fable"]
 CODEX_MODELS = ["gpt-5.4-codex", "gpt-5.4", "o4-mini"]
 # Starting points only; the box is editable and OpenRouter has hundreds.
 ASSISTANT_OR_MODELS = [
-    "google/gemini-3.5-flash", "anthropic/claude-sonnet-5", "openai/gpt-5.4",
+    "google/gemini-3.5-flash", "anthropic/claude-sonnet-5",
     "x-ai/grok-4.5", "google/gemini-3.1-pro-preview",
 ]
 # What Claude Code may do without being able to ask. It cannot ask: there is no
@@ -121,7 +121,7 @@ class SettingsWindow(QDialog):
         self.meetings = meetings
         # Each provider keeps its own transcription model, so switching the
         # provider back and forth never overwrites the other one's.
-        self._models = {"openai": "", "openrouter": ""}
+        self._models = {"gemini": "", "openrouter": ""}
         self._shown_provider = ""
         self.transcriber = FileTranscriber(conf, self)
         self.setWindowTitle(t("Dikte Settings"))
@@ -244,15 +244,15 @@ class SettingsWindow(QDialog):
         # them and a key no longer belongs to a single job.
         keys = QGroupBox(t("Keys"))
         keys_form = QFormLayout(keys)
-        self.openai_key = QLineEdit()
-        self.openai_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.openai_key.setPlaceholderText(t("sk-… (falls back to OPENAI_API_KEY)"))
-        self.test_button = QPushButton(t("Test"))
-        self.test_button.clicked.connect(self._test_openai)
-        self.test_label = QLabel("")
-        self.test_label.setWordWrap(True)
-        keys_form.addRow("OpenAI", self._row(self.openai_key, self.test_button))
-        keys_form.addRow("", self.test_label)
+        self.gemini_key = QLineEdit()
+        self.gemini_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.gemini_key.setPlaceholderText(t("AIza… (falls back to GEMINI_API_KEY)"))
+        self.gemini_test_button = QPushButton(t("Test"))
+        self.gemini_test_button.clicked.connect(self._test_gemini)
+        self.gemini_test_label = QLabel("")
+        self.gemini_test_label.setWordWrap(True)
+        keys_form.addRow("Gemini", self._row(self.gemini_key, self.gemini_test_button))
+        keys_form.addRow("", self.gemini_test_label)
 
         self.openrouter_key = QLineEdit()
         self.openrouter_key.setEchoMode(QLineEdit.EchoMode.Password)
@@ -887,9 +887,9 @@ class SettingsWindow(QDialog):
         self.filter_hallucinations.setChecked(conf["filter_hallucinations"])
         self.keep_audio.setChecked(conf["keep_audio"])
 
-        self.openai_key.setText(conf["openai_api_key"])
+        self.gemini_key.setText(conf["gemini_api_key"])
         self.openrouter_key.setText(conf["openrouter_api_key"])
-        self._models = {"openai": conf["transcribe_model"],
+        self._models = {"gemini": conf["gemini_transcribe_model"],
                         "openrouter": conf["openrouter_transcribe_model"]}
         self._shown_provider = ""
         self._select_data(self.transcribe_provider, conf["transcribe_provider"])
@@ -967,13 +967,13 @@ class SettingsWindow(QDialog):
         conf["filter_hallucinations"] = self.filter_hallucinations.isChecked()
         conf["keep_audio"] = self.keep_audio.isChecked()
 
-        conf["openai_api_key"] = self.openai_key.text().strip()
+        conf["gemini_api_key"] = self.gemini_key.text().strip()
         conf["openrouter_api_key"] = self.openrouter_key.text().strip()
 
-        provider = self.transcribe_provider.currentData() or "openai"
+        provider = self.transcribe_provider.currentData() or "gemini"
         self._models[provider] = self.transcribe_model.currentText().strip()
         conf["transcribe_provider"] = provider
-        for key, name in (("openai", "transcribe_model"),
+        for key, name in (("gemini", "gemini_transcribe_model"),
                           ("openrouter", "openrouter_transcribe_model")):
             conf[name] = self._models[key].strip() or cfg.DEFAULTS[name]
 
@@ -1061,7 +1061,7 @@ class SettingsWindow(QDialog):
         """Swap the model box over to the newly chosen provider's own model."""
         if self._shown_provider:
             self._models[self._shown_provider] = self.transcribe_model.currentText().strip()
-        provider = self.transcribe_provider.currentData() or "openai"
+        provider = self.transcribe_provider.currentData() or "gemini"
         self._shown_provider = provider
         self.transcribe_model.clear()
         self.transcribe_model.addItems(TRANSCRIBE_MODELS[provider])
@@ -1070,18 +1070,20 @@ class SettingsWindow(QDialog):
 
     def _load_transcribe_models(self):
         """The model list of whichever provider is selected."""
-        provider = self.transcribe_provider.currentData() or "openai"
+        provider = self.transcribe_provider.currentData() or "gemini"
         self.refresh_transcribe_models.setEnabled(False)
         self.transcribe_status.setText(t("Fetching model list…"))
-        openai_key = self.openai_key.text().strip() or self.conf.openai_key()
         openrouter_key = self.openrouter_key.text().strip() or self.conf.openrouter_key()
-        base = self.conf["openai_base_url"]
+        gemini_key = self.gemini_key.text().strip() or self.conf.gemini_key()
 
         def work():
             try:
-                models = (api.openrouter_models(openrouter_key, transcription=True)
-                          if provider == "openrouter"
-                          else api.openai_models(openai_key, base))
+                if provider == "openrouter":
+                    models = api.openrouter_models(openrouter_key, transcription=True)
+                elif provider == "gemini":
+                    models = api.gemini_models(gemini_key)
+                else:
+                    models = []
                 self._transcribe_models_loaded.emit(models, "")
             except api.ApiError as exc:
                 self._transcribe_models_loaded.emit([], str(exc))
@@ -1124,17 +1126,16 @@ class SettingsWindow(QDialog):
             combo.setCurrentText(current)
         self.models_label.setText(t("{count} models loaded.", count=len(models)))
 
-    def _test_openai(self):
-        self.test_button.setEnabled(False)
-        self.test_label.setText(t("Trying…"))
-        key = self.openai_key.text().strip() or self.conf.openai_key()
-        base = self.conf["openai_base_url"]
+    def _test_gemini(self):
+        self.gemini_test_button.setEnabled(False)
+        self.gemini_test_label.setText(t("Trying…"))
+        key = self.gemini_key.text().strip() or self.conf.gemini_key()
 
         def work():
             try:
-                models = api.openai_models(key, base)
+                models = api.gemini_models(key)
                 self._test_done.emit(
-                    True, t("Connection works. {count} audio models visible.", count=len(models))
+                    True, t("Connection works. {count} models visible.", count=len(models))
                 )
             except api.ApiError as exc:
                 self._test_done.emit(False, str(exc))
@@ -1159,8 +1160,8 @@ class SettingsWindow(QDialog):
         self.or_test_label.setText(("✓ " if ok else "✗ ") + message)
 
     def _on_test_done(self, ok, message):
-        self.test_button.setEnabled(True)
-        self.test_label.setText(("✓ " if ok else "✗ ") + message)
+        self.gemini_test_button.setEnabled(True)
+        self.gemini_test_label.setText(("✓ " if ok else "✗ ") + message)
 
     # ---- audio file ------------------------------------------------------
 

@@ -7,7 +7,7 @@ Press a global hotkey, speak, press again — the cleaned transcription is paste
 1. Download `dikte.exe` from Releases (or build from source).
 2. Run `install.ps1` in the same folder to add a Start Menu shortcut and autostart entry.
 3. Launch Dikte — the settings window opens on first run.
-4. Add an OpenAI or OpenRouter API key in **Settings → API**.
+4. Add a Gemini or OpenRouter API key in **Settings → API**.
 
 ## Usage
 

@@ -41,4 +41,4 @@ if (-not $existing) {
 
 Write-Host ""
 Write-Host "  Done. Start it from the Start Menu, or run dikte.exe directly." -Foreground Green
-Write-Host "  The settings window opens on first run; add your OpenAI and OpenRouter keys."
+Write-Host "  The settings window opens on first run; add your Gemini or OpenRouter keys."

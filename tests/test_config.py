@@ -25,14 +25,14 @@ class TestConfigLoadSave(unittest.TestCase):
         self.tmp.cleanup()
     def test_defaults_loaded(self):
         c = cfg.Config()
-        self.assertEqual(c["transcribe_provider"], "openai")
+        self.assertEqual(c["transcribe_provider"], "gemini")
         self.assertEqual(c["language"], "tr")
     def test_save_then_load(self):
         c = cfg.Config()
-        c["openai_api_key"] = "sk-test"
+        c["gemini_api_key"] = "ai-test"
         c.save()
         c2 = cfg.Config()
-        self.assertEqual(c2["openai_api_key"], "sk-test")
+        self.assertEqual(c2["gemini_api_key"], "ai-test")
     def test_unknown_keys_ignored(self):
         cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         cfg.CONFIG_FILE.write_text(json.dumps({"transcribe_provider": "openrouter",

@@ -7,7 +7,7 @@ Küresel bir kısayola basın, konuşun, tekrar basın — temizlenmiş transkri
 1. `dikte.exe` dosyasını Sürümler sayfasından indirin (veya kaynaktan derleyin).
 2. Aynı klasörde `install.ps1` çalıştırarak Başlat Menüsü kısayolu ve otomatik başlatma ekleyin.
 3. Dikte'yi başlatın — ilk çalıştırmada ayarlar penceresi açılır.
-4. **Ayarlar → API** bölümüne OpenAI veya OpenRouter API anahtarı ekleyin.
+4. **Ayarlar → API** bölümüne Gemini veya OpenRouter API anahtarı ekleyin.
 
 ## Kullanım
 

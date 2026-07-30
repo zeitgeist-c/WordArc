@@ -28,9 +28,18 @@ class TestMultipart(unittest.TestCase):
         os.unlink(path)
 
 class TestExplain(unittest.TestCase):
+    def setUp(self):
+        import i18n
+        self._old_lang = i18n.language()
+        i18n.set_language("en")
+
+    def tearDown(self):
+        import i18n
+        i18n.set_language(self._old_lang)
+
     def test_401_message(self):
         exc = api.ApiError("HTTP 401", 401)
-        out = api.explain(exc, "OpenAI")
+        out = api.explain(exc, "Gemini")
         self.assertIn("rejected the API key", str(out))
         self.assertEqual(out.status, 401)
 

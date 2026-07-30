@@ -6,7 +6,7 @@ No gettext, no .mo files; the string table is small enough to keep in code.
 
 import os
 
-_lang = "en"
+_lang = "tr"
 
 
 def resolve(code):
@@ -37,8 +37,8 @@ def t(text, **kwargs):
 # by the sentence, so it arrives already inflected. English takes the name as it
 # is and puts the preposition in the sentence, where it belongs.
 _TR_CASES = {
-    "dative": {"Claude": "Claude'a", "Codex": "Codex'e", "OpenRouter": "OpenRouter'a"},
-    "accusative": {"Claude": "Claude'u", "Codex": "Codex'i", "OpenRouter": "OpenRouter'ı"},
+    "dative": {"Claude": "Claude'a", "Codex": "Codex'e", "OpenRouter": "OpenRouter'a", "Gemini": "Gemini'ye"},
+    "accusative": {"Claude": "Claude'u", "Codex": "Codex'i", "OpenRouter": "OpenRouter'ı", "Gemini": "Gemini'yi"},
 }
 
 
@@ -96,6 +96,7 @@ TR = {
     # --- audio / paste errors -----------------------------------------
     "Could not open the microphone.": "Mikrofon açılamadı.",
     "Could not start recording: {error}": "Kayıt başlatılamadı: {error}",
+    "Could not start the system loopback": "Sistem ses döngüsü başlatılamadı",
     "Could not open the clipboard.": "Pano açılamadı.",
     "Could not copy to clipboard: {error}": "Panoya kopyalanamadı: {error}",
     "Could not copy to the clipboard.": "Panoya kopyalanamadı.",
@@ -109,6 +110,10 @@ TR = {
         "{service} API anahtarı boş. Ayarlar'dan gir.",
     "Transcript came back empty.": "Transkript boş döndü.",
     "The cleanup model returned an empty reply.": "Temizleme modeli boş yanıt döndü.",
+    "Gemini returned no candidates.": "Gemini yanıt döndürmedi.",
+    "Gemini returned an empty reply.": "Gemini boş yanıt döndürdü.",
+    "Gemini does not support timestamped segments.": "Gemini zaman damgalı bölümleri desteklemiyor.",
+    "Gemini does not support timestamped segments. Use the file transcription without timestamps, or switch to OpenRouter with whisper-1.": "Gemini zaman damgalı bölümleri desteklemiyor. Zaman damgasız dosya transkripsiyonu kullanın veya OpenRouter ve whisper-1'e geçin.",
     "Could not connect: {reason}": "Bağlantı kurulamadı: {reason}",
     "Could not parse the response: {error}": "Yanıt çözümlenemedi: {error}",
 
@@ -162,13 +167,16 @@ TR = {
     "API key": "API anahtarı",
     "Model": "Model",
     "Provider": "Sağlayıcı",
-    "sk-… (falls back to OPENAI_API_KEY)": "sk-… (boşsa OPENAI_API_KEY kullanılır)",
+    "AIza… (falls back to GEMINI_API_KEY)": "AIza… (boşsa GEMINI_API_KEY kullanılır)",
     "sk-or-… (falls back to OPENROUTER_API_KEY)": "sk-or-… (boşsa OPENROUTER_API_KEY kullanılır)",
+    "Google Gemini": "Google Gemini",
     "Test": "Test et",
     "Trying…": "Deneniyor…",
     "Runs on OpenRouter.": "OpenRouter üzerinde çalışır.",
     "Connection works. {count} audio models visible.":
         "Bağlantı tamam. {count} ses modeli görünüyor.",
+    "Connection works. {count} models visible.":
+        "Bağlantı tamam. {count} model görünüyor.",
     "Clean the transcript with a model": "Transkripti bir modelle temizle",
     "Thinking": "Düşünme",
     "Model's own default": "Modelin kendi varsayılanı",
