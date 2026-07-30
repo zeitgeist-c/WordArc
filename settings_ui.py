@@ -105,7 +105,7 @@ class SettingsWindow(QDialog):
         # Each provider keeps its own transcription model, so switching the
         # provider back and forth never overwrites the other one's.
         self.transcriber = FileTranscriber(conf, self)
-        self.setWindowTitle(t("Dikte Settings"))
+        self.setWindowTitle(t("Verbatim Settings"))
         self.resize(680, 640)
 
         tabs = QTabWidget(self)
@@ -152,7 +152,7 @@ class SettingsWindow(QDialog):
         for label, code in UI_LANGUAGES:
             self.ui_language.addItem(t(label), code)
         self.ui_language.setToolTip(
-            t("Restart Dikte for the language change to reach every window.")
+            t("Restart Verbatim for the language change to reach every window.")
         )
         form.addRow(t("Interface language"), self.ui_language)
 
@@ -212,7 +212,7 @@ class SettingsWindow(QDialog):
         )
         form.addRow("", self.filter_hallucinations)
 
-        self.keep_audio = QCheckBox(t("Keep audio files (%LOCALAPPDATA%\\Dikte\\recordings)"))
+        self.keep_audio = QCheckBox(t("Keep audio files (%LOCALAPPDATA%\\Verbatim\\recordings)"))
         form.addRow("", self.keep_audio)
         return page
 
@@ -980,7 +980,7 @@ class SettingsWindow(QDialog):
                 print(f"verbatim: could not trim the history ({exc})")
         self._load_history()  # the trim may just have dropped rows from the list
         self.applied.emit()
-        QMessageBox.information(self, t("Dikte Settings"), t("Saved successfully."))
+        QMessageBox.information(self, t("Verbatim Settings"), t("Saved successfully."))
 
     @staticmethod
     def _select_data(combo, value):
