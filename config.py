@@ -1,4 +1,4 @@
-"""Settings storage in ~/.config/dikte/config.json"""
+r"""Settings storage in %APPDATA%\Dikte\config.json"""
 
 import hashlib
 import json
