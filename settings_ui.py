@@ -34,7 +34,8 @@ TRANSCRIBE_PROVIDERS = [("Google Gemini", "gemini"), ("OpenRouter", "openrouter"
 # whatever the provider offers today.
 TRANSCRIBE_MODELS = {
     "gemini": ["gemini-2.0-flash-001", "gemini-2.5-flash-preview-04-17",
-               "gemini-1.5-flash-002", "gemini-1.5-pro-002"],
+               "gemini-2.0-flash-lite-001", "gemini-1.5-flash-002",
+               "gemini-1.5-pro-002"],
     "openrouter": [
         "openai/whisper-1", "openai/whisper-large-v3",
         "openai/whisper-large-v3-turbo", "google/chirp-3",
@@ -42,6 +43,8 @@ TRANSCRIBE_MODELS = {
     ],
 }
 CLEANUP_MODELS = [
+    "gemini-2.0-flash-001", "gemini-2.5-flash-preview-04-17",
+    "gemini-2.0-flash-lite-001", "gemini-1.5-pro-002",
     "google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite",
     "google/gemini-2.5-flash-lite", "anthropic/claude-haiku-4.5",
     "meta-llama/llama-3.3-70b-instruct",
@@ -49,6 +52,8 @@ CLEANUP_MODELS = [
 # Minutes are a harder job than cleanup: an hour of talk has to be read whole
 # and turned into decisions, so the starting points are the larger models.
 MEETING_MODELS = [
+    "gemini-1.5-pro-002", "gemini-2.0-flash-001",
+    "gemini-2.5-flash-preview-04-17",
     "google/gemini-3.5-flash", "google/gemini-3.1-pro-preview",
     "anthropic/claude-sonnet-5", "x-ai/grok-4.5",
 ]

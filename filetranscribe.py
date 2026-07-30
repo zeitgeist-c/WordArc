@@ -133,6 +133,7 @@ class FileTranscriber(QObject):
                 conf.openrouter_key(),
                 conf["cleanup_model"],
                 prompt,
+                gemini_key=conf.gemini_key(),
                 reasoning=conf["cleanup_reasoning"],
                 base_url=conf["openrouter_base_url"],
             ))

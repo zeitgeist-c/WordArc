@@ -242,12 +242,16 @@ def gemini_chat(messages, api_key, model, system_prompt="", timeout=180):
     return text
 
 
-def cleanup(text, api_key, model, system_prompt, provider="openrouter", reasoning="",
-            base_url="", timeout=180):
+def cleanup(text, api_key, model, system_prompt, provider="", gemini_key="",
+            reasoning="", base_url="", timeout=180):
     """Clean transcript text using a chat model via OpenRouter or Gemini."""
+    if not provider:
+        provider = "gemini" if model.startswith("gemini-") else "openrouter"
     if provider == "gemini":
+        if not gemini_key:
+            gemini_key = api_key
         messages = [{"role": "user", "content": text}]
-        return gemini_chat(messages, api_key, model, system_prompt, timeout)
+        return gemini_chat(messages, gemini_key, model, system_prompt, timeout)
     if not api_key:
         raise ApiError(t("{service} API key is empty. Add it in Settings.",
                          service="OpenRouter"))
@@ -280,11 +284,15 @@ def cleanup(text, api_key, model, system_prompt, provider="openrouter", reasonin
     return content
 
 
-def chat(messages, api_key, model, system_prompt, provider="openrouter", reasoning="",
-         base_url="", timeout=180):
+def chat(messages, api_key, model, system_prompt, provider="", gemini_key="",
+         reasoning="", base_url="", timeout=180):
     """A conversation, rather than one transcript rewritten, via OpenRouter or Gemini."""
+    if not provider:
+        provider = "gemini" if model.startswith("gemini-") else "openrouter"
     if provider == "gemini":
-        return gemini_chat(messages, api_key, model, system_prompt, timeout)
+        if not gemini_key:
+            gemini_key = api_key
+        return gemini_chat(messages, gemini_key, model, system_prompt, timeout)
     if not api_key:
         raise ApiError(t("{service} API key is empty. Add it in Settings.",
                          service="OpenRouter"))
