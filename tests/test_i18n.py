@@ -2,6 +2,18 @@ import unittest, os
 import i18n
 
 class TestI18n(unittest.TestCase):
+    def setUp(self):
+        self._saved = {k: os.environ.get(k) for k in ("LC_ALL", "LC_MESSAGES", "LANG")}
+        os.environ.pop("LC_ALL", None)
+        os.environ.pop("LC_MESSAGES", None)
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
     def test_resolve_auto_en(self):
         os.environ["LANG"] = "C"
         self.assertEqual(i18n.resolve("auto"), "en")
@@ -25,8 +37,9 @@ class TestI18n(unittest.TestCase):
         self.assertEqual(i18n.name("Claude", "dative"), "Claude")
     def test_no_linux_strings_remain(self):
         i18n.set_language("en")
-        src = open("i18n.py", encoding="utf-8").read()
-        for banned in ("pw-record", "wl-copy", "wl-paste", "ydotool", "kdotoold",
+        from pathlib import Path
+        src = Path(__file__).resolve().parent.parent.joinpath("i18n.py").read_text(encoding="utf-8")
+        for banned in ("pw-record", "wl-copy", "wl-paste", "ydotool", "ydotoold",
                        "/dev/input", "kglobalshortcutsrc", "KDE shortcut is live"):
             self.assertNotIn(banned, src, f"Linux-specific string remains: {banned}")
 
