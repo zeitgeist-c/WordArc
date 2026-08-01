@@ -1,23 +1,22 @@
-"""Vector tray icons drawn with QPainter — no icon theme on Windows."""
+"""WordArc tray icons drawn from the deterministic waveform/arc mark."""
 
 from PyQt6.QtCore import Qt, QRectF, QPointF
-from PyQt6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PyQt6.QtGui import (QColor, QIcon, QLinearGradient, QPainter,
+                         QPainterPath, QPen, QPixmap)
 
-# Linux icon-name → semantic state, used by verbatim.py's _set_icon(name).
 _IDLE = "audio-input-microphone"
 _REC = "media-record"
 _BUSY = "view-refresh"
 
-BG = QColor(30, 32, 38)
-MIC = QColor(220, 226, 234)
-REC_DOT = QColor(240, 78, 82)
-BUSY = QColor(120, 170, 255)
-
+VIOLET = QColor("#8B5CF6")
+CYAN = QColor("#22D3EE")
+REC_DOT = QColor("#F04E52")
+BUSY = QColor("#22D3EE")
 _cache = {}
 
 
 def icon(name):
-    """Return a QIcon for a Linux theme-name, drawing it on first use."""
+    """Return a cached, scalable WordArc state icon."""
     if name not in _cache:
         _cache[name] = _draw(name)
     return _cache[name]
@@ -26,37 +25,48 @@ def icon(name):
 def _draw(name):
     pix = QPixmap(64, 64)
     pix.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pix)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    _mark(painter)
     if name == _REC:
-        _mic(p, MIC)
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(REC_DOT)
-        p.drawEllipse(QPointF(46, 18), 11, 11)
+        painter.setPen(QPen(QColor("#0B0E14"), 2))
+        painter.setBrush(REC_DOT)
+        painter.drawEllipse(QPointF(49, 17), 10, 10)
     elif name == _BUSY:
-        _mic(p, MIC)
         pen = QPen(BUSY, 4)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        p.setPen(pen)
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawArc(QRectF(34, 8, 22, 22), 0, 270 * 16)
-    else:  # idle / unknown
-        _mic(p, MIC)
-    p.end()
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawArc(QRectF(38, 7, 21, 21), 35 * 16, 270 * 16)
+    painter.end()
     return QIcon(pix)
 
 
-def _mic(p, colour):
-    p.setPen(QPen(colour, 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-    # capsule body
-    rect = QRectF(26, 12, 14, 24)
+def _mark(painter):
+    gradient = QLinearGradient(8, 48, 58, 14)
+    gradient.setColorAt(0, VIOLET)
+    gradient.setColorAt(1, CYAN)
+    pen = QPen(gradient, 6)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
     path = QPainterPath()
-    path.addRoundedRect(rect, 7, 7)
-    p.drawPath(path)
-    # stand
-    p.drawLine(QPointF(33, 40), QPointF(33, 48))
-    p.drawArc(QRectF(22, 28, 22, 22), 0, 180 * 16)
-    p.drawLine(QPointF(22, 50), QPointF(44, 50))
+    path.moveTo(8, 22)
+    path.lineTo(16, 45)
+    path.lineTo(25, 18)
+    path.lineTo(34, 45)
+    path.lineTo(42, 22)
+    path.cubicTo(49, 11, 58, 14, 57, 25)
+    painter.drawPath(path)
+
+
+def set_theme(colors):
+    global VIOLET, CYAN, BUSY
+    VIOLET = QColor(colors.violet)
+    CYAN = QColor(colors.cyan)
+    BUSY = QColor(colors.cyan)
+    clear_cache()
 
 
 def clear_cache():

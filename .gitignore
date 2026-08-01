@@ -6,3 +6,4 @@ build/
 dist/
 ffmpeg.exe
 verbatim.spec.bak
+sbom.json

@@ -59,9 +59,9 @@ TR = {
     "Settings…": "Ayarlar…",
     "Restart": "Yeniden başlat",
     "Quit": "Çık",
-    "Verbatim: ready": "Verbatim: hazır",
-    "Verbatim: recording": "Verbatim: kaydediyor",
-    "Verbatim: working": "Verbatim: işleniyor",
+    "WordArc: ready": "WordArc: hazır",
+    "WordArc: recording": "WordArc: kaydediyor",
+    "WordArc: working": "WordArc: işleniyor",
 
     # --- overlay / pipeline -------------------------------------------
     "Transcribing…": "Yazıya çevriliyor…",
@@ -72,7 +72,7 @@ TR = {
     "{action}: {preview}": "{action}: {preview}",
     "Cleanup skipped: {error}": "Temizleme atlandı: {error}",
     "Pasted raw, cleanup failed: {error}": "Ham metin yapıştırıldı, temizleme başarısız: {error}",
-    "Verbatim: cleanup failed": "Verbatim: temizleme başarısız",
+    "WordArc: cleanup failed": "WordArc: temizleme başarısız",
     "{service} rejected the API key (HTTP {code}). Open Settings and check it.":
         "{service} API anahtarını reddetti (HTTP {code}). Ayarlar'ı açıp kontrol et.",
     "{service} says the account is out of credit (HTTP 402).":
@@ -97,6 +97,7 @@ TR = {
 
     # --- audio / paste errors -----------------------------------------
     "Could not open the microphone.": "Mikrofon açılamadı.",
+    "The sound device stopped responding.": "Ses aygıtı yanıt vermeyi durdurdu.",
     "Could not start recording: {error}": "Kayıt başlatılamadı: {error}",
     "Could not start the system loopback": "Sistem ses döngüsü başlatılamadı",
     "Could not open the clipboard.": "Pano açılamadı.",
@@ -116,9 +117,15 @@ TR = {
     "Gemini returned an empty reply.": "Gemini boş yanıt döndürdü.",
     "Could not connect: {reason}": "Bağlantı kurulamadı: {reason}",
     "Could not parse the response: {error}": "Yanıt çözümlenemedi: {error}",
+    "The selected Gemini model is unavailable. Open Settings and choose gemini-3.5-flash-lite or gemini-3.6-flash.":
+        "Seçili Gemini modeli kullanılamıyor. Ayarlar'ı açıp gemini-3.5-flash-lite veya gemini-3.6-flash seçin.",
+    "Gemini did not provide a file upload URL.": "Gemini dosya yükleme adresi vermedi.",
+    "Gemini returned an invalid uploaded file.": "Gemini geçersiz bir yüklenen dosya yanıtı verdi.",
+    "Gemini could not process the uploaded audio file.": "Gemini yüklenen ses dosyasını işleyemedi.",
+    "Gemini did not finish processing the uploaded audio file.": "Gemini ses dosyasını zamanında işleyemedi.",
 
     # --- settings: tabs and general ------------------------------------
-    "Verbatim Settings": "Verbatim Ayarları",
+    "WordArc Settings": "WordArc Ayarları",
     "General": "Genel",
     "API and models": "API ve modeller",
     "Cleanup rules": "Temizleme kuralları",
@@ -126,13 +133,37 @@ TR = {
     "Shortcut": "Kısayol",
     "History": "Geçmiş",
     "Save": "Kaydet",
+    "Theme": "Tema",
+    "Dark": "Koyu",
+    "Light": "Açık",
+    "System": "Sistem",
+    "Dictation, meetings and agents — in one flow.":
+        "Dikte, toplantı ve ajanlar — tek akışta.",
+    "Core behavior, audio input and appearance.":
+        "Temel davranış, ses girişi ve görünüm.",
+    "Gemini credentials and model choices.":
+        "Gemini kimlik bilgileri ve model seçimleri.",
+    "Control how spoken text is polished.":
+        "Konuşma metninin nasıl düzenleneceğini belirleyin.",
+    "Run spoken requests with explicit permissions.":
+        "Sesli istekleri açık izinlerle çalıştırın.",
+    "Capture microphone and system audio reliably.":
+        "Mikrofon ve sistem sesini güvenilir biçimde kaydedin.",
+    "Review and retry meeting summaries.":
+        "Toplantı özetlerini inceleyin ve yeniden deneyin.",
+    "Transcribe an existing recording.":
+        "Var olan bir kaydı yazıya çevirin.",
+    "Choose global keyboard shortcuts.":
+        "Genel klavye kısayollarını seçin.",
+    "Control local plaintext transcript retention.":
+        "Yerel açık metin döküm saklamayı yönetin.",
     "Saved successfully.": "Başarıyla kaydedildi.",
     "Interface language": "Arayüz dili",
     "Automatic (system)": "Otomatik (sistem)",
     "Turkish": "Türkçe",
     "English": "İngilizce",
-    "Restart Verbatim for the language change to reach every window.":
-        "Dil değişikliğinin her pencereye işlemesi için Verbatim'i yeniden başlat.",
+    "Restart WordArc for the language change to reach every window.":
+        "Dil değişikliğinin her pencereye işlemesi için WordArc'ı yeniden başlat.",
     "Microphone": "Mikrofon",
     "Default microphone": "Varsayılan mikrofon",
     "Speech language": "Konuşma dili",
@@ -157,8 +188,8 @@ TR = {
     "Skip silent recordings (don't call the API)":
         "Sessiz kayıtları atla (API'ye gönderme)",
     "Silence threshold": "Sessizlik eşiği",
-    "Keep audio files (%LOCALAPPDATA%\\Verbatim\\recordings)":
-        "Ses kayıtlarını sakla (%LOCALAPPDATA%\\Verbatim\\recordings)",
+    "Keep audio files (%LOCALAPPDATA%\\WordArc\\recordings)":
+        "Ses kayıtlarını sakla (%LOCALAPPDATA%\\WordArc\\recordings)",
 
     # --- settings: api --------------------------------------------------
     "Keys": "Anahtarlar",
@@ -252,6 +283,13 @@ TR = {
     "Transcribing chunk {index}/{count}…": "{index}/{count} parça yazıya çevriliyor…",
     "Done: {chars} characters.": "Bitti: {chars} karakter.",
     "Stopped.": "Durduruldu.",
+    "Waiting for permission…": "İzin bekleniyor…",
+    "Agent permission": "Ajan izni",
+    "How may the agent handle this command?": "Ajan bu komutu nasıl ele alabilir?",
+    "Read only": "Salt okunur",
+    "Allow changes once": "Değişikliklere bir kez izin ver",
+    "Choose a valid working directory in Settings before allowing changes.":
+        "Değişiklik izni vermeden önce Ayarlar'dan geçerli bir çalışma klasörü seçin.",
     "Failed: {error}": "Başarısız: {error}",
     "ffmpeg not found. Install it to transcribe files.":
         "ffmpeg bulunamadı. Dosya çevirmek için kur.",
@@ -286,6 +324,10 @@ TR = {
     "Copy selected to clipboard": "Seçiliyi panoya kopyala",
     "Delete selected": "Seçiliyi sil",
     "Clear history": "Geçmişi temizle",
+    "Store dictation history on this computer": "Dikte geçmişini bu bilgisayarda sakla",
+    "Open diagnostics folder": "Tanılama klasörünü aç",
+    "Meeting minutes and transcripts are stored as readable text files under %LOCALAPPDATA%\\WordArc\\meetings.":
+        "Toplantı tutanakları ve dökümleri %LOCALAPPDATA%\\WordArc\\meetings altında okunabilir metin dosyaları olarak saklanır.",
     "Reload": "Yenile",
     "{ts}  ({duration} s)": "{ts}  ({duration} sn)",
     "Keep at most": "En fazla",
@@ -308,12 +350,12 @@ TR = {
     "Stopping…": "Durduruluyor…",
     "Stopped.": "Durduruldu.",
     "{name} starts fresh next time.": "{name} bir sonrakine sıfırdan başlayacak.",
-    "Verbatim: talking to {name}": "Verbatim: {name} ile konuşuyor",
-    "Verbatim: recording for {name}": "Verbatim: {name} için kaydediyor",
+    "WordArc: talking to {name}": "WordArc: {name} ile konuşuyor",
+    "WordArc: recording for {name}": "WordArc: {name} için kaydediyor",
     "Asking {name}…": "{name} soruluyor…",
     "{name}: {preview}": "{name}: {preview}",
     "{name} answered, but: {error}": "{name} cevapladı, ama: {error}",
-    "Verbatim: {name} could not do all of it": "Verbatim: {name} her şeyi yapamadı",
+    "WordArc: {name} could not do all of it": "WordArc: {name} her şeyi yapamadı",
     "Running a command…": "Komut çalıştırıyor…",
     "Reading…": "Okuyor…",
     "Looking through files…": "Dosyalara bakıyor…",
@@ -433,14 +475,14 @@ TR = {
     "Writing the meeting up…": "Tutanak çıkarılıyor…",
     "Discard the meeting": "Toplantıyı iptal et",
     "Ending the meeting…": "Toplantı bitiriliyor…",
-    "Verbatim: in a meeting": "Verbatim: toplantıda",
-    "Verbatim: in a meeting ({time})": "Verbatim: toplantıda ({time})",
-    "Verbatim: writing the meeting up": "Verbatim: tutanak çıkarıyor",
+    "WordArc: in a meeting": "WordArc: toplantıda",
+    "WordArc: in a meeting ({time})": "WordArc: toplantıda ({time})",
+    "WordArc: writing the meeting up": "WordArc: tutanak çıkarıyor",
     "Meeting recorded, writing it up…": "Toplantı kaydedildi, tutanak çıkarılıyor…",
     "Meeting written up: {title}": "Tutanak hazır: {title}",
-    "Verbatim: the meeting is written up": "Verbatim: tutanak hazır",
+    "WordArc: the meeting is written up": "WordArc: tutanak hazır",
     "Meeting failed: {error}": "Toplantı başarısız: {error}",
-    "Verbatim: the meeting could not be written up": "Verbatim: tutanak çıkarılamadı",
+    "WordArc: the meeting could not be written up": "WordArc: tutanak çıkarılamadı",
     "{error}\n\nThe recording has been kept. Settings → Minutes can try again.":
         "{error}\n\nSes kaydı duruyor. Ayarlar → Tutanaklar üzerinden yeniden "
         "denenebilir.",

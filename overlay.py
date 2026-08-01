@@ -3,7 +3,8 @@
 import math
 
 from PyQt6.QtCore import Qt, QTimer, QRectF, QPointF
-from PyQt6.QtGui import QColor, QCursor, QFont, QPainter, QPainterPath, QPen, QFontMetrics
+from PyQt6.QtGui import (QBrush, QColor, QCursor, QFont, QFontMetrics,
+                         QLinearGradient, QPainter, QPainterPath, QPen)
 from PyQt6.QtWidgets import QWidget, QApplication
 
 BARS = 22
@@ -29,6 +30,22 @@ ASK = QColor(150, 140, 255)    # recording a command rather than a dictation
 STATE_COLORS = {"recording": REC, "asking": ASK, "meeting": REC, "busy": BUSY,
                 "done": OK, "warning": WARN, "error": ERR}
 LIVE = ("recording", "asking", "meeting")
+
+
+def set_theme(colors):
+    """Apply the central WordArc palette to existing and future overlays."""
+    global BG, BORDER, TEXT, MUTED, BUSY, THEM, ASK, STATE_COLORS
+    BG = QColor(colors.surface)
+    BG.setAlpha(242 if colors.mode == "dark" else 248)
+    BORDER = QColor(colors.border)
+    BORDER.setAlpha(210)
+    TEXT = QColor(colors.text)
+    MUTED = QColor(colors.muted)
+    BUSY = QColor(colors.cyan)
+    THEM = QColor(colors.cyan)
+    ASK = QColor(colors.violet)
+    STATE_COLORS = {"recording": REC, "asking": ASK, "meeting": REC,
+                    "busy": BUSY, "done": OK, "warning": WARN, "error": ERR}
 
 
 class Overlay(QWidget):
@@ -248,7 +265,10 @@ class Overlay(QWidget):
         path = QPainterPath()
         path.addRoundedRect(rect, 15, 15)
         painter.fillPath(path, BG)
-        painter.setPen(QPen(BORDER, 1))
+        glow = QLinearGradient(rect.topLeft(), rect.topRight())
+        glow.setColorAt(0, ASK)
+        glow.setColorAt(1, THEM)
+        painter.setPen(QPen(QBrush(glow), 1.5))
         painter.drawPath(path)
 
         accent = STATE_COLORS.get(self.state, MUTED)

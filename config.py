@@ -1,11 +1,14 @@
-r"""Settings storage in %APPDATA%\Verbatim\config.json"""
+r"""Settings storage in %APPDATA%\WordArc\config.json"""
 
 import hashlib
 import json
 import os
 import pathlib
+import threading
 
 import api
+from brand import BRAND
+import credential_store
 import i18n
 
 
@@ -13,13 +16,19 @@ def _win_path(env, fallback):
     return pathlib.Path(os.environ.get(env) or os.path.expanduser(fallback))
 
 
-CONFIG_DIR = _win_path("APPDATA", "~") / "Verbatim"
+CONFIG_DIR = _win_path("APPDATA", "~") / BRAND.data_directory
 CONFIG_FILE = CONFIG_DIR / "config.json"
-DATA_DIR = _win_path("LOCALAPPDATA", "~") / "Verbatim"
+DATA_DIR = _win_path("LOCALAPPDATA", "~") / BRAND.data_directory
+LEGACY_CONFIG_DIR = _win_path("APPDATA", "~") / BRAND.legacy_name
+LEGACY_DATA_DIR = _win_path("LOCALAPPDATA", "~") / BRAND.legacy_name
 HISTORY_FILE = DATA_DIR / "history.jsonl"
 RECORDINGS_DIR = DATA_DIR / "recordings"
 MEETINGS_DIR = DATA_DIR / "meetings"
 MEETINGS_FILE = DATA_DIR / "meetings.jsonl"
+LOG_DIR = DATA_DIR / "logs"
+CONFIG_SCHEMA = 3
+_history_lock = threading.RLock()
+_meeting_lock = threading.RLock()
 
 CLEANUP_PROMPT_EN = """You clean up dictation transcripts. You are given the raw
 text of something spoken out loud. Make it readable with MINIMAL interference.
@@ -296,7 +305,7 @@ PARTICIPANTS_RULE_TR = ("\n\nTOPLANTIDAKİ KİŞİLER\n{participants}\n"
                         "yazımla kullan; yine de bir satırı ancak transkript açık "
                         "ediyorsa bunlardan birine bağla.")
 
-ASSISTANT_PROMPT_EN = """This request reached you from Verbatim, a dictation tool.
+ASSISTANT_PROMPT_EN = """This request reached you from WordArc, a dictation tool.
 What you are reading was spoken out loud and turned into text by a speech model,
 so a word here and there may have come through wrong. Read it for what was
 meant, not for what it says letter by letter.
@@ -328,7 +337,7 @@ follow, and no way to answer a question you ask back.
 - If the request is ambiguous in a way that changes the answer, give the answer
   under the likelier reading and name the assumption in a clause"""
 
-ASSISTANT_PROMPT_TR = """Bu istek sana Verbatim adlı bir dikte uygulamasından geldi.
+ASSISTANT_PROMPT_TR = """Bu istek sana WordArc adlı bir dikte uygulamasından geldi.
 Okuduğun metin sesli olarak söylendi ve bir konuşma modeli tarafından yazıya
 çevrildi; yer yer bir kelime yanlış geçmiş olabilir. Harfi harfine ne yazdığına
 değil, ne denmek istendiğine bak.
@@ -360,11 +369,13 @@ da senin soracağın soruya verilecek bir yanıt yok.
   ve varsayımını bir yan cümlede söyle"""
 
 DEFAULTS = {
+    "config_schema": CONFIG_SCHEMA,
     "ui_language": "tr",                # tr | en | auto
+    "theme_mode": "dark",               # dark | light | system
     "gemini_api_key": "",
     "gemini_transcribe_model": "gemini-3.5-flash-lite",
     "gemini_cleanup_model": "gemini-3.5-flash-lite",
-    "gemini_meeting_model": "gemini-3.5-flash-lite",
+    "gemini_meeting_model": "gemini-3.6-flash",
     "gemini_assistant_model": "gemini-3.5-flash-lite",
     "language": "tr",
     "transcribe_prompt": "",
@@ -385,7 +396,8 @@ DEFAULTS = {
     "shortcut": "Ctrl+Space",
     "overlay_corner": "bottom-left",
     "keep_audio": False,
-    "history_limit": 200,
+    "history_limit": 0,
+    "history_enabled": False,
     "file_timestamps": False,
     "file_cleanup": True,
     "file_cleanup_prompt": "",      # empty -> language-specific default
@@ -397,7 +409,7 @@ DEFAULTS = {
     "meeting_language": "",         # empty -> the dictation speech language
     "meeting_max_seconds": 14400,   # 4 hours
     "meeting_cleanup": True,
-    "meeting_model": "gemini-3.5-flash-lite",
+    "meeting_model": "gemini-3.6-flash",
     "meeting_reasoning": "",
     "meeting_prompt": "",           # empty -> language-specific default
     "meeting_self_name": "",        # empty -> "Me" in the interface language
@@ -410,9 +422,9 @@ DEFAULTS = {
     "assistant_shortcut": "",       # empty -> tray only
     "assistant_provider": "claude",  # claude | codex
     "assistant_model": "sonnet",    # Claude Code: an alias, or a full model id
-    "assistant_permission_mode": "auto",
+    "assistant_permission_mode": "manual",
     "assistant_codex_model": "",    # empty -> whatever Codex is set to
-    "assistant_codex_sandbox": "workspace-write",
+    "assistant_codex_sandbox": "read-only",
     "assistant_reasoning": "",      # empty -> the model's own default
     "assistant_dir": "",            # empty -> the home directory
     "assistant_prompt": "",         # empty -> language-specific default
@@ -448,6 +460,7 @@ class Config:
         self.load()
 
     def load(self):
+        stored = {}
         try:
             with open(CONFIG_FILE, encoding="utf-8") as fh:
                 stored = json.load(fh)
@@ -456,7 +469,8 @@ class Config:
         except FileNotFoundError:
             pass
         except (json.JSONDecodeError, OSError) as exc:
-            print(f"verbatim: could not read settings ({exc}), using defaults")
+            print(f"wordarc: could not read settings ({exc}), using defaults")
+        self._migrate(stored)
         self.data["overlay_corner"] = _CORNER_MIGRATION.get(
             self.data["overlay_corner"], self.data["overlay_corner"]
         )
@@ -465,8 +479,39 @@ class Config:
             self.data["cleanup_prompt"] = ""
         i18n.set_language(self.data["ui_language"])
 
+    def _migrate(self, stored):
+        """Apply idempotent migrations without replacing custom choices."""
+        dead = {"gemini-2.0-flash", "gemini-2.0-flash-lite",
+                "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"}
+        replacements = {
+            "gemini_transcribe_model": "gemini-3.5-flash-lite",
+            "gemini_cleanup_model": "gemini-3.5-flash-lite",
+            "gemini_assistant_model": "gemini-3.5-flash-lite",
+            "cleanup_model": "gemini-3.5-flash-lite",
+            "gemini_meeting_model": "gemini-3.6-flash",
+            "meeting_model": "gemini-3.6-flash",
+        }
+        for key, replacement in replacements.items():
+            if self.data.get(key) in dead:
+                self.data[key] = replacement
+        # A pre-schema config with history_limit was already using history and
+        # keeps that behaviour. New installs default to disabled.
+        if "config_schema" not in stored and "history_limit" in stored:
+            self.data["history_enabled"] = True
+        if self.data.get("theme_mode") not in ("dark", "light", "system"):
+            self.data["theme_mode"] = "dark"
+        self.data["config_schema"] = CONFIG_SCHEMA
+
     def save(self):
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        secret = self.data.get("gemini_api_key", "").strip()
+        if secret:
+            try:
+                credential_store.write(secret)
+                self.data["gemini_api_key"] = ""
+            except credential_store.CredentialError as exc:
+                # Never fall back to writing the secret to config.json.
+                raise OSError("Gemini API key could not be stored securely") from exc
         tmp = CONFIG_FILE.with_suffix(".json.tmp")
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(self.data, fh, ensure_ascii=False, indent=2)
@@ -482,8 +527,18 @@ class Config:
     def get(self, key, default=None):
         return self.data.get(key, DEFAULTS.get(key, default))
 
+    def stored_gemini_key(self):
+        direct = self["gemini_api_key"].strip()
+        if direct:
+            return direct
+        try:
+            return credential_store.read().strip()
+        except credential_store.CredentialError:
+            return ""
+
     def gemini_key(self):
-        return self["gemini_api_key"].strip() or os.environ.get("GEMINI_API_KEY", "").strip()
+        return (self.stored_gemini_key()
+                or os.environ.get("GEMINI_API_KEY", "").strip())
 
     def transcribe_target(self):
         """Key, endpoint and model for Gemini speech to text."""
@@ -572,18 +627,20 @@ def default_assistant_prompt():
 
 
 def append_history(entry):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(HISTORY_FILE, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    with _history_lock:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with open(HISTORY_FILE, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
 def read_history(limit=None):
     """Newest last. A limit of None (or 0) reads the whole file."""
-    try:
-        with open(HISTORY_FILE, encoding="utf-8") as fh:
-            lines = fh.readlines()
-    except OSError:
-        return []
+    with _history_lock:
+        try:
+            with open(HISTORY_FILE, encoding="utf-8") as fh:
+                lines = fh.readlines()
+        except OSError:
+            return []
     if limit:
         lines = lines[-limit:]
     out = []
@@ -597,25 +654,27 @@ def read_history(limit=None):
 
 def _write_history(lines):
     """Replace the file in one go, so a crash cannot leave it half written."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = HISTORY_FILE.with_suffix(".jsonl.tmp")
-    with open(tmp, "w", encoding="utf-8") as fh:
-        fh.writelines(lines)
-    tmp.replace(HISTORY_FILE)
+    with _history_lock:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = HISTORY_FILE.with_suffix(".jsonl.tmp")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.writelines(lines)
+        tmp.replace(HISTORY_FILE)
 
 
 def trim_history(limit):
     """Drop the oldest entries once the file passes `limit` rows. 0 means keep all."""
     if not limit or limit < 0:
         return
-    try:
-        with open(HISTORY_FILE, encoding="utf-8") as fh:
-            lines = fh.readlines()
-    except OSError:
-        return
-    if len(lines) <= limit:
-        return
-    _write_history(lines[-limit:])
+    with _history_lock:
+        try:
+            with open(HISTORY_FILE, encoding="utf-8") as fh:
+                lines = fh.readlines()
+        except OSError:
+            return
+        if len(lines) <= limit:
+            return
+        _write_history(lines[-limit:])
 
 
 def _row_key(row):
@@ -628,13 +687,25 @@ def delete_history(rows):
     doomed = {_row_key(row) for row in rows}
     if not doomed:
         return
-    kept = [json.dumps(row, ensure_ascii=False) + "\n"
-            for row in read_history() if _row_key(row) not in doomed]
-    _write_history(kept)
+    with _history_lock:
+        kept = [json.dumps(row, ensure_ascii=False) + "\n"
+                for row in read_history() if _row_key(row) not in doomed]
+        _write_history(kept)
 
 
 def clear_history():
-    HISTORY_FILE.unlink(missing_ok=True)
+    with _history_lock:
+        HISTORY_FILE.unlink(missing_ok=True)
+
+
+class HistoryStore:
+    """Qt-independent history service used by UI and worker adapters."""
+
+    append = staticmethod(append_history)
+    read = staticmethod(read_history)
+    trim = staticmethod(trim_history)
+    delete = staticmethod(delete_history)
+    clear = staticmethod(clear_history)
 
 
 # --- meetings -------------------------------------------------------------
@@ -650,11 +721,12 @@ def meeting_paths(base):
 
 def read_meetings():
     """Newest last."""
-    try:
-        with open(MEETINGS_FILE, encoding="utf-8") as fh:
-            lines = fh.readlines()
-    except OSError:
-        return []
+    with _meeting_lock:
+        try:
+            with open(MEETINGS_FILE, encoding="utf-8") as fh:
+                lines = fh.readlines()
+        except OSError:
+            return []
     out = []
     for line in lines:
         try:
@@ -667,34 +739,37 @@ def read_meetings():
 
 
 def _write_meetings(rows):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = MEETINGS_FILE.with_suffix(".jsonl.tmp")
-    with open(tmp, "w", encoding="utf-8") as fh:
-        for row in rows:
-            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-    tmp.replace(MEETINGS_FILE)
+    with _meeting_lock:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = MEETINGS_FILE.with_suffix(".jsonl.tmp")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        tmp.replace(MEETINGS_FILE)
 
 
 def save_meeting(entry):
     """Insert the row, or replace the one with the same base."""
-    rows = read_meetings()
-    for index, row in enumerate(rows):
-        if row["base"] == entry["base"]:
-            rows[index] = entry
-            break
-    else:
-        rows.append(entry)
-    _write_meetings(rows)
+    with _meeting_lock:
+        rows = read_meetings()
+        for index, row in enumerate(rows):
+            if row["base"] == entry["base"]:
+                rows[index] = entry
+                break
+        else:
+            rows.append(entry)
+        _write_meetings(rows)
 
 
 def update_meeting(base, **changes):
     """Patch one row and hand it back, or None when it is gone."""
-    rows = read_meetings()
-    for row in rows:
-        if row["base"] == base:
-            row.update(changes)
-            _write_meetings(rows)
-            return row
+    with _meeting_lock:
+        rows = read_meetings()
+        for row in rows:
+            if row["base"] == base:
+                row.update(changes)
+                _write_meetings(rows)
+                return row
     return None
 
 
@@ -703,10 +778,12 @@ def delete_meetings(bases):
     doomed = set(bases)
     if not doomed:
         return
-    _write_meetings([row for row in read_meetings() if row["base"] not in doomed])
-    for base in doomed:
-        for path in meeting_paths(base):
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
+    with _meeting_lock:
+        _write_meetings([row for row in read_meetings()
+                         if row["base"] not in doomed])
+        for base in doomed:
+            for path in meeting_paths(base):
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass

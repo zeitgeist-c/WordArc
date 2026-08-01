@@ -1,49 +1,42 @@
-# Verbatim — Voice-to-text dictation for Windows
+# WordArc — Voice-to-text for Windows
 
-Press a global hotkey, speak, press again — the cleaned transcription is pasted at your cursor.
+WordArc turns speech into polished text, captures microphone and system audio for meeting minutes, and can hand a spoken command to Claude Code or Codex with an explicit per-run permission choice.
 
-## Quick start
+## Install
 
-1. Download `verbatim.exe` from Releases (or build from source).
-2. Run `install.ps1` in the same folder to add a Start Menu shortcut and autostart entry.
-3. Launch Verbatim — the settings window opens on first run.
-4. Add a Gemini API key in **Settings → API**.
+1. Download `wordarc.exe` or build it from source.
+2. Put `wordarc.exe` and `install.ps1` in the same folder, then run `install.ps1`.
+3. Start WordArc. Settings opens on first launch.
 
-## Usage
+The default shortcut is `Ctrl+Space`: press once to record and again to transcribe. The tray menu exposes dictation, agent, meeting and settings actions.
 
-| Action | Result |
-|--------|--------|
-| `Ctrl+Space` | Start / stop dictation |
-| Speak, then `Ctrl+Space` | Transcription pasted at cursor |
-| Tray → Cancel recording | Discard current recording |
-| Tray → Ask assistant | Dictate a question to Claude/Codex |
-| Tray → Record a meeting | Stereo meeting recording (mic + system audio) |
-| Tray → Settings | Configure API keys, shortcuts, language, file transcription |
-
-## Run from source
+## Development
 
 ```powershell
-python -m pip install -r requirements.txt
-python verbatim.py
+python -m venv .venv
+.\.venv\Scripts\pip install -r requirements-lock.txt -r requirements-dev.txt
+python wordarc.py
 ```
 
-PyQt6, sounddevice, Python 3.10+ required.
-
-## Build with PyInstaller
-
-Place `ffmpeg.exe` (from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), essentials build) in the project root, then:
+Run the reproducible checks and build:
 
 ```powershell
-python -m pip install pyinstaller
-python -m PyInstaller verbatim.spec
+.\check.ps1
+.\build.ps1
 ```
 
-Output: `dist\verbatim.exe` (~110 MB, self-contained).
+The packaged result is `dist\wordarc.exe`. Build verifies the pinned FFmpeg binary, runs tests and import checks, audits dependencies, emits `sbom.json`, renders the deterministic WordArc icon, and then invokes PyInstaller.
 
-## Configuration
+## Data, privacy and migration
 
-Stored at `%APPDATA%\Verbatim\config.json`. Audio output and meeting data at `%LOCALAPPDATA%\Verbatim\`.
+Configuration lives at `%APPDATA%\WordArc\config.json`; recordings, meetings and diagnostics live under `%LOCALAPPDATA%\WordArc\`. Gemini credentials are stored in Windows Credential Manager as `WordArc/GeminiApiKey`.
 
-## Upstream
+On first launch, missing files are copied atomically from the old Verbatim directories. A legacy credential is copied, verified and only then removed. Existing WordArc files are never overwritten and old directories are not deleted, so they remain a rollback copy. `verbatim.py` remains a compatibility entry point for one release.
 
-Verbatim was originally created by [yusufipk](https://github.com/yusufipk/dikte) for Linux (GPL-3.0). This is a Windows hard-fork with the same license.
+Transcript history is off by default. If enabled, history and meeting transcripts are readable local text files. Successful meeting audio is deleted by default.
+
+## Branding and themes
+
+The canonical SVG sources are in `assets\brand`. `tools\build_brand_assets.py` generates the multi-resolution Windows icon. Dark is the default theme; Light and System modes can be switched instantly in Settings.
+
+WordArc is GPL-3.0. The original Linux project was created by [yusufipk](https://github.com/yusufipk/dikte).

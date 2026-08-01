@@ -14,6 +14,7 @@ import array
 import contextlib
 import difflib
 import os
+import logging
 import re
 import shutil
 import subprocess
@@ -31,10 +32,13 @@ import vad
 from filetranscribe import Cancelled, format_timestamp
 from i18n import t
 
+_log = logging.getLogger("wordarc.meeting")
+
 # Where the document stops being prose and starts being the transcript. It is a
 # comment, so it never shows up in a rendered document, and it is what a retry
 # reads the transcript back out of.
-TRANSCRIPT_MARKER = "<!-- verbatim:transcript -->"
+TRANSCRIPT_MARKER = "<!-- wordarc:transcript -->"
+LEGACY_TRANSCRIPT_MARKER = "<!-- verbatim:transcript -->"
 
 # A microphone that hears the other side through the speakers puts the same
 # sentence on both channels. Ours is the copy to drop, and it is a copy when it
@@ -105,7 +109,7 @@ class MeetingPipeline(QObject):
             if not transcript:
                 if not wav_path.exists():
                     raise api.ApiError(t("The recording is gone: {path}", path=wav_path))
-                workdir = tempfile.mkdtemp(prefix="verbatim-meeting-")
+                workdir = tempfile.mkdtemp(prefix="wordarc-meeting-")
                 transcript = self._transcribe(str(wav_path), workdir)
                 if self.conf["meeting_cleanup"]:
                     self._check()
@@ -125,6 +129,7 @@ class MeetingPipeline(QObject):
                 self.conf.meeting_prompt(),
                 reasoning=self.conf["meeting_reasoning"],
                 timeout=600,
+                should_stop=self._stop.is_set,
             )
             title = self._write(doc_path, minutes, transcript, entry)
             cfg.update_meeting(base, status="done", error="", title=title,
@@ -132,10 +137,11 @@ class MeetingPipeline(QObject):
             self._discard_audio(wav_path)
             self.finished.emit(base, title)
 
-        except Cancelled:
+        except (Cancelled, api.Cancelled):
             cfg.update_meeting(base, error=t("Stopped."))
             self._say(t("Stopped."))
         except (api.ApiError, OSError, subprocess.SubprocessError, wave.Error) as exc:
+            _log.warning("meeting pipeline failed (%s)", type(exc).__name__)
             # The audio stays put no matter what the keep setting says: it is the
             # only copy of the meeting, and the run can be tried again from it.
             cfg.update_meeting(base, status="failed", error=str(exc))
@@ -175,7 +181,8 @@ class MeetingPipeline(QObject):
                 if self._silent(chunk_path):
                     continue
                 text = api.transcribe(
-                    api_key, model, chunk_path, language=language, prompt=hint
+                    api_key, model, chunk_path, language=language, prompt=hint,
+                    should_stop=self._stop.is_set,
                 )
                 if text.strip():
                     pieces.append(text.strip())
@@ -216,6 +223,7 @@ class MeetingPipeline(QObject):
                 conf["cleanup_model"],
                 prompt,
                 reasoning=conf["cleanup_reasoning"],
+                should_stop=self._stop.is_set,
             ))
         return "\n".join(out)
 
@@ -366,6 +374,8 @@ def build_document(title, when, duration, minutes, transcript):
 def read_transcript(document):
     """The transcript back out of a document written by build_document."""
     _, marker, rest = document.partition(TRANSCRIPT_MARKER)
+    if not marker:
+        _, marker, rest = document.partition(LEGACY_TRANSCRIPT_MARKER)
     if not marker:
         return ""
     lines = rest.strip().splitlines()

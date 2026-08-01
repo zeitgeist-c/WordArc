@@ -7,6 +7,7 @@ done.
 """
 
 import os
+import logging
 import shutil
 import sys
 import threading
@@ -31,13 +32,15 @@ CHUNK_SECONDS = audio.CHUNK_FRAMES / audio.RATE
 # what is on the clipboard, put ours there, press the key. Two runs doing that
 # at once would paste one answer and restore the other's clipboard over it.
 _paste_lock = threading.Lock()
+_log = logging.getLogger("wordarc.worker")
 
 
 class Pipeline(QObject):
-    stage = pyqtSignal(str)          # human-readable progress line
-    finished = pyqtSignal(str, str, str)  # raw transcript, final text, warning
-    failed = pyqtSignal(str)
-    cancelled = pyqtSignal()
+    stage = pyqtSignal(str, str)  # progress line, operation id
+    finished = pyqtSignal(str, str, str, str)  # raw, final, warning, operation id
+    failed = pyqtSignal(str, str)  # message, operation id
+    cancelled = pyqtSignal(str)
+    permission_requested = pyqtSignal(str, object, str)
 
     def __init__(self, conf, parent=None):
         super().__init__(parent)
@@ -49,12 +52,13 @@ class Pipeline(QObject):
     def busy(self):
         return self._thread is not None and self._thread.is_alive()
 
-    def run(self, wav_path, duration, rms_values=(), ask=False):
+    def run(self, wav_path, duration, rms_values=(), ask=False, operation_id=""):
         if self.busy:
             return
         self._stop.clear()
         self._thread = threading.Thread(
-            target=self._work, args=(wav_path, duration, list(rms_values), ask),
+            target=self._work,
+            args=(wav_path, duration, list(rms_values), ask, operation_id),
             daemon=True,
         )
         self._thread.start()
@@ -68,7 +72,7 @@ class Pipeline(QObject):
         """
         self._stop.set()
 
-    def _work(self, wav_path, duration, rms_values, ask):
+    def _work(self, wav_path, duration, rms_values, ask, operation_id):
         conf = self.conf
         started = time.monotonic()
         raw = ""
@@ -80,24 +84,24 @@ class Pipeline(QObject):
             if vad.is_silent(stats, conf["silence_db"], conf["speech_margin_db"],
                              conf["min_voiced_seconds"]):
                 self._discard(wav_path)
-                self.failed.emit(
-                    t("No speech detected ({level} dB)", level=round(stats["speech_db"]))
-                )
+                self.failed.emit(t("No speech detected ({level} dB)",
+                                   level=round(stats["speech_db"])), operation_id)
                 return
 
         try:
-            self.stage.emit(t("Transcribing…"))
+            self.stage.emit(t("Transcribing…"), operation_id)
             target = conf.transcribe_target()
             raw = api.transcribe(
-                target,
-                wav_path,
+                target.api_key, target.model, wav_path,
                 language=conf["language"],
                 prompt=conf["transcribe_prompt"],
+                should_stop=self._stop.is_set,
             )
 
             if conf["filter_hallucinations"] and vad.looks_like_hallucination(raw, duration):
                 self._discard(wav_path)
-                self.failed.emit(t("Discarded a stock phrase: “{text}”", text=raw[:60]))
+                self.failed.emit(t("Discarded a stock phrase: “{text}”", text=raw[:60]),
+                                 operation_id)
                 return
 
             text = raw
@@ -106,7 +110,7 @@ class Pipeline(QObject):
             # on its way there is normally sent as it was heard, one API call and
             # a second or two lighter.
             if (conf["assistant_cleanup"] if ask else conf["cleanup_enabled"]):
-                self.stage.emit(t("Cleaning up…"))
+                self.stage.emit(t("Cleaning up…"), operation_id)
                 try:
                     text = api.cleanup(
                         raw,
@@ -114,23 +118,35 @@ class Pipeline(QObject):
                         conf["cleanup_model"],
                         conf.cleanup_prompt(),
                         reasoning=conf["cleanup_reasoning"],
+                        should_stop=self._stop.is_set,
                     )
                 except api.ApiError as exc:
                     # Keep the transcript, but never let the failure pass unseen:
                     # a rejected key would otherwise look like working dictation.
                     text = raw
                     warning = str(exc)
-                    print(f"verbatim: cleanup failed: {exc}", file=sys.stderr)
+                    _log.warning("cleanup request failed (status=%s, category=%s)",
+                                 exc.status, exc.category)
+                    print(f"wordarc: cleanup failed: {exc}", file=sys.stderr)
 
             question = ""
             if ask:
                 question = text
+                request = assistant.PermissionRequest()
+                self.stage.emit(t("Waiting for permission…"), operation_id)
+                self.permission_requested.emit(question, request, operation_id)
+                while not request.event.wait(0.1):
+                    if self._stop.is_set():
+                        raise assistant.Cancelled
+                if request.permission is None:
+                    raise assistant.Cancelled
                 self.stage.emit(t("Asking {name}…", name=i18n.name(
-                    assistant.display_name(conf), "dative")))
+                    assistant.display_name(conf), "dative")), operation_id)
                 text, denied = assistant.ask(
                     question, conf,
-                    on_stage=self.stage.emit,
+                    on_stage=lambda message: self.stage.emit(message, operation_id),
                     should_stop=self._stop.is_set,
+                    permission=request.permission,
                 )
                 warning = "\n".join(x for x in (warning, denied) if x)
 
@@ -139,13 +155,13 @@ class Pipeline(QObject):
                 paste.copy(text)
 
                 if (conf["assistant_paste"] if ask else conf["auto_paste"]):
-                    self.stage.emit(t("Pasting…"))
+                    self.stage.emit(t("Pasting…"), operation_id)
                     paste.press(conf["paste_shortcut"])
                     if previous is not None:
                         time.sleep(0.35)
                         paste.copy_bytes(previous)
 
-            cfg.append_history({
+            history_entry = {
                 "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "duration": round(duration, 1),
                 "elapsed": round(time.monotonic() - started, 1),
@@ -157,21 +173,25 @@ class Pipeline(QObject):
                 "assistant_model": conf["assistant_model"] if ask else "",
                 "raw": raw,
                 "text": text,
-            })
-            try:
-                cfg.trim_history(conf["history_limit"])
-            except OSError as exc:
-                print(f"verbatim: could not trim the history: {exc}", file=sys.stderr)
-            self.finished.emit(raw, text, warning)
+            }
+            if conf["history_enabled"]:
+                cfg.append_history(history_entry)
+                try:
+                    cfg.trim_history(conf["history_limit"])
+                except OSError as exc:
+                    print(f"wordarc: could not trim the history: {exc}", file=sys.stderr)
+            self.finished.emit(raw, text, warning, operation_id)
 
-        except assistant.Cancelled:
-            self.cancelled.emit()
+        except (assistant.Cancelled, api.Cancelled):
+            self.cancelled.emit(operation_id)
         except (api.ApiError, paste.PasteError, assistant.AssistantError) as exc:
-            print(f"verbatim: {exc}", file=sys.stderr)
-            self.failed.emit(str(exc))
+            _log.warning("pipeline failed (%s)", type(exc).__name__)
+            print(f"wordarc: {exc}", file=sys.stderr)
+            self.failed.emit(str(exc), operation_id)
         except Exception as exc:  # never fail silently
+            _log.exception("unexpected pipeline error")
             traceback.print_exc()
-            self.failed.emit(t("Unexpected error: {error}", error=exc))
+            self.failed.emit(t("Unexpected error: {error}", error=exc), operation_id)
         finally:
             self._discard(wav_path)
 

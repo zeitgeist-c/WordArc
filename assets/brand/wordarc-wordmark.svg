@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 180">
+  <defs>
+    <linearGradient id="aurora" x1="20" y1="140" x2="170" y2="35" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+  </defs>
+  <path d="M22 64 L45 132 L73 82 L101 132 L129 61 C140 39 165 36 173 54 C179 70 165 85 149 86"
+        fill="none" stroke="url(#aurora)" stroke-width="14"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="149" cy="86" r="5.5" fill="#22D3EE"/>
+  <text x="208" y="119" fill="#F3F6FC" font-family="Segoe UI Variable, Segoe UI, sans-serif"
+        font-size="82" font-weight="700" letter-spacing="-3">WordArc</text>
+</svg>

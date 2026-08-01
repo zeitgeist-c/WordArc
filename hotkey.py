@@ -44,10 +44,16 @@ def parse_shortcut(text):
         if part in MODS:
             mods |= MODS[part]
         elif part in KEYS:
+            if vk:
+                return 0, 0
             vk = KEYS[part]
         elif len(part) == 1 and part.isalpha():
+            if vk:
+                return 0, 0
             vk = ord(part.upper())
         elif len(part) == 1 and part.isdigit():
+            if vk:
+                return 0, 0
             vk = ord(part)
         else:
             return 0, 0
@@ -90,16 +96,24 @@ class WindowsHotkey(QObject):
             return False
         QCoreApplication.processEvents()
         self._widget = _HotkeyWindow(self)
+        success = 0
         for name, (mods, vk, sc) in registered.items():
             self._next_id += 1
             id_ = self._next_id
-            self._ids[id_] = name
-            self._names[name] = (mods, vk)
             if not user32.RegisterHotKey(self._widget.hwnd, id_, mods, vk):
                 self.failed.emit(
                     t("Could not register the shortcut. Another program may already "
                       "be using it: {shortcut}", shortcut=sc))
-        return True
+                continue
+            self._ids[id_] = name
+            self._names[name] = (mods, vk)
+            success += 1
+        for sc in failed:
+            self.failed.emit(t("Could not parse the shortcut: {shortcut}", shortcut=sc))
+        if not success:
+            self._widget.close()
+            self._widget = None
+        return bool(success)
 
     def stop(self):
         if self._widget is None:
@@ -128,8 +142,7 @@ class _HotkeyWindow(QWidget):
 
     def nativeEvent(self, event_type, message):
         try:
-            import ctypes
-            msg = w.MSG.from_buffer_copy(bytes(message))
+            msg = ctypes.cast(int(message), ctypes.POINTER(w.MSG)).contents
             if msg.message == WM_HOTKEY:
                 id_ = msg.wParam
                 name = self.owner._ids.get(id_)

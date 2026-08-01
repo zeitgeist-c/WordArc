@@ -1,0 +1,42 @@
+param([string]$Python = "python")
+
+$ErrorActionPreference = "Stop"
+$ExpectedFfmpegVersion = "8.1.1-essentials_build-www.gyan.dev"
+$ExpectedFfmpegSha256 = "228D7A8556258DE907FDB55F36850078EBC7680B84EC30D84EA02E99BEC1D1EB"
+$Ffmpeg = Join-Path $PSScriptRoot "ffmpeg.exe"
+
+if (-not (Test-Path -LiteralPath $Ffmpeg)) {
+    throw "ffmpeg.exe is missing from the project root."
+}
+$VersionLine = (& $Ffmpeg -version 2>&1 | Select-Object -First 1)
+if ($VersionLine -notlike "ffmpeg version $ExpectedFfmpegVersion*") {
+    throw "ffmpeg.exe version mismatch. Expected $ExpectedFfmpegVersion, got: $VersionLine"
+}
+$ActualHash = (Get-FileHash -LiteralPath $Ffmpeg -Algorithm SHA256).Hash
+if ($ActualHash -ne $ExpectedFfmpegSha256) {
+    throw "ffmpeg.exe hash mismatch. Expected $ExpectedFfmpegSha256, got $ActualHash."
+}
+
+& (Join-Path $PSScriptRoot "check.ps1") -Python $Python -Audit
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+# Some Windows extraction/scanner paths leave PyInstaller's generated cache
+# read-only. Clear that attribute only inside this project's disposable work dir.
+$PyInstallerWork = Join-Path $PSScriptRoot "build\wordarc"
+if (Test-Path -LiteralPath $PyInstallerWork) {
+    Get-ChildItem -LiteralPath $PyInstallerWork -Recurse -Force | ForEach-Object {
+        $_.Attributes = $_.Attributes -band (-bnot [IO.FileAttributes]::ReadOnly)
+    }
+    $WorkItem = Get-Item -LiteralPath $PyInstallerWork -Force
+    $WorkItem.Attributes = $WorkItem.Attributes -band (-bnot [IO.FileAttributes]::ReadOnly)
+}
+
+& $Python (Join-Path $PSScriptRoot "tools\build_brand_assets.py")
+if ($LASTEXITCODE -ne 0) { throw "Brand asset generation failed." }
+& $Python -m PyInstaller --clean --noconfirm (Join-Path $PSScriptRoot "wordarc.spec")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+if (-not (Test-Path (Join-Path $PSScriptRoot "dist\wordarc.exe"))) {
+    throw "Expected dist\wordarc.exe was not produced."
+}
+Write-Host "Build completed: dist\wordarc.exe" -ForegroundColor Green

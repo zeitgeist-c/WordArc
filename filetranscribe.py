@@ -68,7 +68,7 @@ class FileTranscriber(QObject):
         conf = self.conf
         workdir = None
         try:
-            workdir = tempfile.mkdtemp(prefix="verbatim-file-")
+            workdir = tempfile.mkdtemp(prefix="wordarc-file-")
             self.progress.emit(t("Converting audio…"))
             wav_path = _to_wav(path, workdir)
             self._check()
@@ -90,6 +90,7 @@ class FileTranscriber(QObject):
                     api_key, model, chunk_path,
                     language=conf["language"],
                     prompt=conf["transcribe_prompt"],
+                    should_stop=self._stop.is_set,
                 )
                 if timestamps:
                     stamp = format_timestamp(offset)
@@ -106,7 +107,7 @@ class FileTranscriber(QObject):
 
             self.finished.emit(text, segments)
 
-        except Cancelled:
+        except (Cancelled, api.Cancelled):
             self.progress.emit(t("Stopped."))
         except (api.ApiError, OSError, subprocess.SubprocessError, wave.Error) as exc:
             self.failed.emit(str(exc))
@@ -126,6 +127,7 @@ class FileTranscriber(QObject):
                 conf["cleanup_model"],
                 prompt,
                 reasoning=conf["cleanup_reasoning"],
+                should_stop=self._stop.is_set,
             ))
         return ("\n" if timestamps else "\n\n").join(out)
 

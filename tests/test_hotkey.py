@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 import hotkey
 
 class TestParseShortcut(unittest.TestCase):
@@ -34,6 +35,7 @@ class TestParseShortcut(unittest.TestCase):
     def test_unparsable(self):
         self.assertEqual(hotkey.parse_shortcut("ctrl+"), (0, 0))
         self.assertEqual(hotkey.parse_shortcut("banana"), (0, 0))
+        self.assertEqual(hotkey.parse_shortcut("Ctrl+A+B"), (0, 0))
     def test_ctrl_and_control_alias(self):
         m1, _ = hotkey.parse_shortcut("control+V")
         m2, _ = hotkey.parse_shortcut("ctrl+V")
@@ -43,6 +45,18 @@ class TestAlias(unittest.TestCase):
     def test_evdev_alias_exists(self):
         self.assertTrue(hasattr(hotkey, "EvdevHotkey"))
         self.assertIs(hotkey.EvdevHotkey, hotkey.WindowsHotkey)
+
+
+class TestRegistration(unittest.TestCase):
+    def test_all_conflicts_leave_listener_stopped(self):
+        widget = mock.Mock(hwnd=1)
+        listener = hotkey.WindowsHotkey()
+        with mock.patch.object(hotkey, "_HotkeyWindow", return_value=widget), \
+             mock.patch.object(hotkey.QCoreApplication, "processEvents"), \
+             mock.patch.object(hotkey.user32, "RegisterHotKey", return_value=0):
+            self.assertFalse(listener.start({"toggle": "Ctrl+Space"}))
+        self.assertFalse(listener.running)
+        widget.close.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()
