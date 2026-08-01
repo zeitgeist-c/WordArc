@@ -2,6 +2,7 @@
 """
 
 import json
+from enum import Enum
 import os
 import shutil
 import subprocess
@@ -60,6 +61,22 @@ class AssistantError(Exception):
 
 class Cancelled(Exception):
     pass
+
+
+class AgentPermission(str, Enum):
+    READ_ONLY = "read_only"
+    WRITE_ONCE = "write_once"
+
+
+class PermissionRequest:
+    """One-shot handoff between the worker and the UI confirmation."""
+    def __init__(self):
+        self.permission = None
+        self.event = threading.Event()
+
+    def resolve(self, permission):
+        self.permission = AgentPermission(permission) if permission else None
+        self.event.set()
 
 
 def provider(conf):
@@ -134,14 +151,20 @@ def session_age():
 
 # --- the call -------------------------------------------------------------
 
-def working_dir(conf):
+def working_dir(conf, permission=AgentPermission.READ_ONLY):
     wanted = conf["assistant_dir"].strip()
     if wanted and os.path.isdir(os.path.expanduser(wanted)):
         return os.path.expanduser(wanted)
-    return os.path.expanduser("~")
+    if permission == AgentPermission.WRITE_ONCE:
+        raise AssistantError(t(
+            "Choose a valid working directory in Settings before allowing changes."))
+    fallback = cfg.DATA_DIR / "assistant-workspace"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return str(fallback)
 
 
-def ask(prompt, conf, on_stage=None, should_stop=None):
+def ask(prompt, conf, on_stage=None, should_stop=None,
+        permission=AgentPermission.READ_ONLY):
     """Run the prompt through the configured agent. Returns (answer, warning).
 
     `warning` is set when the answer arrived but something about the run should
@@ -159,13 +182,15 @@ def ask(prompt, conf, on_stage=None, should_stop=None):
     run = _ask_claude if name == "claude" else _ask_codex
     session = read_session(name, conf["assistant_session_minutes"] * 60)
     try:
-        return run(prompt, conf, session, on_stage, should_stop)
+        return run(prompt, conf, session, on_stage, should_stop,
+                   AgentPermission(permission))
     except _SessionGone:
         # The conversation it pointed at is not there any more: the history was
         # cleared, or it was started somewhere else. Say nothing and start over,
         # because from the outside this is just the first command of the day.
         clear_session()
-        return run(prompt, conf, "", on_stage, should_stop)
+        return run(prompt, conf, "", on_stage, should_stop,
+                   AgentPermission(permission))
 
 
 class _SessionGone(Exception):
@@ -174,12 +199,13 @@ class _SessionGone(Exception):
 
 # --- Claude Code ----------------------------------------------------------
 
-def _ask_claude(prompt, conf, session, on_stage, should_stop):
+def _ask_claude(prompt, conf, session, on_stage, should_stop, permission):
     cmd = [
         "claude", "-p", prompt,
         "--output-format", "stream-json", "--verbose",
         "--model", conf["assistant_model"],
-        "--permission-mode", conf["assistant_permission_mode"],
+        "--permission-mode", ("auto" if permission == AgentPermission.WRITE_ONCE
+                               else "manual"),
         "--append-system-prompt", conf.assistant_prompt(),
     ]
     effort = CLAUDE_EFFORT.get(conf["assistant_reasoning"], "")
@@ -207,7 +233,7 @@ def _ask_claude(prompt, conf, session, on_stage, should_stop):
                 found["answer"] = answer
             found["warning"] = _denial_warning(event)
 
-    code, stderr = _stream(cmd, conf, on_event, should_stop)
+    code, stderr = _stream(cmd, conf, on_event, should_stop, permission)
     return _conclude(found, code, stderr, session, "Claude")
 
 
@@ -235,12 +261,14 @@ def _denial_warning(event):
 
 # --- Codex ----------------------------------------------------------------
 
-def _ask_codex(prompt, conf, session, on_stage, should_stop):
+def _ask_codex(prompt, conf, session, on_stage, should_stop, permission):
     # Codex takes no system prompt of its own, so the instruction rides along in
     # front of the command, kept apart from it so the two are not read as one.
     body = f"{conf.assistant_prompt()}\n\n---\n\n{prompt}"
+    sandbox = ("workspace-write" if permission == AgentPermission.WRITE_ONCE
+               else "read-only")
     settings = [
-        "-c", f'sandbox_mode="{conf["assistant_codex_sandbox"]}"',
+        "-c", f'sandbox_mode="{sandbox}"',
         "-c", 'approval_policy="never"',   # there is nobody here to approve
         "--skip-git-repo-check",
         "--json",
@@ -275,7 +303,7 @@ def _ask_codex(prompt, conf, session, on_stage, should_stop):
             found["failure"] = (error.get("message") if isinstance(error, dict)
                                 else str(error)) or t("Codex ended with an error.")
 
-    code, stderr = _stream(cmd, conf, on_event, should_stop)
+    code, stderr = _stream(cmd, conf, on_event, should_stop, permission)
     return _conclude(found, code, stderr, session, "Codex")
 
 
@@ -290,7 +318,8 @@ def _codex_label(item):
 
 # --- running a CLI --------------------------------------------------------
 
-def _stream(cmd, conf, on_event, should_stop):
+def _stream(cmd, conf, on_event, should_stop,
+            permission=AgentPermission.READ_ONLY):
     """Run cmd, hand every JSON line it prints to on_event.
 
     Returns (exit code, stderr). Raises Cancelled when the stop was asked for,
@@ -298,7 +327,7 @@ def _stream(cmd, conf, on_event, should_stop):
     """
     try:
         proc = subprocess.Popen(
-            cmd, cwd=working_dir(conf), stdin=subprocess.DEVNULL,
+            cmd, cwd=working_dir(conf, permission), stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace", bufsize=1,
         )

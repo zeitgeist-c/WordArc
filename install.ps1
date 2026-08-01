@@ -1,44 +1,30 @@
-# Verbatim installer for Windows: Start Menu shortcut + autostart.
-param([string]$Shortcut = "Ctrl+Space")
-
+# WordArc installer for Windows: Start Menu shortcut + autostart.
 $ErrorActionPreference = "Stop"
-$AppDir = "$env:LOCALAPPDATA\Programs\Verbatim"
-$Exe = "$AppDir\verbatim.exe"
+$AppDir = "$env:LOCALAPPDATA\Programs\WordArc"
+$Exe = "$AppDir\wordarc.exe"
 $StartMenu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
-$ShortcutPath = "$StartMenu\Verbatim.lnk"
+$ShortcutPath = "$StartMenu\WordArc.lnk"
+$LegacyShortcut = "$StartMenu\Verbatim.lnk"
 $AutostartKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 
-Write-Host "Installing Verbatim" -Foreground Cyan
-Write-Host "----------------"
-
-New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
-if (Test-Path "$PSScriptRoot\verbatim.exe") {
-    Copy-Item "$PSScriptRoot\verbatim.exe" $Exe -Force
-    Write-Host "  [OK] verbatim.exe copied to $Exe"
-} elseif (Test-Path "$PSScriptRoot\verbatim.py") {
-    Write-Host "  [!] verbatim.exe not found next to install.ps1; run 'pyinstaller verbatim.spec' first."
-} else {
-    Write-Host "  [!] No verbatim.exe or verbatim.py found here."
-    exit 1
+Write-Host "Installing WordArc" -Foreground Cyan
+New-Item -ItemType Directory -Path $AppDir -Force | Out-Null
+if (-not (Test-Path "$PSScriptRoot\wordarc.exe")) {
+    throw "wordarc.exe was not found next to install.ps1; run .\build.ps1 first."
 }
+Copy-Item "$PSScriptRoot\wordarc.exe" $Exe -Force
 
-$Ws = New-Object -ComObject WScript.Shell
-$lnk = $Ws.CreateShortcut($ShortcutPath)
-$lnk.TargetPath = $Exe
-$lnk.WorkingDirectory = $AppDir
-$lnk.IconLocation = "$Exe,0"
-$lnk.Save()
-Write-Host "  [OK] Start Menu shortcut created"
+$Shell = New-Object -ComObject WScript.Shell
+$Shortcut = $Shell.CreateShortcut($ShortcutPath)
+$Shortcut.TargetPath = $Exe
+$Shortcut.WorkingDirectory = $AppDir
+$Shortcut.IconLocation = "$Exe,0"
+$Shortcut.Save()
 
-$existing = Get-ItemProperty -Path $AutostartKey -Name "Verbatim" -ErrorAction SilentlyContinue
-if (-not $existing) {
-    New-ItemProperty -Path $AutostartKey -Name "Verbatim" -Value $Exe -PropertyType String | Out-Null
-    Write-Host "  [OK] Autostart entry added"
-} else {
-    Set-ItemProperty -Path $AutostartKey -Name "Verbatim" -Value $Exe
-    Write-Host "  [OK] Autostart entry updated"
-}
+New-ItemProperty -Path $AutostartKey -Name "WordArc" -Value $Exe -PropertyType String -Force | Out-Null
+# Remove only obsolete launch points after WordArc launch points exist.
+# Legacy settings and recordings deliberately remain available as a rollback copy.
+Remove-ItemProperty -Path $AutostartKey -Name "Verbatim" -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $LegacyShortcut -Force -ErrorAction SilentlyContinue
 
-Write-Host ""
-Write-Host "  Done. Start it from the Start Menu, or run verbatim.exe directly." -Foreground Green
-Write-Host "  The settings window opens on first run; add your Gemini or OpenRouter keys."
+Write-Host "WordArc installed. Start it from the Start Menu or run wordarc.exe." -ForegroundColor Green

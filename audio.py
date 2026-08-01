@@ -2,9 +2,11 @@
 
 import array
 import math
+import os
 import queue
 import tempfile
 import threading
+import time
 import wave
 
 import sounddevice as sd
@@ -12,6 +14,7 @@ import sounddevice as sd
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from i18n import t
+from audio_capture import AudioCapture
 
 RATE = 16000
 CHANNELS = 1
@@ -20,6 +23,7 @@ CHUNK_FRAMES = 1024
 CHUNK_BYTES = CHUNK_FRAMES * SAMPLE_WIDTH * CHANNELS
 CHUNK_SECONDS = CHUNK_FRAMES / RATE
 MIN_FRAMES = int(RATE * 0.25)
+CHANNEL_STALL_SECONDS = 5.0
 
 # Force WASAPI when present; fall back silently otherwise.
 try:
@@ -62,7 +66,7 @@ def stereo_levels(chunk):
 
 
 def write_wav(pcm, rate=RATE, channels=CHANNELS, width=SAMPLE_WIDTH):
-    fd, path = tempfile.mkstemp(prefix="verbatim-", suffix=".wav")
+    fd, path = tempfile.mkstemp(prefix="wordarc-", suffix=".wav")
     with open(fd, "wb") as raw, wave.open(raw, "wb") as wav:
         wav.setnchannels(channels)
         wav.setsampwidth(width)
@@ -101,6 +105,7 @@ class Recorder(QObject, _CaptureBase):
         QObject.__init__(self, parent)
         _CaptureBase.__init__(self)
         self._device = None
+        self._error_reported = False
 
     def start(self, target="", max_seconds=300):
         if self.active:
@@ -109,6 +114,7 @@ class Recorder(QObject, _CaptureBase):
         self._buffer = bytearray()
         self._rms = []
         self._cancelled = False
+        self._error_reported = False
         self._max_bytes = int(max_seconds * RATE * SAMPLE_WIDTH * CHANNELS)
         try:
             self._stream = sd.InputStream(
@@ -121,12 +127,17 @@ class Recorder(QObject, _CaptureBase):
             self.failed.emit(t("Could not open the microphone."))
 
     def _callback(self, indata, frames, time_info, status):
-        chunk, peak, _rms = self._on_data(indata, frames, time_info, status)
+        if status and not self._error_reported:
+            self._error_reported = True
+            self.failed.emit(t("The sound device stopped responding."))
+            return
+        _chunk, peak, _rms = self._on_data(indata, frames, time_info, status)
         self.level.emit(peak)
-        with self._lock:
-            too_long = len(self._buffer) >= self._max_bytes
-        if too_long:
-            self._stop_stream()
+        # The GUI timer calls stop() at the configured limit.  Stopping the
+        # stream here used to race with that call: stop() would then see a
+        # missing stream and never emit ``stopped``, leaving the UI busy
+        # forever.  Let the timer own the transition and accept at most one
+        # timer interval of extra audio.
 
     def _stop_stream(self):
         if self._stream is not None:
@@ -167,6 +178,7 @@ class MeetingRecorder(QObject, _CaptureBase):
     levels = pyqtSignal(float, float)
     stopped = pyqtSignal(str, float)
     died = pyqtSignal()
+    limit_reached = pyqtSignal()
     failed = pyqtSignal(str)
     active = property(lambda self: self._mic_stream is not None)
 
@@ -179,8 +191,10 @@ class MeetingRecorder(QObject, _CaptureBase):
         self._mic_stream = None
         self._sys_stream = None
         self._writer_thread = None
-        self._q = queue.Queue()      # tuples (which_channel, bytes)
+        self._q = queue.Queue(maxsize=256)  # tuples (which_channel, bytes, peak)
         self._stopped_evt = threading.Event()
+        self._error_reported = False
+        self._error_lock = threading.Lock()
 
     def start(self, path, mic_target="", system_target="", max_seconds=14400):
         if self.active:
@@ -188,13 +202,21 @@ class MeetingRecorder(QObject, _CaptureBase):
         self._path = path
         self._frames = 0
         self._cancelled = False
+        self._error_reported = False
+        # stop() leaves the event set and callbacks can leave queue entries
+        # behind.  Both belong to one recording only; reusing them made every
+        # meeting after the first end immediately or consume stale audio.
+        self._stopped_evt.clear()
+        self._q = queue.Queue(maxsize=256)
         self._max_frames = int(max_seconds * RATE)
         try:
             self._wav = wave.open(path, "wb")
             self._wav.setnchannels(2)
             self._wav.setsampwidth(SAMPLE_WIDTH)
             self._wav.setframerate(RATE)
-        except OSError as exc:
+        except (OSError, wave.Error) as exc:
+            self._cleanup_file()
+            self._remove_partial()
             self.failed.emit(t("Could not start recording: {error}", error=exc))
             return
         mic_dev = _match_input_device(mic_target)
@@ -207,12 +229,14 @@ class MeetingRecorder(QObject, _CaptureBase):
             self._mic_stream.start()
         except Exception:
             self._cleanup_file()
+            self._mic_stream = None
+            self._remove_partial()
             self.failed.emit(t("Could not open the microphone."))
             return
         if sys_dev is None:
             try:
-                import wasapi_loopback
-                self._sys_stream = wasapi_loopback.open(RATE)
+                self._sys_stream = AudioCapture(RATE, CHUNK_FRAMES).open_loopback(
+                    self._fallback_sys_cb, system_target)
             except Exception:
                 pass
         else:
@@ -227,60 +251,92 @@ class MeetingRecorder(QObject, _CaptureBase):
                 # No system capture is not fatal — record a silent right channel.
         if self._sys_stream is None:
             self._cleanup_file()
-            self.failed.emit(t("Could not start the system loopback"))
             self._mic_stream.stop()
             self._mic_stream = None
+            self._remove_partial()
+            self.failed.emit(t("Could not start the system loopback"))
             return
         self._writer_thread = threading.Thread(target=self._writer, daemon=True)
         self._writer_thread.start()
 
     def _mic_cb(self, indata, frames, time_info, status):
+        if status:
+            self._capture_failed()
+            return
         b = indata.tobytes()
         peak, _ = _peak_rms(b)
-        self._q.put(("m", b, peak))
+        self._enqueue("m", b, peak)
 
     def _sys_cb(self, indata, frames, time_info, status):
+        if status:
+            self._capture_failed()
+            return
         b = indata.tobytes()
         peak = _peak_only(b)
-        self._q.put(("s", b, peak))
+        self._enqueue("s", b, peak)
+
+    def _fallback_sys_cb(self, data, error=None):
+        if error is not None or data is None:
+            self._capture_failed()
+            return
+        self._enqueue("s", data, _peak_only(data))
+
+    def _enqueue(self, channel, data, peak):
+        try:
+            self._q.put_nowait((channel, data, peak))
+        except queue.Full:
+            self._capture_failed()
+
+    def _capture_failed(self):
+        with self._error_lock:
+            if self._error_reported or self._stopped_evt.is_set():
+                return
+            self._error_reported = True
+        self.died.emit()
 
     def _writer(self):
         pending_m, pending_s = b"", b""
         last_m_peak, last_s_peak = 0.0, 0.0
-        while not self._stopped_evt.is_set():
-            try:
-                which, b, peak = self._q.get(timeout=0.2)
-            except queue.Empty:
-                continue
-            if which == "m":
-                pending_m += b
-                last_m_peak = peak
-            else:
-                pending_s += b
-                last_s_peak = peak
-            # interleave at the smallest common length
-            n = min(len(pending_m), len(pending_s)) & ~3
-            if n:
-                cm = pending_m[:n]
-                cs = pending_s[:n]
-                samples = array.array("h")
-                samples.frombytes(cm)
-                left = samples[:]
-                samples2 = array.array("h")
-                samples2.frombytes(cs)
-                right = samples2[:]
-                stereo = array.array("h")
-                for l, r in zip(left, right):
-                    stereo.append(l)
-                    stereo.append(r)
-                self._wav.writeframes(stereo.tobytes())
-                self._frames += n // 2
-                pending_m = pending_m[n:]
-                pending_s = pending_s[n:]
-                self.levels.emit(last_m_peak, last_s_peak)
-                if self._frames >= self._max_frames:
-                    self._stopped_evt.set()
-                    return
+        unmatched_since = None
+        try:
+            while not self._stopped_evt.is_set():
+                try:
+                    which, b, peak = self._q.get(timeout=0.2)
+                except queue.Empty:
+                    if (unmatched_since is not None
+                            and time.monotonic() - unmatched_since
+                            > CHANNEL_STALL_SECONDS):
+                        raise OSError("one audio source stopped producing data")
+                    continue
+                if which == "m":
+                    pending_m += b
+                    last_m_peak = peak
+                else:
+                    pending_s += b
+                    last_s_peak = peak
+                if pending_m and pending_s:
+                    unmatched_since = None
+                elif pending_m or pending_s:
+                    unmatched_since = unmatched_since or time.monotonic()
+                    if time.monotonic() - unmatched_since > CHANNEL_STALL_SECONDS:
+                        raise OSError("one audio source stopped producing data")
+                n = min(len(pending_m), len(pending_s)) & ~1
+                if n:
+                    left = array.array("h"); left.frombytes(pending_m[:n])
+                    right = array.array("h"); right.frombytes(pending_s[:n])
+                    stereo = array.array("h")
+                    for l, r in zip(left, right):
+                        stereo.append(l); stereo.append(r)
+                    self._wav.writeframes(stereo.tobytes())
+                    self._frames += n // 2
+                    pending_m = pending_m[n:]
+                    pending_s = pending_s[n:]
+                    self.levels.emit(last_m_peak, last_s_peak)
+                    if self._frames >= self._max_frames:
+                        self.limit_reached.emit()
+                        return
+        except Exception:
+            self._capture_failed()
 
     def _cleanup_file(self):
         if self._wav is not None:
@@ -290,18 +346,31 @@ class MeetingRecorder(QObject, _CaptureBase):
                 pass
             self._wav = None
 
+    def _remove_partial(self):
+        try:
+            os.unlink(self._path)
+        except OSError:
+            pass
+
     def cancel(self):
         self._cancelled = True
         self.stop()
+        self._remove_partial()
 
     def stop(self):
-        try:
-            if self._mic_stream is not None:
+        if self._mic_stream is not None:
+            try:
                 self._mic_stream.stop()
-            if isinstance(self._sys_stream, sd.InputStream) and self._sys_stream is not None:
-                self._sys_stream.stop()
-        except Exception:
-            pass
+            except Exception:
+                pass
+        if self._sys_stream is not None:
+            try:
+                closer = getattr(self._sys_stream, "stop", None) or getattr(
+                    self._sys_stream, "close", None)
+                if closer:
+                    closer()
+            except Exception:
+                pass
         self._stopped_evt.set()
         if self._writer_thread is not None:
             self._writer_thread.join(timeout=3)
@@ -383,12 +452,13 @@ def list_monitors():
     """
     dev = _match_loopback_device("")
     if dev is None:
-        return []
+        return AudioCapture.output_devices()
     d = sd.query_devices(dev)
     return [(d["name"], d["name"])]
 
 
 def default_monitor():
     dev = _match_loopback_device("")
-    name = sd.query_devices(dev)["name"] if dev is not None else ""
-    return name
+    if dev is not None:
+        return sd.query_devices(dev)["name"]
+    return AudioCapture.default_output()

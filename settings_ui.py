@@ -1,16 +1,18 @@
 """Settings window."""
 
 import os
+import logging
 import shutil
 import threading
 
 from PyQt6.QtCore import Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import QDesktopServices, QGuiApplication, QKeySequence, QShortcut
+from PyQt6.QtGui import (QDesktopServices, QGuiApplication, QIcon, QKeySequence,
+                         QShortcut)
 from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-    QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
-    QPushButton, QScrollArea, QSpinBox, QTabWidget, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSpinBox, QStyle, QTabWidget, QVBoxLayout, QWidget,
 )
 
 import api
@@ -20,6 +22,8 @@ import config as cfg
 import filetranscribe
 import hotkey
 import meeting
+import theme
+from brand import BRAND, brand_asset
 from filetranscribe import FileTranscriber
 from i18n import t
 
@@ -31,15 +35,14 @@ LANGUAGES = [
 CORNERS = ["bottom-left", "bottom-right", "top-left", "top-right"]
 # Starting points for the model box; "Fetch model list" replaces them with
 # whatever Gemini offers today.
-TRANSCRIBE_MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+TRANSCRIBE_MODELS = ["gemini-3.5-flash-lite", "gemini-3.6-flash"]
 CLEANUP_MODELS = [
-    "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite", "gemini-3.6-flash",
 ]
 # Minutes are a harder job than cleanup: an hour of talk has to be read whole
 # and turned into decisions, so the starting points are the larger models.
 MEETING_MODELS = [
-    "gemini-3.5-flash-lite", "gemini-3.1-pro-preview",
-    "gemini-3.1-flash-lite",
+    "gemini-3.6-flash", "gemini-3.5-flash-lite",
 ]
 ASSISTANT_PROVIDERS = [
     ("Claude Code", "claude"), ("Codex", "codex"),
@@ -51,15 +54,11 @@ CODEX_MODELS = ["gpt-5.4-codex", "gpt-5.4", "o4-mini"]
 # What Claude Code may do without being able to ask. It cannot ask: there is no
 # window to answer in, so a mode that would have prompted denies instead.
 PERMISSION_MODES = [
-    ("Decide on its own, with the safety checks on", "auto"),
-    ("Allow everything", "bypassPermissions"),
     ("Only what needs no permission", "manual"),
 ]
 # Codex confines the commands it runs instead of asking about them.
 CODEX_SANDBOXES = [
-    ("Read anything, write in the working directory", "workspace-write"),
     ("Read only", "read-only"),
-    ("No sandbox at all", "danger-full-access"),
 ]
 MEETING_STATUS = {
     "recorded": "waiting to be written up",
@@ -105,28 +104,64 @@ class SettingsWindow(QDialog):
         # Each provider keeps its own transcription model, so switching the
         # provider back and forth never overwrites the other one's.
         self.transcriber = FileTranscriber(conf, self)
-        self.setWindowTitle(t("Verbatim Settings"))
-        self.resize(680, 640)
+        self.setObjectName("settingsRoot")
+        self.setWindowTitle(t("WordArc Settings"))
+        self.setWindowIcon(QIcon(str(brand_asset("wordarc.ico"))))
+        self.resize(920, 700)
+        self.setMinimumSize(760, 560)
+        self._theme_syncing = False
+
+        header = QWidget()
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(2, 0, 2, 8)
+        logo = QLabel()
+        logo.setPixmap(QIcon(str(brand_asset("wordarc-app.svg"))).pixmap(44, 44))
+        logo.setFixedSize(48, 48)
+        header_layout.addWidget(logo)
+        identity = QVBoxLayout()
+        name = QLabel(BRAND.name)
+        name.setObjectName("brandName")
+        identity.addWidget(name)
+        subtitle = QLabel(t("Dictation, meetings and agents — in one flow."))
+        subtitle.setObjectName("muted")
+        identity.addWidget(subtitle)
+        header_layout.addLayout(identity)
+        header_layout.addStretch()
+        header_layout.addWidget(QLabel(t("Theme")))
+        self.header_theme = self._theme_combo()
+        header_layout.addWidget(self.header_theme)
 
         tabs = QTabWidget(self)
-        tabs.addTab(self._general_tab(), t("General"))
-        tabs.addTab(self._api_tab(), t("API and models"))
-        tabs.addTab(self._prompt_tab(), t("Cleanup rules"))
-        tabs.addTab(self._assistant_tab(), t("Agent"))
-        tabs.addTab(self._meeting_tab(), t("Meeting"))
-        tabs.addTab(self._minutes_tab(), t("Minutes"))
-        tabs.addTab(self._file_tab(), t("Audio file"))
-        tabs.addTab(self._shortcut_tab(), t("Shortcut"))
-        tabs.addTab(self._history_tab(), t("History"))
+        self.tabs = tabs
+        tabs.setUsesScrollButtons(True)
+        tabs.setDocumentMode(True)
+        pages = [
+            (self._general_tab(), "General", "Core behavior, audio input and appearance.", QStyle.StandardPixmap.SP_ComputerIcon),
+            (self._api_tab(), "API and models", "Gemini credentials and model choices.", QStyle.StandardPixmap.SP_DriveNetIcon),
+            (self._prompt_tab(), "Cleanup rules", "Control how spoken text is polished.", QStyle.StandardPixmap.SP_FileDialogDetailedView),
+            (self._assistant_tab(), "Agent", "Run spoken requests with explicit permissions.", QStyle.StandardPixmap.SP_CommandLink),
+            (self._meeting_tab(), "Meeting", "Capture microphone and system audio reliably.", QStyle.StandardPixmap.SP_MediaVolume),
+            (self._minutes_tab(), "Minutes", "Review and retry meeting summaries.", QStyle.StandardPixmap.SP_FileDialogContentsView),
+            (self._file_tab(), "Audio file", "Transcribe an existing recording.", QStyle.StandardPixmap.SP_DialogOpenButton),
+            (self._shortcut_tab(), "Shortcut", "Choose global keyboard shortcuts.", QStyle.StandardPixmap.SP_ArrowUp),
+            (self._history_tab(), "History", "Control local plaintext transcript retention.", QStyle.StandardPixmap.SP_FileDialogListView),
+        ]
+        for page, title, description, icon_kind in pages:
+            tabs.addTab(self._wrap_page(page, title, description),
+                        self.style().standardIcon(icon_kind), t(title))
 
         # Save keeps the window open, so the window is closed with the titlebar
         # cross (or Escape) instead. A "Cancel" next to it would be a lie: the
         # settings are already on disk by then.
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save)
         buttons.button(QDialogButtonBox.StandardButton.Save).setText(t("Save"))
+        buttons.button(QDialogButtonBox.StandardButton.Save).setObjectName("primaryButton")
         buttons.accepted.connect(self._save)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(8)
+        layout.addWidget(header)
         layout.addWidget(tabs)
         layout.addWidget(buttons)
 
@@ -142,6 +177,53 @@ class SettingsWindow(QDialog):
             self.meetings.failed.connect(self._on_minutes_failed)
         self._load()
 
+    def _theme_combo(self):
+        combo = QComboBox()
+        combo.setMinimumWidth(132)
+        combo.addItem(t("Dark"), "dark")
+        combo.addItem(t("Light"), "light")
+        combo.addItem(t("System"), "system")
+        combo.currentIndexChanged.connect(self._theme_changed)
+        return combo
+
+    def _wrap_page(self, page, title, description):
+        page.setObjectName("tabCard")
+        container = QWidget()
+        container.setObjectName("page")
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(4, 16, 4, 4)
+        heading = QLabel(t(title))
+        heading.setObjectName("pageTitle")
+        layout.addWidget(heading)
+        detail = QLabel(t(description))
+        detail.setObjectName("pageDescription")
+        detail.setWordWrap(True)
+        layout.addWidget(detail)
+        scroller = QScrollArea()
+        scroller.setFrameShape(QFrame.Shape.NoFrame)
+        scroller.setWidgetResizable(True)
+        scroller.setWidget(page)
+        layout.addWidget(scroller, 1)
+        return container
+
+    def _theme_changed(self, _index):
+        if self._theme_syncing or not hasattr(self, "header_theme"):
+            return
+        sender = self.sender()
+        mode = sender.currentData() or "dark"
+        self._theme_syncing = True
+        for combo in (self.header_theme, getattr(self, "general_theme", None)):
+            if combo is not None:
+                self._select_data(combo, mode)
+        self._theme_syncing = False
+        self.conf["theme_mode"] = mode
+        theme.ThemeManager.apply(mode, QGuiApplication.instance())
+        try:
+            self.conf.save()
+        except OSError:
+            logging.getLogger("wordarc.ui").warning(
+                "theme changed but could not be persisted")
+
     # ---- tabs ----------------------------------------------------------
 
     def _general_tab(self):
@@ -152,9 +234,12 @@ class SettingsWindow(QDialog):
         for label, code in UI_LANGUAGES:
             self.ui_language.addItem(t(label), code)
         self.ui_language.setToolTip(
-            t("Restart Verbatim for the language change to reach every window.")
+            t("Restart WordArc for the language change to reach every window.")
         )
         form.addRow(t("Interface language"), self.ui_language)
+
+        self.general_theme = self._theme_combo()
+        form.addRow(t("Theme"), self.general_theme)
 
         self.mic = QComboBox()
         self.mic.addItem(t("Default microphone"), "")
@@ -212,8 +297,11 @@ class SettingsWindow(QDialog):
         )
         form.addRow("", self.filter_hallucinations)
 
-        self.keep_audio = QCheckBox(t("Keep audio files (%LOCALAPPDATA%\\Verbatim\\recordings)"))
+        self.keep_audio = QCheckBox(t("Keep audio files (%LOCALAPPDATA%\\WordArc\\recordings)"))
         form.addRow("", self.keep_audio)
+        diagnostics = QPushButton(t("Open diagnostics folder"))
+        diagnostics.clicked.connect(self._open_diagnostics)
+        form.addRow("", diagnostics)
         return page
 
     def _api_tab(self):
@@ -571,6 +659,11 @@ class SettingsWindow(QDialog):
             "again from the Minutes tab. This is about the ones that worked."
         ))
         recording_form.addRow("", self.meeting_keep_audio)
+        privacy = QLabel(t(
+            "Meeting minutes and transcripts are stored as readable text files "
+            "under %LOCALAPPDATA%\\WordArc\\meetings."))
+        privacy.setWordWrap(True)
+        recording_form.addRow(privacy)
 
         self.meeting_shortcut = self._shortcut_box(t("none"))
         recording_form.addRow(t("Shortcut"), self.meeting_shortcut)
@@ -737,6 +830,8 @@ class SettingsWindow(QDialog):
     def _history_tab(self):
         page = QWidget()
         layout = QVBoxLayout(page)
+        self.history_enabled = QCheckBox(t("Store dictation history on this computer"))
+        layout.addWidget(self.history_enabled)
         self.history = QListWidget()
         self.history.setWordWrap(True)
         self.history.setSelectionMode(
@@ -757,6 +852,7 @@ class SettingsWindow(QDialog):
             "Once the history passes this many entries, the oldest one is dropped "
             "every time a new one arrives. Set it to 0 to keep everything."
         ))
+        self.history_enabled.toggled.connect(self.history_limit.setEnabled)
         limit_row = QHBoxLayout()
         limit_row.addWidget(QLabel(t("Keep at most")))
         limit_row.addWidget(self.history_limit)
@@ -822,6 +918,10 @@ class SettingsWindow(QDialog):
 
     def _load(self):
         conf = self.conf
+        self._theme_syncing = True
+        self._select_data(self.header_theme, conf["theme_mode"])
+        self._select_data(self.general_theme, conf["theme_mode"])
+        self._theme_syncing = False
         self._select_data(self.ui_language, conf["ui_language"])
         self._select_data(self.mic, conf["mic_target"])
         self._select_data(self.language, conf["language"])
@@ -835,7 +935,7 @@ class SettingsWindow(QDialog):
         self.filter_hallucinations.setChecked(conf["filter_hallucinations"])
         self.keep_audio.setChecked(conf["keep_audio"])
 
-        self.gemini_key.setText(conf["gemini_api_key"])
+        self.gemini_key.setText(conf.stored_gemini_key())
         self.transcribe_model.setCurrentText(conf["gemini_transcribe_model"])
         self.cleanup_enabled.setChecked(conf["cleanup_enabled"])
         self.cleanup_model.setCurrentText(conf["cleanup_model"])
@@ -885,6 +985,8 @@ class SettingsWindow(QDialog):
 
         self.shortcut.setCurrentText(conf["shortcut"])
 
+        self.history_enabled.setChecked(bool(conf["history_enabled"]))
+        self.history_limit.setEnabled(self.history_enabled.isChecked())
         self.history_limit.setValue(max(0, int(conf["history_limit"])))
 
         self._refresh_shortcut_status()
@@ -896,6 +998,7 @@ class SettingsWindow(QDialog):
 
     def _save(self):
         conf = self.conf
+        conf["theme_mode"] = self.header_theme.currentData() or "dark"
         conf["ui_language"] = self.ui_language.currentData() or "auto"
         conf["mic_target"] = self.mic.currentData() or ""
         conf["language"] = self.language.currentData() or "auto"
@@ -909,7 +1012,14 @@ class SettingsWindow(QDialog):
         conf["filter_hallucinations"] = self.filter_hallucinations.isChecked()
         conf["keep_audio"] = self.keep_audio.isChecked()
 
-        conf["gemini_api_key"] = self.gemini_key.text().strip()
+        key = self.gemini_key.text().strip()
+        if not key:
+            try:
+                cfg.credential_store.delete()
+            except cfg.credential_store.CredentialError as exc:
+                QMessageBox.warning(self, t("Error"), str(exc))
+                return
+        conf["gemini_api_key"] = key
         conf["gemini_transcribe_model"] = (self.transcribe_model.currentText().strip()
                                            or cfg.DEFAULTS["gemini_transcribe_model"])
 
@@ -930,16 +1040,14 @@ class SettingsWindow(QDialog):
         conf["assistant_provider"] = self.assistant_provider.currentData() or "claude"
         conf["assistant_model"] = (self.assistant_model.currentText().strip()
                                    or cfg.DEFAULTS["assistant_model"])
-        conf["assistant_permission_mode"] = (self.assistant_permission.currentData()
-                                             or "auto")
+        conf["assistant_permission_mode"] = "manual"
         # The editable box shows a label for "no choice", which must not be
         # stored as if it were a model id.
         codex_model = self.assistant_codex_model.currentText().strip()
         conf["assistant_codex_model"] = (
             "" if codex_model == t("Codex's own default") else codex_model
         )
-        conf["assistant_codex_sandbox"] = (self.assistant_codex_sandbox.currentData()
-                                            or "workspace-write")
+        conf["assistant_codex_sandbox"] = "read-only"
         conf["assistant_reasoning"] = self.assistant_reasoning.currentData() or ""
         conf["assistant_dir"] = self.assistant_dir.text().strip()
         conf["assistant_timeout"] = self.assistant_timeout.value()
@@ -971,16 +1079,21 @@ class SettingsWindow(QDialog):
         conf["file_cleanup"] = self.file_cleanup.isChecked()
 
         conf["shortcut"] = self.shortcut.currentText().strip() or "Ctrl+Space"
+        conf["history_enabled"] = self.history_enabled.isChecked()
         conf["history_limit"] = self.history_limit.value()
-        conf.save()
+        try:
+            conf.save()
+        except OSError as exc:
+            QMessageBox.warning(self, t("Error"), str(exc))
+            return
         # A lowered limit should bite now, not on the next dictation.
         try:
             cfg.trim_history(conf["history_limit"])
         except OSError as exc:
-                print(f"verbatim: could not trim the history ({exc})")
+            print(f"wordarc: could not trim the history ({exc})")
         self._load_history()  # the trim may just have dropped rows from the list
         self.applied.emit()
-        QMessageBox.information(self, t("Verbatim Settings"), t("Saved successfully."))
+        QMessageBox.information(self, t("WordArc Settings"), t("Saved successfully."))
 
     @staticmethod
     def _select_data(combo, value):
@@ -1203,6 +1316,10 @@ class SettingsWindow(QDialog):
         )
         if chosen:
             self.assistant_dir.setText(chosen)
+
+    def _open_diagnostics(self):
+        cfg.LOG_DIR.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(cfg.LOG_DIR)))
 
     # ---- minutes ---------------------------------------------------------
 

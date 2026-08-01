@@ -36,6 +36,17 @@ class TestProviderHelpers(unittest.TestCase):
         import assistant
         self.assertEqual(assistant.executable("claude"), "claude")
         self.assertEqual(assistant.executable("codex"), "codex")
+    def test_write_requires_explicit_directory(self):
+        import assistant
+        conf = {"assistant_dir": ""}
+        with self.assertRaises(assistant.AssistantError):
+            assistant.working_dir(conf, assistant.AgentPermission.WRITE_ONCE)
+    def test_permission_request_is_memory_only(self):
+        import assistant
+        request = assistant.PermissionRequest()
+        request.resolve(assistant.AgentPermission.READ_ONLY)
+        self.assertTrue(request.event.is_set())
+        self.assertEqual(request.permission, assistant.AgentPermission.READ_ONLY)
 
 if __name__ == "__main__":
     unittest.main()

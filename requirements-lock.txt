@@ -1,0 +1,9 @@
+# Known-working Windows runtime set. Regenerate deliberately after tests.
+PyQt6==6.11.0
+PyQt6-Qt6==6.11.1
+PyQt6-sip==13.11.1
+sounddevice==0.5.5
+SoundCard==0.4.6
+numpy==1.26.4
+cffi==2.0.0
+pycparser==3.0

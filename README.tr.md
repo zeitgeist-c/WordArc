@@ -1,47 +1,38 @@
-# Verbatim — Sesle yazı yazma (Windows)
+# WordArc — Windows için sesle yazma
 
-Küresel bir kısayola basın, konuşun, tekrar basın — temizlenmiş transkripsiyon imlecinizin olduğu yere yapıştırılır.
+WordArc konuşmayı düzenlenmiş metne dönüştürür, toplantı tutanağı için mikrofon ile sistem sesini kaydeder ve sesli komutları çalışma başına açık izinle Claude Code veya Codex'e iletebilir.
 
-## Hızlı başlangıç
+## Kurulum
 
-1. `verbatim.exe` dosyasını Sürümler sayfasından indirin (veya kaynaktan derleyin).
-2. Aynı klasörde `install.ps1` çalıştırarak Başlat Menüsü kısayolu ve otomatik başlatma ekleyin.
-3. Verbatim'i başlatın — ilk çalıştırmada ayarlar penceresi açılır.
-4. **Ayarlar → API** bölümüne Gemini API anahtarı ekleyin.
+1. `wordarc.exe` dosyasını indirin veya kaynaktan derleyin.
+2. `wordarc.exe` ile `install.ps1` dosyasını aynı klasöre koyup `install.ps1` çalıştırın.
+3. WordArc'ı başlatın. İlk çalıştırmada Ayarlar açılır.
 
-## Kullanım
+Varsayılan kısayol `Ctrl+Space` tuşudur: kaydı başlatmak ve yazıya çevirmek için birer kez basın. Dikte, ajan, toplantı ve ayarlar işlemlerine tepsi menüsünden de erişilebilir.
 
-| Eylem | Sonuç |
-|--------|--------|
-| `Ctrl+Boşluk` | Dikteyi başlat / durdur |
-| Konuşun, ardından `Ctrl+Boşluk` | Transkripsiyon imlece yapıştırılır |
-| Tepsi → Kaydı iptal et | Geçerli kaydı sil |
-| Tepsi → Asistan'a sor | Claude/Codex'e soru sorun |
-| Tepsi → Toplantı kaydet | Stereo toplantı kaydı (mikrofon + sistem sesi) |
-| Tepsi → Ayarlar | API anahtarları, kısayollar, dil, dosya transkripsiyonu |
-
-## Kaynaktan çalıştırma
+## Geliştirme
 
 ```powershell
-python -m pip install -r requirements.txt
-python verbatim.py
+python -m venv .venv
+.\.venv\Scripts\pip install -r requirements-lock.txt -r requirements-dev.txt
+python wordarc.py
 ```
-
-PyQt6, sounddevice, Python 3.10+ gereklidir.
-
-## PyInstaller ile derleme
 
 ```powershell
-python -m pip install pyinstaller
-python -m PyInstaller verbatim.spec
+.\check.ps1
+.\build.ps1
 ```
 
-Çıktı: `dist\verbatim.exe` (~110 MB, tek dosya).
+Çıktı `dist\wordarc.exe` olur. Build; sabitlenmiş FFmpeg sürümünü ve özetini doğrular, testleri/import kontrolünü ve bağımlılık denetimini çalıştırır, `sbom.json` üretir, deterministik WordArc ikonunu oluşturur ve PyInstaller paketini hazırlar.
 
-## Yapılandırma
+## Veri, gizlilik ve geçiş
 
-`%APPDATA%\Verbatim\config.json` konumunda saklanır. Ses çıktısı ve toplantı verileri `%LOCALAPPDATA%\Verbatim\` klasöründedir.
+Ayarlar `%APPDATA%\WordArc\config.json`; kayıtlar, toplantılar ve tanılama günlükleri `%LOCALAPPDATA%\WordArc\` altında tutulur. Gemini anahtarı Windows Credential Manager'da `WordArc/GeminiApiKey` adıyla saklanır.
 
-## Orijinal proje
+İlk açılışta eski Verbatim dizinlerindeki eksik dosyalar atomik biçimde kopyalanır. Eski kimlik bilgisi yeni hedefe kopyalanıp doğrulandıktan sonra eski kayıt kaldırılır. WordArc'ta bulunan dosyaların üzerine yazılmaz ve eski dizinler silinmez; geri dönüş kopyası olarak kalır. `verbatim.py` bir sürüm boyunca uyumluluk giriş noktasıdır.
 
-Verbatim ilk olarak [yusufipk](https://github.com/yusufipk/dikte) tarafından Linux için geliştirilmiştir (GPL-3.0). Bu sürüm, aynı lisansla Windows'a taşınmış bir çataldır.
+Geçmiş yeni kurulumlarda kapalıdır. Açılırsa geçmiş ve toplantı metinleri yerel diskte okunabilir metin olarak saklanır. Başarılı toplantı ses kaydı varsayılan olarak silinir.
+
+Koyu tema varsayılandır; Açık ve Sistem temaları Ayarlar'dan anında değiştirilebilir. Marka SVG kaynakları `assets\brand` altındadır.
+
+WordArc GPL-3.0 lisanslıdır. Özgün Linux projesi [yusufipk](https://github.com/yusufipk/dikte) tarafından geliştirilmiştir.

@@ -1,4 +1,15 @@
-# Verbatim for Windows — Design Spec
+# WordArc for Windows — Original port design and current migration note
+
+> Historical note: this document described the original Verbatim port. The
+> shipped product is now WordArc (`wordarc.py`, `wordarc.exe`) and stores new
+> data under `%APPDATA%\WordArc` / `%LOCALAPPDATA%\WordArc`. Legacy names below
+> are retained as historical context; migration and compatibility behavior is
+> defined in `2026-08-01-reliability-hardening.md`.
+
+> Historical baseline: reliability and security behavior was superseded on
+> 2026-08-01 by `2026-08-01-reliability-hardening.md`. Gemini 2.0/OpenRouter
+> references and the original WASAPI fallback description are no longer
+> authoritative.
 
 - **Date:** 2026-07-30
 - **Source project:** [yusufipk/dikte](https://github.com/yusufipk/dikte) (Linux / KDE Plasma 6 / Wayland, GPL-3.0)

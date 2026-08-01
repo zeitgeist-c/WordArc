@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="22" y1="230" x2="236" y2="18" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111522"/>
+      <stop offset="1" stop-color="#090C12"/>
+    </linearGradient>
+    <linearGradient id="aurora" x1="38" y1="180" x2="226" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="70%" cy="25%" r="70%">
+      <stop offset="0" stop-color="#22D3EE" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="58" fill="url(#bg)"/>
+  <rect x="9" y="9" width="238" height="238" rx="57" fill="url(#glow)" stroke="#FFFFFF" stroke-opacity=".10" stroke-width="2"/>
+  <path d="M38 92 L66 171 L101 111 L136 171 L171 88 C184 61 217 55 226 78 C233 98 216 116 195 118"
+        fill="none" stroke="url(#aurora)" stroke-width="18"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="195" cy="118" r="7" fill="#22D3EE"/>
+</svg>
