@@ -15,13 +15,15 @@ if %errorlevel% equ 0 (
     exit /b 0
 )
 
-if exist "%~dp0dist\wordarc.exe" (
+set "WORDARC_EXE="
+for /f "delims=" %%F in ('dir /b /a-d /o-d "%~dp0dist\WordArc *.exe" 2^>nul') do if not defined WORDARC_EXE set "WORDARC_EXE=%~dp0dist\%%F"
+if defined WORDARC_EXE (
     echo Python bulunamadi; son derlenen WordArc surumu aciliyor.
-    start "WordArc" "%~dp0dist\wordarc.exe" %*
+    start "WordArc" "%WORDARC_EXE%" %*
     exit /b 0
 )
 
-echo WordArc baslatilamadi: Python veya dist\wordarc.exe bulunamadi.
+echo WordArc baslatilamadi: Python veya surumlu WordArc EXE bulunamadi.
 echo En guncel kaynak kodunu calistirmak icin .venv olusturun veya Python'i PATH'e ekleyin.
 pause
 exit /b 1

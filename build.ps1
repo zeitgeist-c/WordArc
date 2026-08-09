@@ -36,7 +36,15 @@ if ($LASTEXITCODE -ne 0) { throw "Brand asset generation failed." }
 & $Python -m PyInstaller --clean --noconfirm (Join-Path $PSScriptRoot "wordarc.spec")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-if (-not (Test-Path (Join-Path $PSScriptRoot "dist\wordarc.exe"))) {
+$RawExe = Join-Path $PSScriptRoot "dist\wordarc.exe"
+if (-not (Test-Path -LiteralPath $RawExe)) {
     throw "Expected dist\wordarc.exe was not produced."
 }
-Write-Host "Build completed: dist\wordarc.exe" -ForegroundColor Green
+$AppVersion = (& $Python -c "from brand import BRAND; print(BRAND.version)").Trim()
+if ($LASTEXITCODE -ne 0 -or $AppVersion -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Could not read a valid WordArc version from brand.py."
+}
+$VersionedName = "WordArc $AppVersion.exe"
+$VersionedExe = Join-Path $PSScriptRoot "dist\$VersionedName"
+Move-Item -LiteralPath $RawExe -Destination $VersionedExe -Force
+Write-Host "Build completed: dist\$VersionedName" -ForegroundColor Green

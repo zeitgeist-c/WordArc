@@ -2,7 +2,7 @@
 #define MyAppVersion "0.4.2"
 #define MyAppPublisher "zeitgeist-c"
 #define MyAppURL "https://github.com/zeitgeist-c/wordarc"
-#define MyAppExeName "wordarc.exe"
+#define MyAppExeName MyAppName + " " + MyAppVersion + ".exe"
 
 [Setup]
 AppId={{B71A7DF7-1585-4BA8-A528-6DE5AA07A849}
@@ -44,7 +44,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "startup"; Description: "WordArc'ı Windows açılışında başlat"; GroupDescription: "Başlangıç"; Flags: checkedonce
 
 [Files]
-Source: "..\dist\wordarc.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{userprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
