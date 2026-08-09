@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QGuiApplication
+from PyQt6.QtGui import QColor, QGuiApplication, QPalette
 
 
 class ThemeMode(str, Enum):
@@ -81,7 +81,7 @@ def stylesheet(colors: Palette) -> str:
         color: {colors.text};
     }}
     QDialog, QMainWindow, QWidget#settingsRoot {{ background: {colors.window}; }}
-    QWidget#tabCard {{
+    QWidget#tabCard, QWidget#pageCard {{
         background: {colors.surface};
         border: 1px solid {colors.border};
         border-radius: 12px;
@@ -92,6 +92,35 @@ def stylesheet(colors: Palette) -> str:
     QLabel#brandName {{ font-size: 18pt; font-weight: 700; }}
     QLabel#pageTitle {{ font-size: 15pt; font-weight: 650; }}
     QLabel#pageDescription, QLabel#muted {{ color: {colors.muted}; }}
+    QWidget#settingsSidebar {{ background: transparent; }}
+    QWidget#sharedAiNote {{
+        background: {colors.surface_alt};
+        border: 1px solid {colors.border};
+        border-radius: 10px;
+    }}
+    QListWidget#settingsNavigation {{
+        background: {colors.surface};
+        border: 1px solid {colors.border};
+        border-radius: 12px;
+        padding: 7px;
+        outline: 0;
+    }}
+    QListWidget#settingsNavigation::item {{
+        border-radius: 8px;
+        padding: 8px 9px;
+        margin: 1px 0;
+    }}
+    QListWidget#settingsNavigation::item:hover {{ background: {colors.hover}; }}
+    QListWidget#settingsNavigation::item:selected {{
+        background: {colors.selected};
+        color: {colors.text};
+    }}
+    QLineEdit#settingsSearch {{ padding-left: 12px; }}
+    QLineEdit[searchTarget="true"], QComboBox[searchTarget="true"],
+    QSpinBox[searchTarget="true"], QPlainTextEdit[searchTarget="true"],
+    QCheckBox[searchTarget="true"] {{
+        border: 2px solid {colors.cyan};
+    }}
     QGroupBox {{
         background: {colors.surface};
         border: 1px solid {colors.border};
@@ -178,7 +207,49 @@ def stylesheet(colors: Palette) -> str:
         background: {colors.surface}; color: {colors.text};
         border: 1px solid {colors.border}; padding: 6px;
     }}
+    QMenu {{
+        background: {colors.surface};
+        color: {colors.text};
+        border: 1px solid {colors.border};
+        padding: 6px;
+    }}
+    QMenu::item {{
+        background: transparent;
+        color: {colors.text};
+        border-radius: 6px;
+        padding: 7px 26px 7px 10px;
+    }}
+    QMenu::item:selected {{ background: {colors.selected}; color: {colors.text}; }}
+    QMenu::item:disabled {{ color: {colors.muted}; }}
+    QMenu::separator {{
+        background: {colors.border}; height: 1px; margin: 5px 8px;
+    }}
     """
+
+
+def qt_palette(colors: Palette) -> QPalette:
+    result = QPalette()
+    mapping = {
+        QPalette.ColorRole.Window: colors.window,
+        QPalette.ColorRole.WindowText: colors.text,
+        QPalette.ColorRole.Base: colors.surface,
+        QPalette.ColorRole.AlternateBase: colors.surface_alt,
+        QPalette.ColorRole.ToolTipBase: colors.surface,
+        QPalette.ColorRole.ToolTipText: colors.text,
+        QPalette.ColorRole.Text: colors.text,
+        QPalette.ColorRole.Button: colors.surface_alt,
+        QPalette.ColorRole.ButtonText: colors.text,
+        QPalette.ColorRole.BrightText: colors.danger,
+        QPalette.ColorRole.Highlight: colors.violet,
+        QPalette.ColorRole.HighlightedText: "#FFFFFF",
+        QPalette.ColorRole.PlaceholderText: colors.muted,
+    }
+    for role, value in mapping.items():
+        result.setColor(role, QColor(value))
+    for role in (QPalette.ColorRole.Text, QPalette.ColorRole.WindowText,
+                 QPalette.ColorRole.ButtonText):
+        result.setColor(QPalette.ColorGroup.Disabled, role, QColor(colors.muted))
+    return result
 
 
 class ThemeManager:
@@ -194,6 +265,9 @@ class ThemeManager:
         cls._app = app or cls._app
         colors = palette(cls.resolved_mode)
         if cls._app is not None:
+            cls._app.setStyle("Fusion")
+            cls._app.setProperty("wordarcBaseStyle", "Fusion")
+            cls._app.setPalette(qt_palette(colors))
             cls._app.setStyleSheet(stylesheet(colors))
             cls._app.setProperty("wordarcTheme", cls.resolved_mode.value)
         try:

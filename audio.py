@@ -24,6 +24,7 @@ CHUNK_BYTES = CHUNK_FRAMES * SAMPLE_WIDTH * CHANNELS
 CHUNK_SECONDS = CHUNK_FRAMES / RATE
 MIN_FRAMES = int(RATE * 0.25)
 CHANNEL_STALL_SECONDS = 5.0
+DEVICE_TARGET_PREFIX = "sd:"
 
 # Force WASAPI when present; fall back silently otherwise.
 try:
@@ -396,11 +397,25 @@ def _peak_only(chunk):
 
 
 def _match_input_device(target):
-    """Map a config mic_target substring to a sounddevice device index, else None."""
+    """Map a stable device target (or a legacy name) to a device index."""
     if not target:
         return None
-    for i, d in enumerate(sd.query_devices()):
-        if d["max_input_channels"] > 0 and target.lower() in d["name"].lower():
+    devices = list(sd.query_devices())
+    if target.startswith(DEVICE_TARGET_PREFIX):
+        try:
+            host_text, wanted_name = target[len(DEVICE_TARGET_PREFIX):].split(":", 1)
+            wanted_host = int(host_text)
+        except (TypeError, ValueError):
+            return None
+        for i, d in enumerate(devices):
+            if (d["max_input_channels"] > 0
+                    and d.get("hostapi") == wanted_host
+                    and d.get("name") == wanted_name):
+                return i
+        return None
+    # Compatibility with settings saved before stable targets were introduced.
+    for i, d in enumerate(devices):
+        if d["max_input_channels"] > 0 and target.casefold() in d["name"].casefold():
             return i
     return None
 
@@ -436,11 +451,29 @@ def _match_loopback_device(target):
 
 
 def list_sources():
-    """[(name, description)] for every input device."""
+    """Return stable targets and useful labels for every PortAudio input."""
+    try:
+        devices = list(sd.query_devices())
+        hostapis = list(sd.query_hostapis())
+    except Exception:
+        return []
+    inputs = [d for d in devices if d.get("max_input_channels", 0) > 0]
+    name_counts = {}
+    for d in inputs:
+        folded = (d.get("name") or "").casefold()
+        name_counts[folded] = name_counts.get(folded, 0) + 1
     out = []
-    for d in sd.query_devices():
-        if d["max_input_channels"] > 0:
-            out.append((d["name"], d["name"]))
+    for d in inputs:
+        name = d.get("name") or t("Unnamed audio device")
+        host_index = d.get("hostapi", -1)
+        target = f"{DEVICE_TARGET_PREFIX}{host_index}:{name}"
+        label = name
+        if name_counts.get(name.casefold(), 0) > 1:
+            try:
+                label = f"{name} ({hostapis[host_index]['name']})"
+            except (IndexError, KeyError, TypeError):
+                pass
+        out.append((target, label))
     return out
 
 

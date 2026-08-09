@@ -100,5 +100,54 @@ class TestGeminiRequests(unittest.TestCase):
                 api._upload_file("large.wav", "secret", "audio/wav")
         delete.assert_called_once_with("files/failed", "secret")
 
+
+class TestGeminiFallback(unittest.TestCase):
+    def test_rejected_primary_uses_backup_and_stays_on_it(self):
+        seen = []
+        fallback = mock.Mock()
+
+        def models(key):
+            seen.append(key)
+            if key == "primary":
+                raise api.ApiError("rejected", 401, "user")
+            return ["model"]
+
+        client = api.GeminiClient(
+            ["primary", "backup"], on_fallback=fallback
+        )
+        with mock.patch.object(api, "gemini_models", side_effect=models):
+            self.assertEqual(client.list_models(), ["model"])
+            self.assertEqual(client.list_models(), ["model"])
+        self.assertEqual(seen, ["primary", "backup", "backup"])
+        fallback.assert_called_once()
+        self.assertEqual(fallback.call_args.args[0], 2)
+
+    def test_invalid_model_does_not_try_another_key(self):
+        with mock.patch.object(
+            api, "gemini_models", side_effect=api.ApiError("missing", 404, "user")
+        ) as models:
+            with self.assertRaises(api.ApiError):
+                api.GeminiClient(["one", "two"]).list_models()
+        self.assertEqual(models.call_count, 1)
+
+    def test_cancel_does_not_try_another_key(self):
+        with mock.patch.object(api, "gemini_models",
+                               side_effect=api.Cancelled("stopped")) as models:
+            with self.assertRaises(api.Cancelled):
+                api.GeminiClient(["one", "two"]).list_models()
+        self.assertEqual(models.call_count, 1)
+
+    def test_all_keys_fail_without_leaking_secrets(self):
+        with mock.patch.object(
+            api, "gemini_models",
+            side_effect=api.ApiError("temporary", 503, "temporary"),
+        ):
+            with self.assertRaises(api.ApiError) as raised:
+                api.GeminiClient(["secret-one", "secret-two"]).list_models()
+        message = str(raised.exception)
+        self.assertIn("Gemini", message)
+        self.assertNotIn("secret-one", message)
+        self.assertNotIn("secret-two", message)
+
 if __name__ == "__main__":
     unittest.main()

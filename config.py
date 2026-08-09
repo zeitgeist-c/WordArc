@@ -26,7 +26,7 @@ RECORDINGS_DIR = DATA_DIR / "recordings"
 MEETINGS_DIR = DATA_DIR / "meetings"
 MEETINGS_FILE = DATA_DIR / "meetings.jsonl"
 LOG_DIR = DATA_DIR / "logs"
-CONFIG_SCHEMA = 3
+CONFIG_SCHEMA = 4
 _history_lock = threading.RLock()
 _meeting_lock = threading.RLock()
 
@@ -372,6 +372,8 @@ DEFAULTS = {
     "config_schema": CONFIG_SCHEMA,
     "ui_language": "tr",                # tr | en | auto
     "theme_mode": "dark",               # dark | light | system
+    "start_with_windows": False,
+    "close_to_tray": True,
     "gemini_api_key": "",
     "gemini_transcribe_model": "gemini-3.5-flash-lite",
     "gemini_cleanup_model": "gemini-3.5-flash-lite",
@@ -536,9 +538,30 @@ class Config:
         except credential_store.CredentialError:
             return ""
 
+    def stored_gemini_keys(self):
+        direct = self["gemini_api_key"].strip()
+        if direct:
+            try:
+                stored = credential_store.read_all()
+            except credential_store.CredentialError:
+                stored = []
+            return [direct] + [key for key in stored if key != direct]
+        try:
+            return credential_store.read_all()
+        except credential_store.CredentialError:
+            single = self.stored_gemini_key()
+            return [single] if single else []
+
+    def gemini_keys(self):
+        keys = self.stored_gemini_keys()
+        if keys:
+            return keys
+        environment = os.environ.get("GEMINI_API_KEY", "").strip()
+        return [environment] if environment else []
+
     def gemini_key(self):
-        return (self.stored_gemini_key()
-                or os.environ.get("GEMINI_API_KEY", "").strip())
+        keys = self.gemini_keys()
+        return keys[0] if keys else ""
 
     def transcribe_target(self):
         """Key, endpoint and model for Gemini speech to text."""

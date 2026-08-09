@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 import json
+import logging
 import mimetypes
 import os
 import random
@@ -16,12 +17,13 @@ from typing import Callable
 from i18n import t
 
 APP_URL = "https://github.com/zeitgeist-c/wordarc"
-USER_AGENT = f"wordarc/0.3 (+{APP_URL})"
+USER_AGENT = f"wordarc/0.4 (+{APP_URL})"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta"
 GEMINI_UPLOAD_URL = "https://generativelanguage.googleapis.com/upload/v1beta/files"
 GEMINI_API_KEY_ENV = "GEMINI_API_KEY"
 MAX_INLINE_AUDIO_BYTES = 14_000_000
 RETRY_STATUSES = {429, 500, 502, 503, 504}
+_log = logging.getLogger("wordarc.api")
 
 
 @dataclass(frozen=True)
@@ -319,19 +321,81 @@ def gemini_models(api_key):
 
 
 class GeminiClient:
-    """Small injectable facade used by non-UI services and tests."""
+    """Gemini facade with operation-scoped, ordered API-key failover."""
 
-    def __init__(self, api_key, should_stop=None):
-        self.api_key = api_key
+    FAILOVER_STATUSES = {401, 402, 403, 429, 500, 502, 503, 504}
+
+    def __init__(self, api_keys, should_stop=None, on_fallback=None):
+        if isinstance(api_keys, str):
+            api_keys = [api_keys]
+        self.api_keys = []
+        for value in api_keys or []:
+            key = str(value or "").strip()
+            if key and key not in self.api_keys:
+                self.api_keys.append(key)
         self.should_stop = should_stop
+        self.on_fallback = on_fallback
+        self._active = 0
+        self._unavailable = set()
+
+    @staticmethod
+    def _can_fail_over(exc):
+        return (not isinstance(exc, Cancelled)
+                and (exc.status in GeminiClient.FAILOVER_STATUSES
+                     or exc.category == "temporary"))
+
+    def _call(self, function, *args, **kwargs):
+        if not self.api_keys:
+            raise ApiError(t("Gemini API key is empty. Add it in Settings."),
+                           category="user")
+        order = [self._active] + [
+            index for index in range(len(self.api_keys))
+            if index != self._active
+        ]
+        last_error = None
+        for position, index in enumerate(order):
+            if index in self._unavailable:
+                continue
+            try:
+                result = function(self.api_keys[index], *args, **kwargs)
+                self._active = index
+                return result
+            except ApiError as exc:
+                if not self._can_fail_over(exc):
+                    raise
+                last_error = exc
+                self._unavailable.add(index)
+                remaining = [candidate for candidate in order[position + 1:]
+                             if candidate not in self._unavailable]
+                _log.warning(
+                    "Gemini API slot %d failed (status=%s category=%s); fallback=%s",
+                    index + 1, exc.status, exc.category,
+                    remaining[0] + 1 if remaining else "none",
+                )
+                if remaining and self.on_fallback is not None:
+                    self.on_fallback(remaining[0] + 1, exc)
+        if last_error is not None:
+            raise ApiError(t(
+                "All configured Gemini APIs failed. Last error: {error}",
+                error=last_error,
+            ), last_error.status, last_error.category) from None
+        raise ApiError(t("All configured Gemini APIs failed."), category="service")
 
     def transcribe(self, model, path, **kwargs):
-        return transcribe(self.api_key, model, path,
+        return self._call(transcribe, model, path,
                           should_stop=self.should_stop, **kwargs)
 
+    def cleanup(self, text, model, system_prompt, reasoning="", timeout=180):
+        return self._call(
+            lambda key: cleanup(text, key, model, system_prompt, reasoning,
+                                timeout, self.should_stop)
+        )
+
     def complete(self, messages, model, system_prompt="", timeout=180):
-        return gemini_chat(messages, self.api_key, model, system_prompt, timeout,
-                           self.should_stop)
+        return self._call(
+            lambda key: gemini_chat(messages, key, model, system_prompt,
+                                     timeout, self.should_stop)
+        )
 
     def list_models(self):
-        return gemini_models(self.api_key)
+        return self._call(gemini_models)

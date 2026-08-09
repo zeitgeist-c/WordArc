@@ -9,6 +9,11 @@ import os
 from brand import BRAND
 
 TARGET = BRAND.credential_target
+MAX_GEMINI_KEYS = 5
+TARGETS = tuple(
+    TARGET if index == 1 else f"{TARGET}/{index}"
+    for index in range(1, MAX_GEMINI_KEYS + 1)
+)
 CRED_TYPE_GENERIC = 1
 CRED_PERSIST_LOCAL_MACHINE = 2
 
@@ -107,6 +112,51 @@ def delete():
     return delete_target(TARGET)
 
 
+def read_all():
+    """Return configured Gemini keys in failover order."""
+    keys = []
+    for target in TARGETS:
+        secret = read_target(target).strip()
+        if secret and secret not in keys:
+            keys.append(secret)
+    return keys
+
+
+def write_all(secrets):
+    """Replace the ordered keyring, restoring the old values on failure."""
+    normalized = []
+    for value in secrets:
+        secret = str(value or "").strip()
+        if secret and secret not in normalized:
+            normalized.append(secret)
+    if len(normalized) > MAX_GEMINI_KEYS:
+        raise CredentialError(f"At most {MAX_GEMINI_KEYS} Gemini API keys are supported")
+
+    previous = [read_target(target) for target in TARGETS]
+    desired = normalized + [""] * (len(TARGETS) - len(normalized))
+    try:
+        for target, secret in zip(TARGETS, desired):
+            if secret:
+                write_target(target, secret)
+            else:
+                delete_target(target)
+        verified = [read_target(target) for target in TARGETS]
+        if verified != desired:
+            raise CredentialError("Gemini API keys could not be verified")
+    except Exception as exc:
+        for target, secret in zip(TARGETS, previous):
+            try:
+                if secret:
+                    write_target(target, secret)
+                else:
+                    delete_target(target)
+            except CredentialError:
+                pass
+        if isinstance(exc, CredentialError):
+            raise
+        raise CredentialError(str(exc)) from exc
+
+
 class CredentialStore:
     read = staticmethod(read)
     write = staticmethod(write)
@@ -114,3 +164,5 @@ class CredentialStore:
     read_target = staticmethod(read_target)
     write_target = staticmethod(write_target)
     delete_target = staticmethod(delete_target)
+    read_all = staticmethod(read_all)
+    write_all = staticmethod(write_all)

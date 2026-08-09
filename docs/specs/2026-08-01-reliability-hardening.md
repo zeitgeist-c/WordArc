@@ -23,9 +23,6 @@ entry point and legacy IPC alias remain for one release.
   migrates on the next successful settings save.
 - Dictation history is opt-in for new installations. Meeting Markdown files
   remain readable local files and the UI says so explicitly.
-- Agent runs require a per-command choice: read-only, write once inside an
-  explicitly selected directory, or cancel. Dangerous persistent modes are not
-  exposed.
 
 ## Capture policy
 

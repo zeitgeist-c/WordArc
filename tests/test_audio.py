@@ -32,6 +32,28 @@ class TestRecorderLimit(unittest.TestCase):
         self.assertIsNotNone(recorder._stream)
 
 
+class TestAudioDeviceEnumeration(unittest.TestCase):
+    DEVICES = [
+        {"name": "USB Mic", "hostapi": 0, "max_input_channels": 1},
+        {"name": "USB Mic", "hostapi": 1, "max_input_channels": 2},
+        {"name": "Speakers", "hostapi": 1, "max_input_channels": 0},
+    ]
+
+    def test_stable_targets_distinguish_duplicate_host_apis(self):
+        with mock.patch.object(audio.sd, "query_devices", return_value=self.DEVICES), \
+             mock.patch.object(audio.sd, "query_hostapis", return_value=[
+                 {"name": "MME"}, {"name": "WASAPI"}]):
+            self.assertEqual(audio.list_sources(), [
+                ("sd:0:USB Mic", "USB Mic (MME)"),
+                ("sd:1:USB Mic", "USB Mic (WASAPI)"),
+            ])
+
+    def test_stable_and_legacy_targets_are_both_accepted(self):
+        with mock.patch.object(audio.sd, "query_devices", return_value=self.DEVICES):
+            self.assertEqual(audio._match_input_device("sd:1:USB Mic"), 1)
+            self.assertEqual(audio._match_input_device("USB Mic"), 0)
+
+
 class TestMeetingRecorderReuse(unittest.TestCase):
     def test_start_resets_stop_event_and_queue(self):
         recorder = audio.MeetingRecorder()
