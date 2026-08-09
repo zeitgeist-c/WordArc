@@ -31,7 +31,8 @@ class TestConfigLoadSave(unittest.TestCase):
         c = cfg.Config()
         self.assertEqual(c["language"], "tr")
         self.assertEqual(c["theme_mode"], "dark")
-        self.assertEqual(c["config_schema"], 3)
+        self.assertEqual(c["config_schema"], 4)
+        self.assertTrue(c["close_to_tray"])
     def test_invalid_theme_falls_back_to_dark(self):
         cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         cfg.CONFIG_FILE.write_text(json.dumps({"theme_mode": "neon"}), encoding="utf-8")
@@ -41,7 +42,10 @@ class TestConfigLoadSave(unittest.TestCase):
         with mock.patch.object(cfg.credential_store, "write",
                                side_effect=lambda value: stored.update(value=value)), \
              mock.patch.object(cfg.credential_store, "read",
-                               side_effect=lambda: stored["value"]):
+                               side_effect=lambda: stored["value"]), \
+             mock.patch.object(cfg.credential_store, "read_all",
+                               side_effect=lambda: [stored["value"]]
+                               if stored["value"] else []):
             c = cfg.Config()
             c["gemini_api_key"] = "ai-test"
             c.save()
@@ -50,6 +54,17 @@ class TestConfigLoadSave(unittest.TestCase):
             c2 = cfg.Config()
             self.assertEqual(c2["gemini_api_key"], "")
             self.assertEqual(c2.gemini_key(), "ai-test")
+            self.assertEqual(c2.gemini_keys(), ["ai-test"])
+
+    def test_environment_key_is_used_only_without_stored_keys(self):
+        with mock.patch.object(cfg.credential_store, "read_all",
+                               return_value=["stored"]), \
+             mock.patch.dict(os.environ, {"GEMINI_API_KEY": "environment"}):
+            self.assertEqual(cfg.Config().gemini_keys(), ["stored"])
+        with mock.patch.object(cfg.credential_store, "read_all", return_value=[]), \
+             mock.patch.object(cfg.credential_store, "read", return_value=""), \
+             mock.patch.dict(os.environ, {"GEMINI_API_KEY": "environment"}):
+            self.assertEqual(cfg.Config().gemini_keys(), ["environment"])
     def test_credential_failure_never_writes_plaintext_key(self):
         c = cfg.Config()
         c["gemini_api_key"] = "must-not-touch-disk"

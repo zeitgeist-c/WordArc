@@ -134,6 +134,83 @@ TR = {
     "History": "Geçmiş",
     "Save": "Kaydet",
     "Theme": "Tema",
+    "Tasks": "Görevler",
+    "Records": "Kayıtlar",
+    "Common": "Ortak",
+    "Shared AI": "Ortak AI",
+    "Application": "Uygulama",
+    "Search settings…": "Ayarlarda ara…",
+    "No settings found": "Eşleşen ayar bulunamadı",
+    "Record, transcribe and paste spoken text.":
+        "Konuşmayı kaydedin, yazıya çevirin ve yapıştırın.",
+    "Review and control locally stored transcripts.":
+        "Yerelde saklanan dökümleri inceleyin ve yönetin.",
+    "Gemini access and models shared by every task.":
+        "Bütün görevlerin kullandığı Gemini erişimi ve modeller.",
+    "Language, startup and appearance behavior.":
+        "Dil, başlangıç ve görünüm davranışı.",
+    "Open shared AI settings": "Ortak AI ayarlarını aç",
+    "Transcription: {transcribe} · Cleanup: {cleanup}":
+        "Transkripsiyon: {transcribe} · Temizleme: {cleanup}",
+    "System instruction shared by dictation and optional agent or meeting cleanup.":
+        "Dikte ile isteğe bağlı ajan ve toplantı temizlemesinin ortak sistem talimatı.",
+    "Names and terms": "İsimler ve terimler",
+    "Permissions are chosen separately for every command.":
+        "İzinler her komut için ayrıca seçilir.",
+    "Write access is chosen separately for every command.":
+        "Yazma erişimi her komut için ayrıca seçilir.",
+    "Audio file cleanup instruction": "Ses dosyası temizleme talimatı",
+    "Store dictation and agent history on this computer":
+        "Dikte ve ajan geçmişini bu bilgisayarda sakla",
+    "Start": "Başlatma",
+    "Sound": "Ses",
+    "Output": "Çıktı",
+    "Recording": "Kayıt",
+    "Cleanup": "Temizleme",
+    "Gemini": "Gemini",
+    "Interface": "Arayüz",
+    "Startup": "Başlangıç",
+    "Support": "Destek",
+    "Storage": "Saklama",
+    "Options": "Seçenekler",
+    "Agent instruction": "Ajan talimatı",
+    "Minutes instruction": "Tutanak talimatı",
+    "Cleanup instruction": "Temizleme talimatı",
+    "Start WordArc when Windows starts":
+        "Windows başladığında WordArc'ı başlat",
+    "Starts WordArc for this Windows user without administrator permission.":
+        "WordArc'ı yönetici izni istemeden bu Windows kullanıcısı için başlatır.",
+    "Dictation and meetings — in one flow.":
+        "Dikte ve toplantılar — tek akışta.",
+    "Keep running in the system tray when the window is closed":
+        "Pencere kapatıldığında sistem tepsisinde çalışmaya devam et",
+    "When disabled, the title-bar close button, Escape and Alt+F4 quit WordArc.":
+        "Kapalıyken başlık çubuğundaki X, Escape ve Alt+F4 WordArc'ı tamamen kapatır.",
+    "Keys are tried from top to bottom and stored only in Windows Credential Manager.":
+        "Anahtarlar yukarıdan aşağıya denenir ve yalnız Windows Kimlik Bilgisi Yöneticisi'nde saklanır.",
+    "API keys": "API anahtarları",
+    "Add API": "API ekle",
+    "Edit API": "API'yi düzenle",
+    "Edit": "Düzenle",
+    "Remove": "Kaldır",
+    "Move up": "Yukarı taşı",
+    "Move down": "Aşağı taşı",
+    "Default API": "Varsayılan API",
+    "Backup API {number}": "Yedek API {number}",
+    "Gemini API key": "Gemini API anahtarı",
+    "This API key is already listed.": "Bu API anahtarı zaten listede.",
+    "Default API did not respond; trying API {number}...":
+        "Varsayılan API yanıt vermedi; API {number} deneniyor...",
+    "All configured Gemini APIs failed.":
+        "Yapılandırılmış tüm Gemini API'leri başarısız oldu.",
+    "All configured Gemini APIs failed. Last error: {error}":
+        "Yapılandırılmış tüm Gemini API'leri başarısız oldu. Son hata: {error}",
+    "Store dictation history on this computer":
+        "Dikte geçmişini bu bilgisayarda sakla",
+    "  ·  legacy Agent record: {question}":
+        "  ·  eski Ajan kaydı: {question}",
+    "System instruction shared by dictation and optional meeting cleanup.":
+        "Dikte ile isteğe bağlı toplantı temizlemesinin ortak sistem talimatı.",
     "Dark": "Koyu",
     "Light": "Açık",
     "System": "Sistem",

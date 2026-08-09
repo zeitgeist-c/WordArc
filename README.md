@@ -1,6 +1,6 @@
 # WordArc — Voice-to-text for Windows
 
-WordArc turns speech into polished text, captures microphone and system audio for meeting minutes, and can hand a spoken command to Claude Code or Codex with an explicit per-run permission choice.
+WordArc turns speech into polished text and captures microphone and system audio for reliable meeting minutes.
 
 ## Install
 

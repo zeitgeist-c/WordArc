@@ -1,10 +1,4 @@
-"""The dictation chain: transcribe → clean up → clipboard → paste.
-
-The same chain also carries the other thing a dictation can be. Asked to, it
-hands the transcript to Claude Code instead of pasting it, and pastes back
-whatever came of it: an answer to a question, or a sentence saying what was
-done.
-"""
+"""The dictation chain: transcribe → clean up → clipboard → paste."""
 
 import os
 import logging
@@ -17,20 +11,16 @@ import traceback
 from PyQt6.QtCore import QObject, pyqtSignal
 
 import api
-import assistant
 import audio
 import config as cfg
-import i18n
 import paste
 import vad
 from i18n import t
 
 CHUNK_SECONDS = audio.CHUNK_FRAMES / audio.RATE
 
-# A dictation and a command to the agent run side by side and can finish at the
-# same moment. Pasting is not one step but three that must not interleave: read
-# what is on the clipboard, put ours there, press the key. Two runs doing that
-# at once would paste one answer and restore the other's clipboard over it.
+# Pasting is not one step but three: read the clipboard, replace it, press the
+# shortcut. Keep the lock so future concurrent producers cannot interleave them.
 _paste_lock = threading.Lock()
 _log = logging.getLogger("wordarc.worker")
 
@@ -40,7 +30,6 @@ class Pipeline(QObject):
     finished = pyqtSignal(str, str, str, str)  # raw, final, warning, operation id
     failed = pyqtSignal(str, str)  # message, operation id
     cancelled = pyqtSignal(str)
-    permission_requested = pyqtSignal(str, object, str)
 
     def __init__(self, conf, parent=None):
         super().__init__(parent)
@@ -52,13 +41,13 @@ class Pipeline(QObject):
     def busy(self):
         return self._thread is not None and self._thread.is_alive()
 
-    def run(self, wav_path, duration, rms_values=(), ask=False, operation_id=""):
+    def run(self, wav_path, duration, rms_values=(), operation_id=""):
         if self.busy:
             return
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._work,
-            args=(wav_path, duration, list(rms_values), ask, operation_id),
+            args=(wav_path, duration, list(rms_values), operation_id),
             daemon=True,
         )
         self._thread.start()
@@ -72,7 +61,7 @@ class Pipeline(QObject):
         """
         self._stop.set()
 
-    def _work(self, wav_path, duration, rms_values, ask, operation_id):
+    def _work(self, wav_path, duration, rms_values, operation_id):
         conf = self.conf
         started = time.monotonic()
         raw = ""
@@ -90,12 +79,18 @@ class Pipeline(QObject):
 
         try:
             self.stage.emit(t("Transcribing…"), operation_id)
+            client = api.GeminiClient(
+                conf.gemini_keys(),
+                should_stop=self._stop.is_set,
+                on_fallback=lambda slot, _exc: self.stage.emit(
+                    t("Default API did not respond; trying API {number}...",
+                      number=slot), operation_id),
+            )
             target = conf.transcribe_target()
-            raw = api.transcribe(
-                target.api_key, target.model, wav_path,
+            raw = client.transcribe(
+                target.model, wav_path,
                 language=conf["language"],
                 prompt=conf["transcribe_prompt"],
-                should_stop=self._stop.is_set,
             )
 
             if conf["filter_hallucinations"] and vad.looks_like_hallucination(raw, duration):
@@ -109,16 +104,14 @@ class Pipeline(QObject):
             # Claude reads through “eee” and “hani” without help, so a dictation
             # on its way there is normally sent as it was heard, one API call and
             # a second or two lighter.
-            if (conf["assistant_cleanup"] if ask else conf["cleanup_enabled"]):
+            if conf["cleanup_enabled"]:
                 self.stage.emit(t("Cleaning up…"), operation_id)
                 try:
-                    text = api.cleanup(
+                    text = client.cleanup(
                         raw,
-                        conf.gemini_key(),
                         conf["cleanup_model"],
                         conf.cleanup_prompt(),
                         reasoning=conf["cleanup_reasoning"],
-                        should_stop=self._stop.is_set,
                     )
                 except api.ApiError as exc:
                     # Keep the transcript, but never let the failure pass unseen:
@@ -129,32 +122,11 @@ class Pipeline(QObject):
                                  exc.status, exc.category)
                     print(f"wordarc: cleanup failed: {exc}", file=sys.stderr)
 
-            question = ""
-            if ask:
-                question = text
-                request = assistant.PermissionRequest()
-                self.stage.emit(t("Waiting for permission…"), operation_id)
-                self.permission_requested.emit(question, request, operation_id)
-                while not request.event.wait(0.1):
-                    if self._stop.is_set():
-                        raise assistant.Cancelled
-                if request.permission is None:
-                    raise assistant.Cancelled
-                self.stage.emit(t("Asking {name}…", name=i18n.name(
-                    assistant.display_name(conf), "dative")), operation_id)
-                text, denied = assistant.ask(
-                    question, conf,
-                    on_stage=lambda message: self.stage.emit(message, operation_id),
-                    should_stop=self._stop.is_set,
-                    permission=request.permission,
-                )
-                warning = "\n".join(x for x in (warning, denied) if x)
-
             with _paste_lock:
                 previous = paste.read_clipboard() if conf["restore_clipboard"] else None
                 paste.copy(text)
 
-                if (conf["assistant_paste"] if ask else conf["auto_paste"]):
+                if conf["auto_paste"]:
                     self.stage.emit(t("Pasting…"), operation_id)
                     paste.press(conf["paste_shortcut"])
                     if previous is not None:
@@ -168,9 +140,6 @@ class Pipeline(QObject):
                 "model": target.model,
                 "cleanup_model": conf["cleanup_model"] if conf["cleanup_enabled"] else "",
                 "cleanup_error": warning,
-                "mode": "ask" if ask else "",
-                "question": question,
-                "assistant_model": conf["assistant_model"] if ask else "",
                 "raw": raw,
                 "text": text,
             }
@@ -182,9 +151,9 @@ class Pipeline(QObject):
                     print(f"wordarc: could not trim the history: {exc}", file=sys.stderr)
             self.finished.emit(raw, text, warning, operation_id)
 
-        except (assistant.Cancelled, api.Cancelled):
+        except api.Cancelled:
             self.cancelled.emit(operation_id)
-        except (api.ApiError, paste.PasteError, assistant.AssistantError) as exc:
+        except (api.ApiError, paste.PasteError) as exc:
             _log.warning("pipeline failed (%s)", type(exc).__name__)
             print(f"wordarc: {exc}", file=sys.stderr)
             self.failed.emit(str(exc), operation_id)

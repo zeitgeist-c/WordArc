@@ -105,16 +105,24 @@ class MeetingPipeline(QObject):
         doc_path, wav_path = cfg.meeting_paths(base)
         workdir = None
         try:
+            client = api.GeminiClient(
+                self.conf.gemini_keys(),
+                should_stop=self._stop.is_set,
+                on_fallback=lambda slot, _exc: self._say(t(
+                    "Default API did not respond; trying API {number}...",
+                    number=slot,
+                )),
+            )
             transcript = self._stored_transcript(entry, doc_path)
             if not transcript:
                 if not wav_path.exists():
                     raise api.ApiError(t("The recording is gone: {path}", path=wav_path))
                 workdir = tempfile.mkdtemp(prefix="wordarc-meeting-")
-                transcript = self._transcribe(str(wav_path), workdir)
+                transcript = self._transcribe(client, str(wav_path), workdir)
                 if self.conf["meeting_cleanup"]:
                     self._check()
                     self._say(t("Cleaning up…"))
-                    transcript = self._cleanup(transcript)
+                    transcript = self._cleanup(client, transcript)
                 # On disk before the summary is attempted: if the summary fails,
                 # a retry starts from here instead of from the audio.
                 self._write(doc_path, "", transcript, entry)
@@ -122,14 +130,12 @@ class MeetingPipeline(QObject):
 
             self._check()
             self._say(t("Writing the minutes…"))
-            minutes = api.cleanup(
+            minutes = client.cleanup(
                 transcript,
-                self.conf.gemini_key(),
                 self.conf["meeting_model"],
                 self.conf.meeting_prompt(),
                 reasoning=self.conf["meeting_reasoning"],
                 timeout=600,
-                should_stop=self._stop.is_set,
             )
             title = self._write(doc_path, minutes, transcript, entry)
             cfg.update_meeting(base, status="done", error="", title=title,
@@ -159,10 +165,9 @@ class MeetingPipeline(QObject):
         except OSError:
             return ""
 
-    def _transcribe(self, wav_path, workdir):
+    def _transcribe(self, client, wav_path, workdir):
         conf = self.conf
         mine, theirs = split_channels(wav_path, workdir)
-        api_key = conf.gemini_key()
         model = conf["gemini_transcribe_model"]
         language = conf["meeting_language"] or conf["language"]
         hint = conf.meeting_hint()
@@ -180,9 +185,8 @@ class MeetingPipeline(QObject):
                             side=side, index=index, count=len(chunks)))
                 if self._silent(chunk_path):
                     continue
-                text = api.transcribe(
-                    api_key, model, chunk_path, language=language, prompt=hint,
-                    should_stop=self._stop.is_set,
+                text = client.transcribe(
+                    model, chunk_path, language=language, prompt=hint,
                 )
                 if text.strip():
                     pieces.append(text.strip())
@@ -207,7 +211,7 @@ class MeetingPipeline(QObject):
         return vad.is_silent(stats, conf["silence_db"], conf["speech_margin_db"],
                              conf["min_voiced_seconds"])
 
-    def _cleanup(self, transcript):
+    def _cleanup(self, client, transcript):
         conf = self.conf
         prompt = conf.cleanup_prompt(with_timestamps=True, with_speakers=True)
         out = []
@@ -217,13 +221,11 @@ class MeetingPipeline(QObject):
             if len(blocks) > 1:
                 self._say(t("Cleaning up {index}/{count}…",
                             index=index, count=len(blocks)))
-            out.append(api.cleanup(
+            out.append(client.cleanup(
                 block,
-                conf.gemini_key(),
                 conf["cleanup_model"],
                 prompt,
                 reasoning=conf["cleanup_reasoning"],
-                should_stop=self._stop.is_set,
             ))
         return "\n".join(out)
 

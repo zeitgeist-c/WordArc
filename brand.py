@@ -10,6 +10,7 @@ import sys
 @dataclass(frozen=True)
 class BrandIdentity:
     name: str = "WordArc"
+    version: str = "0.4.1"
     slug: str = "wordarc"
     executable: str = "wordarc.exe"
     data_directory: str = "WordArc"
@@ -27,6 +28,20 @@ class BrandIdentity:
 
 
 BRAND = BrandIdentity()
+
+
+def set_windows_app_id() -> None:
+    """Make source-mode launches group under WordArc instead of pythonw.exe."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            f"{BRAND.name}.{BRAND.slug}"
+        )
+    except (AttributeError, OSError):
+        # The icon set on QApplication remains the fallback on older Windows.
+        pass
 
 
 def resource_path(*parts: str) -> Path:

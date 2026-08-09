@@ -1,6 +1,6 @@
 # WordArc — Windows için sesle yazma
 
-WordArc konuşmayı düzenlenmiş metne dönüştürür, toplantı tutanağı için mikrofon ile sistem sesini kaydeder ve sesli komutları çalışma başına açık izinle Claude Code veya Codex'e iletebilir.
+WordArc konuşmayı düzenlenmiş metne dönüştürür ve güvenilir toplantı tutanakları için mikrofon ile sistem sesini kaydeder.
 
 ## Kurulum
 

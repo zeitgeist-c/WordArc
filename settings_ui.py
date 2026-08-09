@@ -1,27 +1,29 @@
 """Settings window."""
 
 import os
+import unicodedata
 import logging
-import shutil
 import threading
 
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import (QDesktopServices, QGuiApplication, QIcon, QKeySequence,
                          QShortcut)
 from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-    QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QInputDialog,
+    QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
-    QPushButton, QScrollArea, QSpinBox, QStyle, QTabWidget, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSizePolicy, QSpinBox, QStackedWidget, QStyle,
+    QVBoxLayout, QWidget,
 )
 
 import api
-import assistant
 import audio
 import config as cfg
 import filetranscribe
 import hotkey
 import meeting
+import startup
 import theme
 from brand import BRAND, brand_asset
 from filetranscribe import FileTranscriber
@@ -43,22 +45,6 @@ CLEANUP_MODELS = [
 # and turned into decisions, so the starting points are the larger models.
 MEETING_MODELS = [
     "gemini-3.6-flash", "gemini-3.5-flash-lite",
-]
-ASSISTANT_PROVIDERS = [
-    ("Claude Code", "claude"), ("Codex", "codex"),
-]
-# Aliases resolve to the newest model of that name, so they age better than an
-# id does; a full id can be typed in when a particular one is wanted.
-ASSISTANT_MODELS = ["sonnet", "opus", "haiku", "fable"]
-CODEX_MODELS = ["gpt-5.4-codex", "gpt-5.4", "o4-mini"]
-# What Claude Code may do without being able to ask. It cannot ask: there is no
-# window to answer in, so a mode that would have prompted denies instead.
-PERMISSION_MODES = [
-    ("Only what needs no permission", "manual"),
-]
-# Codex confines the commands it runs instead of asking about them.
-CODEX_SANDBOXES = [
-    ("Read only", "read-only"),
 ]
 MEETING_STATUS = {
     "recorded": "waiting to be written up",
@@ -99,7 +85,6 @@ class SettingsWindow(QDialog):
         self.conf = conf
         self.launch_command = launch_command
         self.meeting_command = meeting_command or launch_command
-        self.ask_command = ask_command or launch_command
         self.meetings = meetings
         # Each provider keeps its own transcription model, so switching the
         # provider back and forth never overwrites the other one's.
@@ -119,36 +104,21 @@ class SettingsWindow(QDialog):
         logo.setFixedSize(48, 48)
         header_layout.addWidget(logo)
         identity = QVBoxLayout()
-        name = QLabel(BRAND.name)
+        name = QLabel(f"{BRAND.name} v{BRAND.version}")
         name.setObjectName("brandName")
         identity.addWidget(name)
-        subtitle = QLabel(t("Dictation, meetings and agents — in one flow."))
+        subtitle = QLabel(t("Dictation and meetings — in one flow."))
         subtitle.setObjectName("muted")
         identity.addWidget(subtitle)
         header_layout.addLayout(identity)
         header_layout.addStretch()
         header_layout.addWidget(QLabel(t("Theme")))
         self.header_theme = self._theme_combo()
+        # Present the theme once while keeping the existing load/save alias.
+        self.general_theme = self.header_theme
         header_layout.addWidget(self.header_theme)
 
-        tabs = QTabWidget(self)
-        self.tabs = tabs
-        tabs.setUsesScrollButtons(True)
-        tabs.setDocumentMode(True)
-        pages = [
-            (self._general_tab(), "General", "Core behavior, audio input and appearance.", QStyle.StandardPixmap.SP_ComputerIcon),
-            (self._api_tab(), "API and models", "Gemini credentials and model choices.", QStyle.StandardPixmap.SP_DriveNetIcon),
-            (self._prompt_tab(), "Cleanup rules", "Control how spoken text is polished.", QStyle.StandardPixmap.SP_FileDialogDetailedView),
-            (self._assistant_tab(), "Agent", "Run spoken requests with explicit permissions.", QStyle.StandardPixmap.SP_CommandLink),
-            (self._meeting_tab(), "Meeting", "Capture microphone and system audio reliably.", QStyle.StandardPixmap.SP_MediaVolume),
-            (self._minutes_tab(), "Minutes", "Review and retry meeting summaries.", QStyle.StandardPixmap.SP_FileDialogContentsView),
-            (self._file_tab(), "Audio file", "Transcribe an existing recording.", QStyle.StandardPixmap.SP_DialogOpenButton),
-            (self._shortcut_tab(), "Shortcut", "Choose global keyboard shortcuts.", QStyle.StandardPixmap.SP_ArrowUp),
-            (self._history_tab(), "History", "Control local plaintext transcript retention.", QStyle.StandardPixmap.SP_FileDialogListView),
-        ]
-        for page, title, description, icon_kind in pages:
-            tabs.addTab(self._wrap_page(page, title, description),
-                        self.style().standardIcon(icon_kind), t(title))
+        content = self._build_navigation()
 
         # Save keeps the window open, so the window is closed with the titlebar
         # cross (or Escape) instead. A "Cancel" next to it would be a lie: the
@@ -162,7 +132,7 @@ class SettingsWindow(QDialog):
         layout.setContentsMargins(22, 18, 22, 18)
         layout.setSpacing(8)
         layout.addWidget(header)
-        layout.addWidget(tabs)
+        layout.addWidget(content, 1)
         layout.addWidget(buttons)
 
         self._models_loaded.connect(self._on_models_loaded)
@@ -176,6 +146,10 @@ class SettingsWindow(QDialog):
             self.meetings.finished.connect(self._on_minutes_finished)
             self.meetings.failed.connect(self._on_minutes_failed)
         self._load()
+        self._refresh_shared_ai_summaries()
+        self.transcribe_model.currentTextChanged.connect(self._refresh_shared_ai_summaries)
+        self.cleanup_model.currentTextChanged.connect(self._refresh_shared_ai_summaries)
+        self.navigate_to("dictation")
 
     def _theme_combo(self):
         combo = QComboBox()
@@ -186,8 +160,81 @@ class SettingsWindow(QDialog):
         combo.currentIndexChanged.connect(self._theme_changed)
         return combo
 
-    def _wrap_page(self, page, title, description):
-        page.setObjectName("tabCard")
+    def _build_navigation(self):
+        self._shared_ai_labels = []
+        self._pages = {}
+        self._setting_index = {}
+        bodies = {
+            "dictation": self._dictation_tab(),
+            "meeting": self._meeting_tab(),
+            "audio_file": self._file_tab(),
+            "minutes": self._minutes_tab(),
+            "history": self._history_tab(),
+            "shared_ai": self._shared_ai_tab(),
+            "application": self._general_tab(),
+        }
+        specs = [
+            ("dictation", "Dictation", "Record, transcribe and paste spoken text.", QStyle.StandardPixmap.SP_MediaVolume, True),
+            ("meeting", "Meeting", "Capture microphone and system audio reliably.", QStyle.StandardPixmap.SP_MediaVolume, True),
+            ("audio_file", "Audio file", "Transcribe an existing recording.", QStyle.StandardPixmap.SP_DialogOpenButton, False),
+            ("minutes", "Minutes", "Review and retry meeting summaries.", QStyle.StandardPixmap.SP_FileDialogContentsView, False),
+            ("history", "History", "Review and control locally stored transcripts.", QStyle.StandardPixmap.SP_FileDialogListView, False),
+            ("shared_ai", "Shared AI", "Gemini access and models shared by every task.", QStyle.StandardPixmap.SP_DriveNetIcon, True),
+            ("application", "Application", "Language, startup and appearance behavior.", QStyle.StandardPixmap.SP_ComputerIcon, True),
+        ]
+        self.stack = QStackedWidget()
+        for page_id, title, description, icon_kind, scroll in specs:
+            wrapped, scroller = self._wrap_page(bodies[page_id], title, description, scroll)
+            self._pages[page_id] = {
+                "index": self.stack.addWidget(wrapped),
+                "title": title,
+                "icon": self.style().standardIcon(icon_kind),
+                "scroller": scroller,
+            }
+        self._navigation_groups = [
+            ("Tasks", ("dictation", "meeting", "audio_file")),
+            ("Records", ("minutes", "history")),
+            ("Common", ("shared_ai", "application")),
+        ]
+
+        sidebar = QWidget()
+        sidebar.setObjectName("settingsSidebar")
+        sidebar.setFixedWidth(226)
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(8)
+        self.search_box = QLineEdit()
+        self.search_box.setObjectName("settingsSearch")
+        self.search_box.setPlaceholderText(t("Search settings…"))
+        self.search_box.setClearButtonEnabled(True)
+        self.search_box.textChanged.connect(self._search_changed)
+        sidebar_layout.addWidget(self.search_box)
+        self.navigation = QListWidget()
+        self.navigation.setObjectName("settingsNavigation")
+        self.navigation.setSpacing(2)
+        self.navigation.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.navigation.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.navigation.currentItemChanged.connect(self._navigation_changed)
+        sidebar_layout.addWidget(self.navigation, 1)
+        find_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
+        find_shortcut.activated.connect(self.search_box.setFocus)
+
+        content = QWidget()
+        content_layout = QHBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(14)
+        content_layout.addWidget(sidebar)
+        content_layout.addWidget(self.stack, 1)
+        self._populate_navigation("dictation")
+        self._build_search_index()
+        return content
+
+    def _wrap_page(self, page, title, description, scroll=True):
+        page.setObjectName("pageCard")
+        page.setMinimumWidth(0)
+        page.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         container = QWidget()
         container.setObjectName("page")
         layout = QVBoxLayout(container)
@@ -199,12 +246,233 @@ class SettingsWindow(QDialog):
         detail.setObjectName("pageDescription")
         detail.setWordWrap(True)
         layout.addWidget(detail)
-        scroller = QScrollArea()
-        scroller.setFrameShape(QFrame.Shape.NoFrame)
-        scroller.setWidgetResizable(True)
-        scroller.setWidget(page)
-        layout.addWidget(scroller, 1)
-        return container
+        scroller = None
+        if scroll:
+            scroller = QScrollArea()
+            scroller.setFrameShape(QFrame.Shape.NoFrame)
+            scroller.setWidgetResizable(True)
+            scroller.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            scroller.setWidget(page)
+            layout.addWidget(scroller, 1)
+        else:
+            layout.addWidget(page, 1)
+        return container, scroller
+
+    def _populate_navigation(self, selected_page=None):
+        selected_page = selected_page or getattr(self, "_current_page", "dictation")
+        self.navigation.blockSignals(True)
+        self.navigation.clear()
+        selected_item = None
+        for group, page_ids in self._navigation_groups:
+            heading = QListWidgetItem(t(group).upper())
+            font = heading.font()
+            font.setBold(True)
+            heading.setFont(font)
+            heading.setFlags(heading.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            heading.setData(Qt.ItemDataRole.UserRole, ("group", group))
+            self.navigation.addItem(heading)
+            for page_id in page_ids:
+                info = self._pages[page_id]
+                item = QListWidgetItem(info["icon"], t(info["title"]))
+                item.setData(Qt.ItemDataRole.UserRole, ("page", page_id))
+                self.navigation.addItem(item)
+                if page_id == selected_page:
+                    selected_item = item
+        if selected_item is not None:
+            self.navigation.setCurrentItem(selected_item)
+        self.navigation.blockSignals(False)
+
+    def _navigation_changed(self, current, _previous):
+        if current is None:
+            return
+        payload = current.data(Qt.ItemDataRole.UserRole)
+        if not payload:
+            return
+        kind, value = payload
+        if kind == "page":
+            self._show_page(value)
+        elif kind == "setting":
+            entry = self._setting_index[value]
+            self.search_box.blockSignals(True)
+            self.search_box.clear()
+            self.search_box.blockSignals(False)
+            self._populate_navigation(entry["page_id"])
+            self.navigate_to(entry["page_id"], value)
+
+    def _show_page(self, page_id):
+        info = self._pages.get(page_id)
+        if info is None:
+            return
+        self._current_page = page_id
+        self.stack.setCurrentIndex(info["index"])
+
+    def navigate_to(self, page_id, setting_id=None):
+        """Open one logical page and optionally focus a setting on it."""
+        if page_id not in self._pages:
+            return False
+        self._show_page(page_id)
+        if not self.search_box.text():
+            self.navigation.blockSignals(True)
+            for index in range(self.navigation.count()):
+                item = self.navigation.item(index)
+                if item.data(Qt.ItemDataRole.UserRole) == ("page", page_id):
+                    self.navigation.setCurrentItem(item)
+                    break
+            self.navigation.blockSignals(False)
+        if setting_id in self._setting_index:
+            QTimer.singleShot(0, lambda: self._focus_setting(setting_id))
+        return True
+
+    @staticmethod
+    def _normal_search(text):
+        text = str(text or "").casefold().replace("ı", "i")
+        return "".join(
+            char for char in unicodedata.normalize("NFKD", text)
+            if not unicodedata.combining(char)
+        )
+
+    def _search_changed(self, text):
+        query = self._normal_search(text).strip()
+        if not query:
+            self._populate_navigation()
+            return
+        self.navigation.blockSignals(True)
+        self.navigation.clear()
+        for setting_id, entry in self._setting_index.items():
+            if query not in entry["haystack"]:
+                continue
+            page = t(self._pages[entry["page_id"]]["title"])
+            path = f"{page}  ›  {t(entry['section'])}"
+            item = QListWidgetItem(f"{t(entry['label'])}\n{path}")
+            item.setData(Qt.ItemDataRole.UserRole, ("setting", setting_id))
+            item.setToolTip(path)
+            self.navigation.addItem(item)
+        if self.navigation.count() == 0:
+            item = QListWidgetItem(t("No settings found"))
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            self.navigation.addItem(item)
+        self.navigation.blockSignals(False)
+
+    def _add_search_entry(self, setting_id, page_id, section, label, widget,
+                          keywords=""):
+        page_title = self._pages[page_id]["title"]
+        haystack = " ".join((
+            t(label), t(section), t(page_title), label, section, page_title,
+            keywords,
+        ))
+        self._setting_index[setting_id] = {
+            "page_id": page_id,
+            "section": section,
+            "label": label,
+            "widget": widget,
+            "haystack": self._normal_search(haystack),
+        }
+
+    def _focus_setting(self, setting_id):
+        entry = self._setting_index.get(setting_id)
+        if entry is None:
+            return
+        widget = entry["widget"]
+        scroller = self._pages[entry["page_id"]]["scroller"]
+        if scroller is not None:
+            scroller.ensureWidgetVisible(widget, 24, 24)
+        widget.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        widget.setProperty("searchTarget", True)
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+        QTimer.singleShot(1400, lambda: self._clear_search_target(widget))
+
+    @staticmethod
+    def _clear_search_target(widget):
+        widget.setProperty("searchTarget", False)
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+
+    def _shared_ai_note(self):
+        holder = QWidget()
+        holder.setObjectName("sharedAiNote")
+        row = QHBoxLayout(holder)
+        row.setContentsMargins(12, 8, 8, 8)
+        label = QLabel("")
+        label.setObjectName("muted")
+        label.setWordWrap(True)
+        label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self._shared_ai_labels.append(label)
+        row.addWidget(label, 1)
+        open_ai = QPushButton(t("Open shared AI settings"))
+        open_ai.clicked.connect(lambda: self.navigate_to("shared_ai"))
+        row.addWidget(open_ai)
+        return holder
+
+    def _refresh_shared_ai_summaries(self, *_):
+        if not hasattr(self, "transcribe_model"):
+            return
+        summary = t(
+            "Transcription: {transcribe} · Cleanup: {cleanup}",
+            transcribe=self.transcribe_model.currentText(),
+            cleanup=self.cleanup_model.currentText(),
+        )
+        for label in self._shared_ai_labels:
+            label.setText(summary)
+
+    def _build_search_index(self):
+        specs = [
+            ("dictation_shortcut", "dictation", "Start", "Shortcut", self.shortcut, "hotkey tuş"),
+            ("dictation_mic", "dictation", "Sound", "Microphone", self.mic, "audio giriş"),
+            ("dictation_language", "dictation", "Sound", "Speech language", self.language, "dil"),
+            ("dictation_auto_paste", "dictation", "Output", "Paste the text into the focused window", self.auto_paste, "çıktı"),
+            ("dictation_paste_key", "dictation", "Output", "Paste key", self.paste_shortcut, "clipboard pano"),
+            ("dictation_restore_clipboard", "dictation", "Output", "Restore the previous clipboard after pasting", self.restore_clipboard, "pano clipboard"),
+            ("dictation_max", "dictation", "Recording", "Longest recording", self.max_seconds, "süre"),
+            ("dictation_silent", "dictation", "Recording", "Skip silent recordings (don't call the API)", self.skip_silent, "sessiz"),
+            ("dictation_silence_db", "dictation", "Recording", "Silence threshold", self.silence_db, "db eşik"),
+            ("dictation_hallucinations", "dictation", "Recording", "Discard stock phrases models invent for near-silent audio", self.filter_hallucinations, "uydurma"),
+            ("dictation_keep_audio", "dictation", "Recording", "Keep audio files (%LOCALAPPDATA%\\WordArc\\recordings)", self.keep_audio, "sakla"),
+            ("dictation_cleanup", "dictation", "Cleanup", "Clean the transcript with a model", self.cleanup_enabled, "temizleme"),
+            ("gemini_key", "shared_ai", "Gemini", "API keys", self.gemini_keys_list, "anahtar credential yedek fallback"),
+            ("transcribe_model", "shared_ai", "Speech to text", "Model", self.transcribe_model, "transkripsiyon"),
+            ("transcribe_glossary", "shared_ai", "Speech to text", "Names and terms", self.transcribe_prompt, "sözlük glossary"),
+            ("cleanup_model", "shared_ai", "Transcript cleanup", "Model", self.cleanup_model, "temizleme"),
+            ("cleanup_reasoning", "shared_ai", "Transcript cleanup", "Thinking", self.cleanup_reasoning, "düşünme"),
+            ("cleanup_prompt", "shared_ai", "Transcript cleanup", "Cleanup instruction", self.cleanup_prompt, "prompt talimat"),
+        ]
+        specs += self._meeting_search_specs()
+        specs += self._other_search_specs()
+        for spec in specs:
+            self._add_search_entry(*spec)
+
+    def _meeting_search_specs(self):
+        return [
+            ("meeting_mic", "meeting", "Sound", "Microphone", self.meeting_mic, "ses giriş"),
+            ("meeting_system", "meeting", "Sound", "The other participants", self.meeting_system, "sistem sesi"),
+            ("meeting_self", "meeting", "Who is talking", "You", self.meeting_self_name, "isim"),
+            ("meeting_other", "meeting", "Who is talking", "The other end", self.meeting_other_name, "isim"),
+            ("meeting_participants", "meeting", "Who is talking", "Expected", self.meeting_participants, "katılımcılar"),
+            ("meeting_model", "meeting", "Minutes", "Model", self.meeting_model, "tutanak"),
+            ("meeting_reasoning", "meeting", "Minutes", "Thinking", self.meeting_reasoning, "düşünme"),
+            ("meeting_language", "meeting", "Minutes", "Speech language", self.meeting_language, "dil"),
+            ("meeting_cleanup", "meeting", "Minutes", "Clean the transcript up first", self.meeting_cleanup, "temizleme"),
+            ("meeting_max", "meeting", "Recording", "Longest meeting", self.meeting_max_minutes, "süre"),
+            ("meeting_keep_audio", "meeting", "Recording", "Keep the recording after the minutes are written", self.meeting_keep_audio, "sakla"),
+            ("meeting_shortcut", "meeting", "Recording", "Shortcut", self.meeting_shortcut, "hotkey"),
+            ("meeting_prompt", "meeting", "Minutes", "Minutes instruction", self.meeting_prompt, "prompt talimat"),
+        ]
+
+    def _other_search_specs(self):
+        return [
+            ("file_timestamps", "audio_file", "Options", "Add timestamps", self.file_timestamps, "altyazı srt"),
+            ("file_cleanup", "audio_file", "Options", "Run the cleanup model afterwards", self.file_cleanup, "temizleme"),
+            ("file_cleanup_prompt", "audio_file", "Options", "Audio file cleanup instruction", self.file_cleanup_prompt, "prompt altyazı"),
+            ("history_enabled", "history", "Storage", "Store dictation history on this computer", self.history_enabled, "sakla gizlilik"),
+            ("close_to_tray", "application", "Startup", "Keep running in the system tray when the window is closed", self.close_to_tray, "kapat sistem tepsisi tray"),
+            ("history_limit", "history", "Storage", "Keep at most", self.history_limit, "sınır"),
+            ("ui_language", "application", "Interface", "Interface language", self.ui_language, "dil"),
+            ("theme", "application", "Interface", "Theme", self.header_theme, "koyu açık dark light"),
+            ("start_with_windows", "application", "Startup", "Start WordArc when Windows starts", self.start_with_windows, "otomatik başlat"),
+            ("overlay_corner", "application", "Interface", "Indicator corner", self.corner, "gösterge"),
+        ]
 
     def _theme_changed(self, _index):
         if self._theme_syncing or not hasattr(self, "header_theme"):
@@ -224,33 +492,38 @@ class SettingsWindow(QDialog):
             logging.getLogger("wordarc.ui").warning(
                 "theme changed but could not be persisted")
 
-    # ---- tabs ----------------------------------------------------------
+    # ---- pages ---------------------------------------------------------
 
-    def _general_tab(self):
+    def _dictation_tab(self):
         page = QWidget()
-        form = QFormLayout(page)
+        layout = QVBoxLayout(page)
 
-        self.ui_language = QComboBox()
-        for label, code in UI_LANGUAGES:
-            self.ui_language.addItem(t(label), code)
-        self.ui_language.setToolTip(
-            t("Restart WordArc for the language change to reach every window.")
-        )
-        form.addRow(t("Interface language"), self.ui_language)
+        start = QGroupBox(t("Start"))
+        form = QFormLayout(start)
 
-        self.general_theme = self._theme_combo()
-        form.addRow(t("Theme"), self.general_theme)
+        self.shortcut = self._shortcut_box("Ctrl+Space")
+        form.addRow(t("Shortcut"), self.shortcut)
+        self.shortcut_status = QLabel("")
+        self.shortcut_status.setWordWrap(True)
+        form.addRow(self.shortcut_status)
+
+        layout.addWidget(start)
+        sound = QGroupBox(t("Sound"))
+        form = QFormLayout(sound)
 
         self.mic = QComboBox()
-        self.mic.addItem(t("Default microphone"), "")
-        for name, desc in audio.list_sources():
-            self.mic.addItem(desc, name)
-        form.addRow(t("Microphone"), self.mic)
+        self.refresh_audio_devices = QPushButton(t("Reload"))
+        self.refresh_audio_devices.clicked.connect(self._refresh_audio_devices)
+        form.addRow(t("Microphone"), self._row(self.mic, self.refresh_audio_devices))
 
         self.language = QComboBox()
         for label, code in LANGUAGES:
             self.language.addItem(t(label), code)
         form.addRow(t("Speech language"), self.language)
+
+        layout.addWidget(sound)
+        output = QGroupBox(t("Output"))
+        form = QFormLayout(output)
 
         self.auto_paste = QCheckBox(t("Paste the text into the focused window"))
         form.addRow("", self.auto_paste)
@@ -265,10 +538,9 @@ class SettingsWindow(QDialog):
         self.restore_clipboard = QCheckBox(t("Restore the previous clipboard after pasting"))
         form.addRow("", self.restore_clipboard)
 
-        self.corner = QComboBox()
-        for value in CORNERS:
-            self.corner.addItem(t(value), value)
-        form.addRow(t("Indicator corner"), self.corner)
+        layout.addWidget(output)
+        recording = QGroupBox(t("Recording"))
+        form = QFormLayout(recording)
 
         self.max_seconds = QSpinBox()
         self.max_seconds.setRange(10, 3600)
@@ -299,27 +571,111 @@ class SettingsWindow(QDialog):
 
         self.keep_audio = QCheckBox(t("Keep audio files (%LOCALAPPDATA%\\WordArc\\recordings)"))
         form.addRow("", self.keep_audio)
-        diagnostics = QPushButton(t("Open diagnostics folder"))
-        diagnostics.clicked.connect(self._open_diagnostics)
-        form.addRow("", diagnostics)
+
+        layout.addWidget(recording)
+        cleanup = QGroupBox(t("Cleanup"))
+        form = QFormLayout(cleanup)
+
+        self.cleanup_enabled = QCheckBox(t("Clean the transcript with a model"))
+        form.addRow("", self.cleanup_enabled)
+        form.addRow(self._shared_ai_note())
+        layout.addWidget(cleanup)
+        layout.addStretch(1)
         return page
 
-    def _api_tab(self):
+    def _general_tab(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        interface = QGroupBox(t("Interface"))
+        form = QFormLayout(interface)
+
+        self.ui_language = QComboBox()
+        for label, code in UI_LANGUAGES:
+            self.ui_language.addItem(t(label), code)
+        self.ui_language.setToolTip(
+            t("Restart WordArc for the language change to reach every window.")
+        )
+        form.addRow(t("Interface language"), self.ui_language)
+
+        self.corner = QComboBox()
+        for value in CORNERS:
+            self.corner.addItem(t(value), value)
+        form.addRow(t("Indicator corner"), self.corner)
+        layout.addWidget(interface)
+
+        startup_box = QGroupBox(t("Startup"))
+        startup_form = QFormLayout(startup_box)
+        self.start_with_windows = QCheckBox(
+            t("Start WordArc when Windows starts")
+        )
+        self.start_with_windows.setToolTip(t(
+            "Starts WordArc for this Windows user without administrator permission."
+        ))
+        startup_form.addRow("", self.start_with_windows)
+        self.close_to_tray = QCheckBox(t(
+            "Keep running in the system tray when the window is closed"
+        ))
+        self.close_to_tray.setToolTip(t(
+            "When disabled, the title-bar close button, Escape and Alt+F4 quit WordArc."
+        ))
+        startup_form.addRow("", self.close_to_tray)
+        layout.addWidget(startup_box)
+
+        support = QGroupBox(t("Support"))
+        support_form = QFormLayout(support)
+        diagnostics = QPushButton(t("Open diagnostics folder"))
+        diagnostics.clicked.connect(self._open_diagnostics)
+        support_form.addRow("", diagnostics)
+        layout.addWidget(support)
+        layout.addStretch(1)
+        return page
+
+    def _shared_ai_tab(self):
         page = QWidget()
         outer = QVBoxLayout(page)
 
         # API keys first, then model selection.
         keys = QGroupBox(t("Keys"))
-        keys_form = QFormLayout(keys)
-        self.gemini_key = QLineEdit()
-        self.gemini_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.gemini_key.setPlaceholderText(t("AIza… (falls back to GEMINI_API_KEY)"))
+        keys_layout = QVBoxLayout(keys)
+        key_help = QLabel(t(
+            "Keys are tried from top to bottom and stored only in Windows Credential Manager."
+        ))
+        key_help.setWordWrap(True)
+        key_help.setObjectName("muted")
+        keys_layout.addWidget(key_help)
+        self.gemini_keys_list = QListWidget()
+        self.gemini_keys_list.setMinimumHeight(116)
+        self.gemini_keys_list.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        keys_layout.addWidget(self.gemini_keys_list)
+        self.gemini_add_button = QPushButton(t("Add API"))
+        self.gemini_edit_button = QPushButton(t("Edit"))
+        self.gemini_remove_button = QPushButton(t("Remove"))
+        self.gemini_up_button = QPushButton(t("Move up"))
+        self.gemini_down_button = QPushButton(t("Move down"))
         self.gemini_test_button = QPushButton(t("Test"))
+        self.gemini_add_button.clicked.connect(self._add_gemini_key)
+        self.gemini_edit_button.clicked.connect(self._edit_gemini_key)
+        self.gemini_remove_button.clicked.connect(self._remove_gemini_key)
+        self.gemini_up_button.clicked.connect(lambda: self._move_gemini_key(-1))
+        self.gemini_down_button.clicked.connect(lambda: self._move_gemini_key(1))
         self.gemini_test_button.clicked.connect(self._test_gemini)
+        self.gemini_keys_list.currentRowChanged.connect(
+            self._refresh_gemini_key_buttons
+        )
+        key_buttons = QHBoxLayout()
+        for button in (
+            self.gemini_add_button, self.gemini_edit_button,
+            self.gemini_remove_button, self.gemini_up_button,
+            self.gemini_down_button, self.gemini_test_button,
+        ):
+            key_buttons.addWidget(button)
+        key_buttons.addStretch(1)
+        keys_layout.addLayout(key_buttons)
         self.gemini_test_label = QLabel("")
         self.gemini_test_label.setWordWrap(True)
-        keys_form.addRow("Gemini", self._row(self.gemini_key, self.gemini_test_button))
-        keys_form.addRow("", self.gemini_test_label)
+        keys_layout.addWidget(self.gemini_test_label)
         outer.addWidget(keys)
 
         stt = QGroupBox(t("Speech to text"))
@@ -341,9 +697,6 @@ class SettingsWindow(QDialog):
 
         orr = QGroupBox(t("Transcript cleanup"))
         orr_form = QFormLayout(orr)
-        self.cleanup_enabled = QCheckBox(t("Clean the transcript with a model"))
-        orr_form.addRow("", self.cleanup_enabled)
-
         self.cleanup_model = QComboBox()
         self.cleanup_model.setEditable(True)
         self.cleanup_model.addItems(CLEANUP_MODELS)
@@ -364,202 +717,37 @@ class SettingsWindow(QDialog):
         self.models_label = QLabel("")
         self.models_label.setWordWrap(True)
         orr_form.addRow(self.models_label)
+
+        cleanup_intro = QLabel(t(
+            "System instruction shared by dictation and optional meeting cleanup."
+        ))
+        cleanup_intro.setWordWrap(True)
+        orr_form.addRow(cleanup_intro)
+        self.cleanup_prompt = QPlainTextEdit()
+        self.cleanup_prompt.setMinimumHeight(180)
+        orr_form.addRow(self.cleanup_prompt)
+        reset_cleanup = QPushButton(t("Reset to default"))
+        reset_cleanup.clicked.connect(
+            lambda: self.cleanup_prompt.setPlainText(cfg.default_cleanup_prompt())
+        )
+        orr_form.addRow("", reset_cleanup)
         outer.addWidget(orr)
+
+        glossary = QGroupBox(t("Names and terms"))
+        glossary_layout = QVBoxLayout(glossary)
+        glossary_hint = QLabel(t(
+            "Names and terms you say often (optional). They go to the transcription "
+            "model as a hint, and to the cleanup model as a glossary, so it can repair "
+            "the ones that still come out wrong."
+        ))
+        glossary_hint.setWordWrap(True)
+        glossary_layout.addWidget(glossary_hint)
+        self.transcribe_prompt = QPlainTextEdit()
+        self.transcribe_prompt.setMaximumHeight(100)
+        glossary_layout.addWidget(self.transcribe_prompt)
+        outer.addWidget(glossary)
         outer.addStretch(1)
         return page
-
-    def _prompt_tab(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-
-        # Two jobs, two sets of rules: dictation is rewritten for reading, an
-        # audio file becomes subtitles that have to stay in sync with the voice.
-        inner = QTabWidget()
-        self.cleanup_prompt = self._prompt_page(
-            inner, t("Dictation"),
-            t("System instruction given to the cleanup model. This is where you "
-              "decide how much it may touch your words."),
-            cfg.default_cleanup_prompt,
-        )
-        self.file_cleanup_prompt = self._prompt_page(
-            inner, t("Audio file"),
-            t("Used instead when an audio or video file is cleaned up. It is "
-              "written for subtitles: lines stay where they are, nothing is "
-              "shortened, and misheard words are repaired from the context."),
-            cfg.default_file_cleanup_prompt,
-        )
-        layout.addWidget(inner, 1)
-
-        hint = QLabel(t("Names and terms you say often (optional). They go to the "
-                        "transcription model as a hint, and to the cleanup model as a "
-                        "glossary, so it can repair the ones that still come out wrong."))
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
-        self.transcribe_prompt = QPlainTextEdit()
-        self.transcribe_prompt.setMaximumHeight(90)
-        layout.addWidget(self.transcribe_prompt)
-        return page
-
-    def _assistant_tab(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        intro = QLabel(t(
-            "This shortcut records the same way dictation does, but the "
-            "transcript is not what gets pasted. It goes to an agent as a "
-            "command, and what comes back is pasted instead: the answer to a "
-            "question, or a sentence saying what was done. Claude Code and "
-            "Codex run as the session you would have opened yourself, with your "
-            "skills, your connected services and your account."
-        ))
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
-
-        self.assistant_found = QLabel("")
-        self.assistant_found.setWordWrap(True)
-        layout.addWidget(self.assistant_found)
-
-        how = QGroupBox(t("How it runs"))
-        how_form = QFormLayout(how)
-        self.assistant_shortcut = self._shortcut_box(t("none"))
-        how_form.addRow(t("Shortcut"), self.assistant_shortcut)
-        self.assistant_shortcut_status = QLabel("")
-        self.assistant_shortcut_status.setWordWrap(True)
-        how_form.addRow(self.assistant_shortcut_status)
-
-        self.assistant_provider = QComboBox()
-        for label, value in ASSISTANT_PROVIDERS:
-            self.assistant_provider.addItem(t(label), value)
-        self.assistant_provider.currentIndexChanged.connect(
-            self._assistant_provider_changed
-        )
-        how_form.addRow(t("Runs on"), self.assistant_provider)
-
-        self.assistant_dir = QLineEdit()
-        self.assistant_dir.setPlaceholderText(os.path.expanduser("~"))
-        browse = QPushButton(t("Choose…"))
-        browse.clicked.connect(self._choose_assistant_dir)
-        how_form.addRow(t("Working directory"),
-                        self._row(self.assistant_dir, browse))
-        dir_note = QLabel(t(
-            "The directory the command runs in, which decides which project's "
-            "instructions and files it can see. Your own skills and services "
-            "are there whichever one it is."
-        ))
-        dir_note.setWordWrap(True)
-        how_form.addRow(dir_note)
-
-        # One scale for all three: how hard to think is one thing to want, and
-        # each provider is handed the nearest rung it actually has.
-        self.assistant_reasoning = QComboBox()
-        for label, value in REASONING_LEVELS:
-            self.assistant_reasoning.addItem(t(label), value)
-        self.assistant_reasoning.setToolTip(t(
-            "More thinking is slower, and you are standing in front of the "
-            "screen while it happens. Worth it for a job that has to be worked "
-            "out rather than looked up."
-        ))
-        how_form.addRow(t("Thinking"), self.assistant_reasoning)
-
-        self.assistant_timeout = QSpinBox()
-        self.assistant_timeout.setRange(15, 3600)
-        self.assistant_timeout.setSuffix(t(" s"))
-        self.assistant_timeout.setToolTip(t(
-            "A command still running after this is given up on. The tray menu "
-            "can stop one earlier."
-        ))
-        how_form.addRow(t("Give up after"), self.assistant_timeout)
-        layout.addWidget(how)
-
-        # One box per provider, only the chosen one on screen: they have nothing
-        # in common past the model, and three sets of half-relevant fields would
-        # be worse than none.
-        self.claude_box = QGroupBox(t("Claude Code"))
-        claude_form = QFormLayout(self.claude_box)
-        self.assistant_model = QComboBox()
-        self.assistant_model.setEditable(True)
-        self.assistant_model.addItems(ASSISTANT_MODELS)
-        self.assistant_model.setToolTip(t(
-            "A name like “sonnet” always means the newest model of that line. "
-            "Opus thinks harder and answers slower, which is felt here more "
-            "than anywhere else: you are standing in front of the screen."
-        ))
-        claude_form.addRow(t("Model"), self.assistant_model)
-        self.assistant_permission = QComboBox()
-        for label, value in PERMISSION_MODES:
-            self.assistant_permission.addItem(t(label), value)
-        claude_form.addRow(t("Permissions"), self.assistant_permission)
-        layout.addWidget(self.claude_box)
-
-        self.codex_box = QGroupBox(t("Codex"))
-        codex_form = QFormLayout(self.codex_box)
-        self.assistant_codex_model = QComboBox()
-        self.assistant_codex_model.setEditable(True)
-        self.assistant_codex_model.addItem(t("Codex's own default"), "")
-        for name in CODEX_MODELS:
-            self.assistant_codex_model.addItem(name, name)
-        codex_form.addRow(t("Model"), self.assistant_codex_model)
-        self.assistant_codex_sandbox = QComboBox()
-        for label, value in CODEX_SANDBOXES:
-            self.assistant_codex_sandbox.addItem(t(label), value)
-        codex_form.addRow(t("Sandbox"), self.assistant_codex_sandbox)
-        layout.addWidget(self.codex_box)
-
-        thread = QGroupBox(t("The conversation"))
-        thread_form = QFormLayout(thread)
-        self.assistant_session_minutes = QSpinBox()
-        self.assistant_session_minutes.setRange(0, 1440)
-        self.assistant_session_minutes.setSuffix(t(" min"))
-        self.assistant_session_minutes.setSpecialValueText(t("every command on its own"))
-        thread_form.addRow(t("Carry on for"), self.assistant_session_minutes)
-        thread_note = QLabel(t(
-            "Commands within this long of each other are one conversation, so "
-            "“and move that to Thursday” knows what “that” is. After it, the "
-            "next command starts fresh."
-        ))
-        thread_note.setWordWrap(True)
-        thread_form.addRow(thread_note)
-        reset = QPushButton(t("Start a new conversation now"))
-        reset.clicked.connect(self._reset_assistant_session)
-        self.assistant_session_status = QLabel("")
-        self.assistant_session_status.setWordWrap(True)
-        thread_form.addRow(self._row(reset), self.assistant_session_status)
-        layout.addWidget(thread)
-
-        answer = QGroupBox(t("The answer"))
-        answer_form = QFormLayout(answer)
-        self.assistant_paste = QCheckBox(t("Paste it into the focused window"))
-        self.assistant_paste.setToolTip(t(
-            "It is copied to the clipboard either way."
-        ))
-        answer_form.addRow("", self.assistant_paste)
-        self.assistant_cleanup = QCheckBox(t("Clean the transcript up before sending it"))
-        self.assistant_cleanup.setToolTip(t(
-            "Off by default: Claude reads through “erm” and “you know” without "
-            "help, and cleanup costs an API call and a second or two."
-        ))
-        answer_form.addRow("", self.assistant_cleanup)
-        layout.addWidget(answer)
-
-        prompt_label = QLabel(t(
-            "Told to the agent alongside every command, on top of whatever your "
-            "own configuration already says."
-        ))
-        prompt_label.setWordWrap(True)
-        layout.addWidget(prompt_label)
-        self.assistant_prompt = QPlainTextEdit()
-        self.assistant_prompt.setMinimumHeight(180)
-        layout.addWidget(self.assistant_prompt, 1)
-        reset_prompt = QPushButton(t("Reset to default"))
-        reset_prompt.clicked.connect(
-            lambda: self.assistant_prompt.setPlainText(cfg.default_assistant_prompt())
-        )
-        layout.addWidget(reset_prompt, 0, Qt.AlignmentFlag.AlignRight)
-
-        area = QScrollArea()
-        area.setWidgetResizable(True)
-        area.setFrameShape(QScrollArea.Shape.NoFrame)
-        area.setWidget(page)
-        return area
 
     def _meeting_tab(self):
         page = QWidget()
@@ -571,13 +759,11 @@ class SettingsWindow(QDialog):
         ))
         intro.setWordWrap(True)
         layout.addWidget(intro)
+        layout.addWidget(self._shared_ai_note())
 
         sources = QGroupBox(t("Sound"))
         sources_form = QFormLayout(sources)
         self.meeting_mic = QComboBox()
-        self.meeting_mic.addItem(t("Same as dictation"), "")
-        for name, desc in audio.list_sources():
-            self.meeting_mic.addItem(desc, name)
         sources_form.addRow(t("Microphone"), self.meeting_mic)
 
         self.meeting_system = QComboBox()
@@ -585,6 +771,8 @@ class SettingsWindow(QDialog):
         for name, desc in audio.list_monitors():
             self.meeting_system.addItem(desc, name)
         sources_form.addRow(t("The other participants"), self.meeting_system)
+
+        self._refresh_audio_devices()
 
         note = QLabel(t(
             "Wear headphones if you can. Through speakers your microphone hears "
@@ -686,11 +874,7 @@ class SettingsWindow(QDialog):
 
         # Everything above is more than one screenful; let it scroll rather than
         # squeezing the prompt box down to nothing.
-        area = QScrollArea()
-        area.setWidgetResizable(True)
-        area.setFrameShape(QScrollArea.Shape.NoFrame)
-        area.setWidget(page)
-        return area
+        return page
 
     def _minutes_tab(self):
         page = QWidget()
@@ -744,6 +928,7 @@ class SettingsWindow(QDialog):
         intro = QLabel(t("Transcribe an existing audio or video file with the same models."))
         intro.setWordWrap(True)
         layout.addWidget(intro)
+        layout.addWidget(self._shared_ai_note())
 
         pick = QPushButton(t("Choose file…"))
         pick.clicked.connect(self._choose_file)
@@ -767,6 +952,18 @@ class SettingsWindow(QDialog):
               "the lines keep their place and nothing is shortened.")
         )
         layout.addWidget(self.file_cleanup)
+
+        file_prompt_label = QLabel(t("Audio file cleanup instruction"))
+        file_prompt_label.setWordWrap(True)
+        layout.addWidget(file_prompt_label)
+        self.file_cleanup_prompt = QPlainTextEdit()
+        self.file_cleanup_prompt.setMaximumHeight(110)
+        layout.addWidget(self.file_cleanup_prompt)
+        reset_file_prompt = QPushButton(t("Reset to default"))
+        reset_file_prompt.clicked.connect(
+            lambda: self.file_cleanup_prompt.setPlainText(cfg.default_file_cleanup_prompt())
+        )
+        layout.addWidget(reset_file_prompt, 0, Qt.AlignmentFlag.AlignRight)
 
         self.file_run = QPushButton(t("Transcribe"))
         self.file_run.clicked.connect(self._run_file)
@@ -807,30 +1004,12 @@ class SettingsWindow(QDialog):
         layout.addLayout(out_row)
         return page
 
-    def _shortcut_tab(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        form = QFormLayout()
-        self.shortcut = self._shortcut_box("Ctrl+Space")
-        form.addRow(t("Shortcut"), self.shortcut)
-        layout.addLayout(form)
-
-        self.shortcut_status = QLabel("")
-        self.shortcut_status.setWordWrap(True)
-        layout.addWidget(self.shortcut_status)
-
-        note = QLabel(t(
-            "The shortcut is registered with Windows and takes effect immediately."
-        ))
-        note.setWordWrap(True)
-        layout.addWidget(note)
-        layout.addStretch(1)
-        return page
-
     def _history_tab(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        self.history_enabled = QCheckBox(t("Store dictation history on this computer"))
+        self.history_enabled = QCheckBox(
+            t("Store dictation history on this computer")
+        )
         layout.addWidget(self.history_enabled)
         self.history = QListWidget()
         self.history.setWordWrap(True)
@@ -877,22 +1056,6 @@ class SettingsWindow(QDialog):
         return page
 
     @staticmethod
-    def _prompt_page(tabs, title, intro, default):
-        """A tab holding one editable prompt, and returns its box."""
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        label = QLabel(intro)
-        label.setWordWrap(True)
-        layout.addWidget(label)
-        box = QPlainTextEdit()
-        layout.addWidget(box, 1)
-        reset = QPushButton(t("Reset to default"))
-        reset.clicked.connect(lambda: box.setPlainText(default()))
-        layout.addWidget(reset, 0, Qt.AlignmentFlag.AlignRight)
-        tabs.addTab(page, title)
-        return box
-
-    @staticmethod
     def _shortcut_box(placeholder=""):
         """The field a global shortcut is typed or picked in."""
         box = QComboBox()
@@ -922,6 +1085,12 @@ class SettingsWindow(QDialog):
         self._select_data(self.header_theme, conf["theme_mode"])
         self._select_data(self.general_theme, conf["theme_mode"])
         self._theme_syncing = False
+        try:
+            starts_with_windows = startup.is_enabled()
+        except startup.StartupError:
+            starts_with_windows = bool(conf["start_with_windows"])
+        self.start_with_windows.setChecked(starts_with_windows)
+        self.close_to_tray.setChecked(bool(conf["close_to_tray"]))
         self._select_data(self.ui_language, conf["ui_language"])
         self._select_data(self.mic, conf["mic_target"])
         self._select_data(self.language, conf["language"])
@@ -935,7 +1104,8 @@ class SettingsWindow(QDialog):
         self.filter_hallucinations.setChecked(conf["filter_hallucinations"])
         self.keep_audio.setChecked(conf["keep_audio"])
 
-        self.gemini_key.setText(conf.stored_gemini_key())
+        self._gemini_keys = conf.stored_gemini_keys()
+        self._refresh_gemini_keys()
         self.transcribe_model.setCurrentText(conf["gemini_transcribe_model"])
         self.cleanup_enabled.setChecked(conf["cleanup_enabled"])
         self.cleanup_model.setCurrentText(conf["cleanup_model"])
@@ -945,23 +1115,6 @@ class SettingsWindow(QDialog):
             conf["file_cleanup_prompt"] or cfg.default_file_cleanup_prompt()
         )
         self.transcribe_prompt.setPlainText(conf["transcribe_prompt"])
-
-        self.assistant_shortcut.setCurrentText(conf["assistant_shortcut"])
-        self._select_data(self.assistant_provider, conf["assistant_provider"])
-        self.assistant_model.setCurrentText(conf["assistant_model"])
-        self._select_data(self.assistant_permission, conf["assistant_permission_mode"])
-        self.assistant_codex_model.setCurrentText(conf["assistant_codex_model"])
-        self._select_data(self.assistant_codex_sandbox, conf["assistant_codex_sandbox"])
-        self._assistant_provider_changed()  # selecting index 0 fires no signal
-        self._select_data(self.assistant_reasoning, conf["assistant_reasoning"])
-        self.assistant_dir.setText(conf["assistant_dir"])
-        self.assistant_timeout.setValue(int(conf["assistant_timeout"]))
-        self.assistant_session_minutes.setValue(int(conf["assistant_session_minutes"]))
-        self.assistant_paste.setChecked(conf["assistant_paste"])
-        self.assistant_cleanup.setChecked(conf["assistant_cleanup"])
-        self.assistant_prompt.setPlainText(
-            conf["assistant_prompt"] or cfg.default_assistant_prompt()
-        )
 
         self._select_data(self.meeting_mic, conf["meeting_mic_target"])
         self._select_data(self.meeting_system, conf["meeting_system_target"])
@@ -991,14 +1144,14 @@ class SettingsWindow(QDialog):
 
         self._refresh_shortcut_status()
         self._refresh_meeting_shortcut_status()
-        self._refresh_ask_shortcut_status()
-        self._refresh_assistant_status()
         self._load_history()
         self._load_minutes()
 
     def _save(self):
         conf = self.conf
         conf["theme_mode"] = self.header_theme.currentData() or "dark"
+        conf["start_with_windows"] = self.start_with_windows.isChecked()
+        conf["close_to_tray"] = self.close_to_tray.isChecked()
         conf["ui_language"] = self.ui_language.currentData() or "auto"
         conf["mic_target"] = self.mic.currentData() or ""
         conf["language"] = self.language.currentData() or "auto"
@@ -1012,14 +1165,7 @@ class SettingsWindow(QDialog):
         conf["filter_hallucinations"] = self.filter_hallucinations.isChecked()
         conf["keep_audio"] = self.keep_audio.isChecked()
 
-        key = self.gemini_key.text().strip()
-        if not key:
-            try:
-                cfg.credential_store.delete()
-            except cfg.credential_store.CredentialError as exc:
-                QMessageBox.warning(self, t("Error"), str(exc))
-                return
-        conf["gemini_api_key"] = key
+        conf["gemini_api_key"] = ""
         conf["gemini_transcribe_model"] = (self.transcribe_model.currentText().strip()
                                            or cfg.DEFAULTS["gemini_transcribe_model"])
 
@@ -1035,28 +1181,6 @@ class SettingsWindow(QDialog):
         conf["file_cleanup_prompt"] = ("" if file_prompt == cfg.default_file_cleanup_prompt()
                                        else file_prompt)
         conf["transcribe_prompt"] = self.transcribe_prompt.toPlainText().strip()
-
-        conf["assistant_shortcut"] = self.assistant_shortcut.currentText().strip()
-        conf["assistant_provider"] = self.assistant_provider.currentData() or "claude"
-        conf["assistant_model"] = (self.assistant_model.currentText().strip()
-                                   or cfg.DEFAULTS["assistant_model"])
-        conf["assistant_permission_mode"] = "manual"
-        # The editable box shows a label for "no choice", which must not be
-        # stored as if it were a model id.
-        codex_model = self.assistant_codex_model.currentText().strip()
-        conf["assistant_codex_model"] = (
-            "" if codex_model == t("Codex's own default") else codex_model
-        )
-        conf["assistant_codex_sandbox"] = "read-only"
-        conf["assistant_reasoning"] = self.assistant_reasoning.currentData() or ""
-        conf["assistant_dir"] = self.assistant_dir.text().strip()
-        conf["assistant_timeout"] = self.assistant_timeout.value()
-        conf["assistant_session_minutes"] = self.assistant_session_minutes.value()
-        conf["assistant_paste"] = self.assistant_paste.isChecked()
-        conf["assistant_cleanup"] = self.assistant_cleanup.isChecked()
-        assistant_prompt = self.assistant_prompt.toPlainText().strip()
-        conf["assistant_prompt"] = ("" if assistant_prompt == cfg.default_assistant_prompt()
-                                    else assistant_prompt)
 
         conf["meeting_mic_target"] = self.meeting_mic.currentData() or ""
         conf["meeting_system_target"] = self.meeting_system.currentData() or ""
@@ -1082,8 +1206,23 @@ class SettingsWindow(QDialog):
         conf["history_enabled"] = self.history_enabled.isChecked()
         conf["history_limit"] = self.history_limit.value()
         try:
+            startup.set_enabled(conf["start_with_windows"])
+        except startup.StartupError as exc:
+            QMessageBox.warning(self, t("Error"), str(exc))
+            return
+        previous_keys = conf.stored_gemini_keys()
+        try:
+            cfg.credential_store.write_all(self._gemini_keys)
+        except cfg.credential_store.CredentialError as exc:
+            QMessageBox.warning(self, t("Error"), str(exc))
+            return
+        try:
             conf.save()
         except OSError as exc:
+            try:
+                cfg.credential_store.write_all(previous_keys)
+            except cfg.credential_store.CredentialError:
+                pass
             QMessageBox.warning(self, t("Error"), str(exc))
             return
         # A lowered limit should bite now, not on the next dictation.
@@ -1098,18 +1237,129 @@ class SettingsWindow(QDialog):
     @staticmethod
     def _select_data(combo, value):
         index = combo.findData(value)
+        # Migrate the old plain-name setting to the new host-aware target.
+        if index < 0 and value and not str(value).startswith(audio.DEVICE_TARGET_PREFIX):
+            suffix = f":{value}".casefold()
+            for candidate in range(combo.count()):
+                data = str(combo.itemData(candidate) or "")
+                if data.casefold().endswith(suffix):
+                    index = candidate
+                    break
         combo.setCurrentIndex(index if index >= 0 else 0)
 
+    def _refresh_audio_devices(self, *_):
+        """Rescan hot-plugged inputs while preserving both current selections."""
+        sources = audio.list_sources()
+        for combo, default_label in (
+                (getattr(self, "mic", None), t("Default microphone")),
+                (getattr(self, "meeting_mic", None), t("Same as dictation"))):
+            if combo is None:
+                continue
+            selected = combo.currentData() if combo.count() else ""
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItem(default_label, "")
+            for target, label in sources:
+                combo.addItem(label, target)
+            self._select_data(combo, selected)
+            combo.blockSignals(False)
+
     # ---- api helpers -----------------------------------------------------
+
+    @staticmethod
+    def _masked_key(key):
+        suffix = key[-4:] if len(key) >= 4 else "••••"
+        return f"••••••••{suffix}"
+
+    def _refresh_gemini_keys(self, selected=None):
+        if selected is None:
+            selected = self.gemini_keys_list.currentRow()
+        self.gemini_keys_list.clear()
+        for index, key in enumerate(self._gemini_keys, start=1):
+            label = t("Default API") if index == 1 else t("Backup API {number}", number=index)
+            self.gemini_keys_list.addItem(f"{label} — {self._masked_key(key)}")
+        if self._gemini_keys:
+            self.gemini_keys_list.setCurrentRow(
+                min(max(selected, 0), len(self._gemini_keys) - 1)
+            )
+        self._refresh_gemini_key_buttons()
+
+    def _refresh_gemini_key_buttons(self, *_):
+        row = self.gemini_keys_list.currentRow()
+        selected = 0 <= row < len(self._gemini_keys)
+        self.gemini_add_button.setEnabled(
+            len(self._gemini_keys) < cfg.credential_store.MAX_GEMINI_KEYS
+            if hasattr(cfg.credential_store, "MAX_GEMINI_KEYS") else
+            len(self._gemini_keys) < 5
+        )
+        self.gemini_edit_button.setEnabled(selected)
+        self.gemini_remove_button.setEnabled(selected)
+        self.gemini_up_button.setEnabled(selected and row > 0)
+        self.gemini_down_button.setEnabled(
+            selected and row + 1 < len(self._gemini_keys)
+        )
+        self.gemini_test_button.setEnabled(selected or bool(self.conf.gemini_keys()))
+
+    def _prompt_gemini_key(self, title, value=""):
+        key, ok = QInputDialog.getText(
+            self, t(title), t("Gemini API key"),
+            QLineEdit.EchoMode.Password, value,
+        )
+        return key.strip() if ok else ""
+
+    def _add_gemini_key(self):
+        if len(self._gemini_keys) >= 5:
+            return
+        key = self._prompt_gemini_key("Add API")
+        if not key:
+            return
+        if key in self._gemini_keys:
+            QMessageBox.warning(self, t("Error"), t("This API key is already listed."))
+            return
+        self._gemini_keys.append(key)
+        self._refresh_gemini_keys(len(self._gemini_keys) - 1)
+
+    def _edit_gemini_key(self):
+        row = self.gemini_keys_list.currentRow()
+        if not 0 <= row < len(self._gemini_keys):
+            return
+        key = self._prompt_gemini_key("Edit API", self._gemini_keys[row])
+        if not key:
+            return
+        if key in self._gemini_keys and key != self._gemini_keys[row]:
+            QMessageBox.warning(self, t("Error"), t("This API key is already listed."))
+            return
+        self._gemini_keys[row] = key
+        self._refresh_gemini_keys(row)
+
+    def _remove_gemini_key(self):
+        row = self.gemini_keys_list.currentRow()
+        if 0 <= row < len(self._gemini_keys):
+            self._gemini_keys.pop(row)
+            self._refresh_gemini_keys(min(row, len(self._gemini_keys) - 1))
+
+    def _move_gemini_key(self, offset):
+        row = self.gemini_keys_list.currentRow()
+        target = row + offset
+        if not (0 <= row < len(self._gemini_keys)
+                and 0 <= target < len(self._gemini_keys)):
+            return
+        self._gemini_keys[row], self._gemini_keys[target] = (
+            self._gemini_keys[target], self._gemini_keys[row]
+        )
+        self._refresh_gemini_keys(target)
+
+    def _gemini_runtime_keys(self):
+        return list(self._gemini_keys) or self.conf.gemini_keys()
 
     def _load_transcribe_models(self):
         self.refresh_transcribe_models.setEnabled(False)
         self.transcribe_status.setText(t("Fetching model list…"))
-        key = self.gemini_key.text().strip() or self.conf.gemini_key()
+        keys = self._gemini_runtime_keys()
 
         def work():
             try:
-                models = api.gemini_models(key)
+                models = api.GeminiClient(keys).list_models()
                 self._transcribe_models_loaded.emit(models, "")
             except api.ApiError as exc:
                 self._transcribe_models_loaded.emit([], str(exc))
@@ -1130,11 +1380,11 @@ class SettingsWindow(QDialog):
     def _load_models(self):
         self.refresh_models.setEnabled(False)
         self.models_label.setText(t("Fetching model list…"))
-        key = self.gemini_key.text().strip() or self.conf.gemini_key()
+        keys = self._gemini_runtime_keys()
 
         def work():
             try:
-                self._models_loaded.emit(api.gemini_models(key), "")
+                self._models_loaded.emit(api.GeminiClient(keys).list_models(), "")
             except api.ApiError as exc:
                 self._models_loaded.emit([], str(exc))
 
@@ -1155,7 +1405,12 @@ class SettingsWindow(QDialog):
     def _test_gemini(self):
         self.gemini_test_button.setEnabled(False)
         self.gemini_test_label.setText(t("Trying…"))
-        key = self.gemini_key.text().strip() or self.conf.gemini_key()
+        row = self.gemini_keys_list.currentRow()
+        if 0 <= row < len(self._gemini_keys):
+            key = self._gemini_keys[row]
+        else:
+            runtime = self.conf.gemini_keys()
+            key = runtime[0] if runtime else ""
 
         def work():
             try:
@@ -1169,7 +1424,7 @@ class SettingsWindow(QDialog):
         threading.Thread(target=work, daemon=True).start()
 
     def _on_test_done(self, ok, message):
-        self.gemini_test_button.setEnabled(True)
+        self._refresh_gemini_key_buttons()
         self.gemini_test_label.setText(("✓ " if ok else "✗ ") + message)
 
     # ---- audio file ------------------------------------------------------
@@ -1267,56 +1522,6 @@ class SettingsWindow(QDialog):
             t("No shortcut set. The tray menu starts a meeting too.")
         )
 
-    # ---- Claude ----------------------------------------------------------
-
-    def _refresh_ask_shortcut_status(self):
-        self.assistant_shortcut_status.setText(
-            t("Active shortcut: {shortcut}", shortcut=self.conf["assistant_shortcut"])
-            if self.conf["assistant_shortcut"] else
-            t("No shortcut set. The tray menu asks it too.")
-        )
-
-    def _assistant_provider_changed(self):
-        provider = self.assistant_provider.currentData() or "claude"
-        self.claude_box.setVisible(provider == "claude")
-        self.codex_box.setVisible(provider == "codex")
-        self._refresh_assistant_status()
-
-    def _refresh_assistant_status(self):
-        provider = self.assistant_provider.currentData() or "claude"
-        binary = assistant.executable(provider)
-        found = shutil.which(binary) if binary else ""
-        if not binary:
-            self.assistant_found.setText(
-                t("Needs no program installed, only an API key.")
-            )
-        elif found:
-            self.assistant_found.setText(t("Found: {path}", path=found))
-        else:
-            self.assistant_found.setText(t(
-                "{binary} is not on your PATH, so this cannot run yet. Install "
-                "it, or pick another one above.", binary=binary,
-            ))
-        age = assistant.session_age()
-        if age is None:
-            self.assistant_session_status.setText(t("No conversation going."))
-        else:
-            self.assistant_session_status.setText(
-                t("Last used {minutes} min ago.", minutes=int(age // 60))
-            )
-
-    def _reset_assistant_session(self):
-        assistant.clear_session()
-        self._refresh_assistant_status()
-
-    def _choose_assistant_dir(self):
-        chosen = QFileDialog.getExistingDirectory(
-            self, t("Working directory"),
-            self.assistant_dir.text().strip() or os.path.expanduser("~"),
-        )
-        if chosen:
-            self.assistant_dir.setText(chosen)
-
     def _open_diagnostics(self):
         cfg.LOG_DIR.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(cfg.LOG_DIR)))
@@ -1412,7 +1617,7 @@ class SettingsWindow(QDialog):
                 # The text of an answer says nothing about what was asked, and
                 # out of that context half of them read like non sequiturs.
                 asked = (row.get("question") or row.get("raw") or "").replace("\n", " ")
-                header += t("  ·  asked Claude: {question}",
+                header += t("  ·  legacy Agent record: {question}",
                             question=asked[:60] + ("…" if len(asked) > 60 else ""))
             item = QListWidgetItem(f"{header}\n{preview}")
             item.setData(Qt.ItemDataRole.UserRole, row)

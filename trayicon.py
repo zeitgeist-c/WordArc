@@ -7,6 +7,7 @@ from PyQt6.QtGui import (QColor, QIcon, QLinearGradient, QPainter,
 _IDLE = "audio-input-microphone"
 _REC = "media-record"
 _BUSY = "view-refresh"
+SIZES = (16, 20, 24, 32, 48, 64)
 
 VIOLET = QColor("#8B5CF6")
 CYAN = QColor("#22D3EE")
@@ -18,15 +19,22 @@ _cache = {}
 def icon(name):
     """Return a cached, scalable WordArc state icon."""
     if name not in _cache:
-        _cache[name] = _draw(name)
+        result = QIcon()
+        for size in SIZES:
+            result.addPixmap(_draw(name, size))
+        _cache[name] = result
     return _cache[name]
 
 
-def _draw(name):
-    pix = QPixmap(64, 64)
+def _draw(name, size=64):
+    pix = QPixmap(size, size)
     pix.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pix)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.scale(size / 64.0, size / 64.0)
+    painter.setPen(QPen(QColor("#F8FAFC"), 3))
+    painter.setBrush(QColor("#111827"))
+    painter.drawRoundedRect(QRectF(2.5, 2.5, 59, 59), 13, 13)
     _mark(painter)
     if name == _REC:
         painter.setPen(QPen(QColor("#0B0E14"), 2))
@@ -39,7 +47,7 @@ def _draw(name):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawArc(QRectF(38, 7, 21, 21), 35 * 16, 270 * 16)
     painter.end()
-    return QIcon(pix)
+    return pix
 
 
 def _mark(painter):

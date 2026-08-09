@@ -2,12 +2,10 @@
 """WordArc: press Ctrl+Space, talk, press again to transcribe, clean up and paste.
 
 Usage:
-  wordarc.py             run in the background (tray icon)
+  wordarc.py             open Settings and keep the tray service running
+  wordarc.py background  run in the background (Windows startup)
   wordarc.py toggle      start / stop recording
   wordarc.py cancel      discard the current recording
-  wordarc.py ask         start / stop recording a command for the agent
-  wordarc.py ask-cancel  call off the command the agent is working on
-  wordarc.py ask-reset   forget the conversation the agent has been following
   wordarc.py meeting     start / end a meeting recording
   wordarc.py meeting-cancel  discard the meeting being recorded
   wordarc.py settings    open the settings window
@@ -15,21 +13,22 @@ Usage:
   wordarc.py quit        shut the application down
 """
 
-__version__ = "0.3.0"
-
 import getpass
 import logging
 import os
 import subprocess
 import sys
 
+from brand import BRAND, set_windows_app_id
+
+__version__ = BRAND.version
+
 from PyQt6.QtCore import QTimer, QElapsedTimer  # noqa: E402
 from PyQt6.QtGui import QAction, QIcon  # noqa: E402
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket  # noqa: E402
-from PyQt6.QtWidgets import (QApplication, QMenu, QMessageBox,
+from PyQt6.QtWidgets import (QApplication, QMenu,
                              QSystemTrayIcon)  # noqa: E402
 
-import assistant  # noqa: E402
 import audio  # noqa: E402
 import config as cfg  # noqa: E402
 import diagnostics  # noqa: E402
@@ -39,7 +38,8 @@ import meeting  # noqa: E402
 import operation  # noqa: E402
 import brand_migration  # noqa: E402
 import theme  # noqa: E402
-from brand import BRAND, brand_asset  # noqa: E402
+import startup  # noqa: E402
+from brand import brand_asset  # noqa: E402
 from i18n import t  # noqa: E402
 from meeting import MeetingPipeline  # noqa: E402
 from overlay import Overlay  # noqa: E402
@@ -50,11 +50,6 @@ SERVER_NAME = BRAND.ipc_name(getpass.getuser())
 LEGACY_SERVER_NAME = BRAND.legacy_ipc_name(getpass.getuser())
 SERVER_NAMES = (SERVER_NAME, LEGACY_SERVER_NAME)
 IDLE, RECORDING, BUSY = "idle", "recording", "busy"
-# Dictation and a command for the agent are two runs of the same machinery, kept
-# apart so that neither waits on the other: an agent can spend a minute thinking,
-# and having dictation blocked for that minute is the whole problem. They share
-# only the microphone, which is one device and so can serve one of them at a time.
-DICTATION, ASK = "dictation", "ask"
 # A meeting runs alongside dictation rather than through it: writing up an hour
 # of audio takes minutes, and dictation should not be held hostage to it.
 M_IDLE, M_RECORDING, M_WORKING = "idle", "recording", "working"
@@ -75,12 +70,8 @@ class WordArc:
         self.app = app
         self.conf = conf or cfg.Config()
         self.state = IDLE
-        self.ask_state = IDLE
         self.dictation_operation = operation.OperationController()
-        self.ask_operation = operation.OperationController()
         self.meeting_operation = operation.OperationController()
-        # Which of the two the microphone is currently serving, or None.
-        self.recorder_owner = None
         self.meeting_state = M_IDLE
         self.meeting_base = ""
         self.meeting_message = ""
@@ -88,13 +79,8 @@ class WordArc:
         self._quitting = False
 
         self.overlay = Overlay(self.conf["overlay_corner"])
-        # The agent's indicator sits on top of the dictation one when both are
-        # up, and drops into the corner when it is alone there.
-        self.ask_overlay = Overlay(self.conf["overlay_corner"], below=self.overlay,
-                                   dismissable=True)
         self.recorder = audio.Recorder()
         self.pipeline = Pipeline(self.conf)
-        self.ask_pipeline = Pipeline(self.conf)
         self.meeting_recorder = audio.MeetingRecorder()
         self.meetings = MeetingPipeline(self.conf)
         self.evdev = hotkey.EvdevHotkey()
@@ -105,11 +91,6 @@ class WordArc:
         self.pipeline.stage.connect(self._on_dictation_stage)
         self.pipeline.finished.connect(self._on_finished)
         self.pipeline.failed.connect(self._on_error)
-        self.ask_pipeline.stage.connect(self._on_ask_stage)
-        self.ask_pipeline.finished.connect(self._on_ask_finished)
-        self.ask_pipeline.failed.connect(self._on_ask_error)
-        self.ask_pipeline.cancelled.connect(self._on_ask_cancelled)
-        self.ask_pipeline.permission_requested.connect(self._approve_agent)
         self.meeting_recorder.levels.connect(self._on_meeting_levels)
         self.meeting_recorder.stopped.connect(self._on_meeting_recorded)
         self.meeting_recorder.died.connect(self._on_meeting_died)
@@ -132,6 +113,7 @@ class WordArc:
         self.meeting_ticker.timeout.connect(self._meeting_tick)
 
         self.tray = QSystemTrayIcon()
+        self.tray.activated.connect(self._tray_clicked)
         self._apply_settings()
         self.tray.show()
 
@@ -144,20 +126,6 @@ class WordArc:
         self.toggle_action = QAction(t("Start recording"), self.menu)
         self.toggle_action.triggered.connect(self._toggle)
         self.menu.addAction(self.toggle_action)
-
-        # Named in _refresh_tray, which is where the chosen provider is known.
-        self.ask_action = QAction("", self.menu)
-        self.ask_action.triggered.connect(self._toggle_ask)
-        self.menu.addAction(self.ask_action)
-
-        self.reset_action = QAction(t("Start a new conversation"), self.menu)
-        self.reset_action.triggered.connect(self.reset_conversation)
-        self.menu.addAction(self.reset_action)
-
-        self.ask_cancel_action = QAction("", self.menu)
-        self.ask_cancel_action.triggered.connect(self.cancel_ask)
-        self.ask_cancel_action.setEnabled(False)
-        self.menu.addAction(self.ask_cancel_action)
 
         self.cancel_action = QAction(t("Cancel recording"), self.menu)
         self.cancel_action.triggered.connect(self.cancel)
@@ -190,20 +158,12 @@ class WordArc:
 
         self.tray.setContextMenu(self.menu)
         self.tray.setToolTip(t("WordArc: ready"))
-        self.tray.activated.connect(self._tray_clicked)
         self._set_icon("audio-input-microphone")
 
     def _tray_clicked(self, reason):
         if reason != QSystemTrayIcon.ActivationReason.Trigger:
             return
-        # The icon ends whatever is being recorded rather than only a dictation.
-        # The two shortcuts are each tied to their own mode, on purpose, but the
-        # icon is one button: having it refuse to stop a recording it can see is
-        # just a button that does nothing.
-        if self.ask_state == RECORDING:
-            self._toggle_ask()
-        else:
-            self._toggle()
+        self._toggle()
 
     def _set_icon(self, name):
         import trayicon
@@ -213,20 +173,10 @@ class WordArc:
 
     @property
     def recording(self):
-        """True while the microphone is serving either of the two.
-
-        Read off the states rather than off recorder_owner, which outlives the
-        recording: it is still set between stop() and the audio arriving, and
-        the microphone is free in that gap.
-        """
-        return RECORDING in (self.state, self.ask_state)
+        return self.state == RECORDING
 
     def _set_state(self, state):
         self.state = state
-        self._refresh_tray()
-
-    def _set_ask_state(self, state):
-        self.ask_state = state
         self._refresh_tray()
 
     def _set_meeting_state(self, state):
@@ -242,40 +192,9 @@ class WordArc:
             BUSY: ("Working…", "view-refresh", "WordArc: working"),
         }
         label, icon, tip = labels[self.state]
-        agent = assistant.display_name(self.conf)
-
         self.toggle_action.setText(t(label))
-        # Free while the other one is thinking, blocked only while it is holding
-        # the microphone.
-        self.toggle_action.setEnabled(
-            self.state == RECORDING or (self.state == IDLE and not self.recording)
-        )
-        asked = i18n.name(agent, "dative")
-        self.ask_action.setText(
-            t("Stop and ask {name}", name=asked) if self.ask_state == RECORDING
-            else t("Ask {name}", name=asked)
-        )
-        self.ask_action.setEnabled(
-            self.ask_state == RECORDING
-            or (self.ask_state == IDLE and not self.recording)
-        )
-        self.reset_action.setEnabled(self.ask_state != BUSY)
+        self.toggle_action.setEnabled(self.state != BUSY)
         self.cancel_action.setEnabled(self.recording)
-        # A command to the agent is the one job long enough to be worth calling
-        # off once it is already running.
-        self.ask_cancel_action.setText(
-            t("Stop {name}", name=i18n.name(agent, "accusative"))
-        )
-        self.ask_cancel_action.setEnabled(self.ask_state == BUSY)
-
-        # The agent speaks through the icon only when dictation has nothing to
-        # say, since dictation is the one being waited on in front of a screen.
-        if self.state == IDLE and self.ask_state != IDLE:
-            agent = assistant.display_name(self.conf)
-            if self.ask_state == RECORDING:
-                icon, tip = "media-record", t("WordArc: recording for {name}", name=agent)
-            else:
-                icon, tip = "view-refresh", t("WordArc: talking to {name}", name=agent)
 
         meeting_labels = {
             M_IDLE: "Record a meeting",
@@ -288,7 +207,7 @@ class WordArc:
 
         # A meeting speaks last: it runs for an hour and then works for minutes,
         # so it would otherwise own the icon for most of the day.
-        if self.state == IDLE and self.ask_state == IDLE and self.meeting_state != M_IDLE:
+        if self.state == IDLE and self.meeting_state != M_IDLE:
             if self.meeting_state == M_RECORDING:
                 icon, tip = "media-record", t("WordArc: in a meeting")
             else:
@@ -306,9 +225,6 @@ class WordArc:
         """A toggle from outside this process: the KDE shortcut, or the CLI."""
         self._external("toggle", self._toggle)
 
-    def toggle_ask(self):
-        self._external("ask", self._toggle_ask)
-
     def toggle_meeting(self):
         self._external("meeting", self._toggle_meeting)
 
@@ -317,7 +233,7 @@ class WordArc:
         handler()
 
     def _on_hotkey(self, name):
-        handlers = {"meeting": self._toggle_meeting, "ask": self._toggle_ask}
+        handlers = {"meeting": self._toggle_meeting}
         handlers.get(name, self._toggle)()
 
     def _toggle(self):
@@ -331,14 +247,6 @@ class WordArc:
             self.start()
         # a request during its own BUSY is ignored; nothing queues up
 
-    def _toggle_ask(self):
-        if self._repeated():
-            return
-        if self.ask_state == RECORDING:
-            self.stop_ask()
-        elif self.ask_state == IDLE:
-            self.start_ask()
-
     def _repeated(self):
         if self.last_toggle.isValid() and self.last_toggle.elapsed() < 400:
             return True
@@ -346,32 +254,18 @@ class WordArc:
         return False
 
     def start(self):
-        if self.state != IDLE or self.recording:
+        if self.state != IDLE:
             return
         self.dictation_operation.begin()
         self.overlay.show_recording()
-        if not self._begin_recording(DICTATION):
+        if not self._begin_recording():
             if self.dictation_operation.state == operation.State.RECORDING:
                 self.dictation_operation.transition(operation.State.FAILED)
                 self.dictation_operation.transition(operation.State.IDLE)
             return
         self._set_state(RECORDING)
 
-    def start_ask(self):
-        if self.ask_state != IDLE or self.recording:
-            return
-        self.ask_operation.begin()
-        self.ask_overlay.show_recording(asking=True)
-        if not self._begin_recording(ASK):
-            if self.ask_operation.state == operation.State.RECORDING:
-                self.ask_operation.transition(operation.State.FAILED)
-                self.ask_operation.transition(operation.State.IDLE)
-            return
-        self._set_ask_state(RECORDING)
-
-    def _begin_recording(self, owner):
-        """One microphone, so one of the two holds it at a time."""
-        self.recorder_owner = owner
+    def _begin_recording(self):
         self.elapsed.restart()
         self.ticker.start()
         self.recorder.start(self.conf["mic_target"], self.conf["max_seconds"])
@@ -386,62 +280,25 @@ class WordArc:
         self.overlay.show_busy(t("Transcribing…"))
         self.recorder.stop()
 
-    def stop_ask(self):
-        if self.ask_state != RECORDING:
-            return
-        self.ticker.stop()
-        self.ask_operation.transition(operation.State.PROCESSING)
-        self._set_ask_state(BUSY)
-        self.ask_overlay.show_busy(t("Transcribing…"))
-        self.recorder.stop()
-
     def cancel(self):
-        """Throw away whichever recording is running."""
+        """Throw away the current dictation recording."""
         if not self.recording:
             return
-        asking = self.ask_state == RECORDING
         self.ticker.stop()
         self.recorder.cancel()
-        self.recorder_owner = None
-        if asking:
-            self.ask_operation.transition(operation.State.CANCELLED)
-            self.ask_operation.transition(operation.State.IDLE)
-            self.ask_overlay.dismiss()
-            self._set_ask_state(IDLE)
-        else:
-            self.dictation_operation.transition(operation.State.CANCELLED)
-            self.dictation_operation.transition(operation.State.IDLE)
-            self.overlay.dismiss()
-            self._set_state(IDLE)
-
-    def cancel_ask(self):
-        """Call off the agent, whether it is still recording or already working."""
-        if self.ask_state == RECORDING:
-            self.cancel()
-        elif self.ask_state == BUSY:
-            self.ask_overlay.show_busy(t("Stopping…"))
-            self.ask_pipeline.cancel()
-
-    def reset_conversation(self):
-        """Drop the thread Claude has been following, so the next command starts
-        a conversation of its own."""
-        assistant.clear_session()
-        self.ask_overlay.show_done(
-            t("{name} starts fresh next time.",
-              name=assistant.display_name(self.conf)), 2500
-        )
-
-    def _recording_overlay(self):
-        return self.ask_overlay if self.recorder_owner == ASK else self.overlay
+        self.dictation_operation.transition(operation.State.CANCELLED)
+        self.dictation_operation.transition(operation.State.IDLE)
+        self.overlay.dismiss()
+        self._set_state(IDLE)
 
     def _on_level(self, level):
-        self._recording_overlay().push_level(level)
+        self.overlay.push_level(level)
 
     def _tick(self):
         seconds = self.elapsed.elapsed() / 1000.0
-        self._recording_overlay().set_seconds(seconds)
+        self.overlay.set_seconds(seconds)
         if seconds >= self.conf["max_seconds"]:
-            (self.stop_ask if self.recorder_owner == ASK else self.stop)()
+            self.stop()
 
     # ---- meetings ---------------------------------------------------------
 
@@ -604,23 +461,13 @@ class WordArc:
         self.stop_meeting()
 
     def _on_recorded(self, wav_path, duration, rms_values):
-        owner, self.recorder_owner = self.recorder_owner, None
-        if owner == ASK:
-            self.ask_pipeline.run(
-                wav_path, duration, rms_values, ask=True,
-                operation_id=self.ask_operation.operation_id)
-        else:
-            self.pipeline.run(
-                wav_path, duration, rms_values,
-                operation_id=self.dictation_operation.operation_id)
+        self.pipeline.run(
+            wav_path, duration, rms_values,
+            operation_id=self.dictation_operation.operation_id)
 
     def _on_dictation_stage(self, message, operation_id):
         if self.dictation_operation.accepts(operation_id):
             self.overlay.show_busy(message)
-
-    def _on_ask_stage(self, message, operation_id):
-        if self.ask_operation.accepts(operation_id):
-            self.ask_overlay.show_busy(message)
 
     def _on_finished(self, _raw, text, warning, operation_id):
         if (self.dictation_operation.state != operation.State.PROCESSING
@@ -645,77 +492,11 @@ class WordArc:
             )
         self._set_state(IDLE)
 
-    def _on_ask_finished(self, _raw, text, warning, operation_id):
-        if (self.ask_operation.state != operation.State.PROCESSING
-                or not self.ask_operation.accepts(operation_id)):
-            return
-        self.ask_operation.transition(operation.State.COMPLETED)
-        self.ask_operation.transition(operation.State.IDLE)
-        agent = assistant.display_name(self.conf)
-        if warning:
-            # A tool the agent was not allowed to touch otherwise looks exactly
-            # like a job that worked: the reply reads perfectly normal.
-            self.ask_overlay.show_warning(
-                t("{name} answered, but: {error}",
-                  name=agent, error=warning.splitlines()[0])
-            )
-            self.tray.showMessage(
-                t("WordArc: {name} could not do all of it", name=agent),
-                f"{warning}\n\n{text}", QSystemTrayIcon.MessageIcon.Warning, 10000,
-            )
-        else:
-            # Longer than a dictation's flash: this one is an answer, and it is
-            # worth being able to read the start of it in the corner.
-            self.ask_overlay.show_done(
-                t("{name}: {preview}", name=agent, preview=_preview(text)), 6000
-            )
-        self._set_ask_state(IDLE)
-
-    def _on_ask_cancelled(self, operation_id):
-        if (self.ask_operation.state != operation.State.PROCESSING
-                or not self.ask_operation.accepts(operation_id)):
-            return
-        self.ask_operation.transition(operation.State.CANCELLED)
-        self.ask_operation.transition(operation.State.IDLE)
-        self.ask_overlay.show_done(t("Stopped."), 2000)
-        self._set_ask_state(IDLE)
-
-    def _approve_agent(self, question, request, operation_id):
-        """Resolve one agent run; permission is never persisted."""
-        if (self.ask_operation.state != operation.State.PROCESSING
-                or not self.ask_operation.accepts(operation_id)):
-            request.resolve(None)
-            return
-        box = QMessageBox(self.settings_window)
-        box.setIcon(QMessageBox.Icon.Question)
-        box.setWindowTitle(t("Agent permission"))
-        box.setText(t("How may the agent handle this command?"))
-        box.setInformativeText(_preview(question))
-        read_only = box.addButton(t("Read only"), QMessageBox.ButtonRole.AcceptRole)
-        write_once = box.addButton(
-            t("Allow changes once"), QMessageBox.ButtonRole.ActionRole)
-        box.addButton(QMessageBox.StandardButton.Cancel)
-        valid_dir = os.path.isdir(os.path.expanduser(self.conf["assistant_dir"].strip()))
-        write_once.setEnabled(valid_dir)
-        if not valid_dir:
-            write_once.setToolTip(t(
-                "Choose a valid working directory in Settings before allowing changes."))
-        box.setDefaultButton(read_only)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is read_only:
-            request.resolve(assistant.AgentPermission.READ_ONLY)
-        elif clicked is write_once:
-            request.resolve(assistant.AgentPermission.WRITE_ONCE)
-        else:
-            request.resolve(None)
-
     def _on_recorder_error(self, message):
-        """The microphone itself could not run, so it belongs to whoever asked."""
-        owner, self.recorder_owner = self.recorder_owner, None
+        """Report a microphone failure through the dictation operation."""
         self.ticker.stop()
         self.recorder.cancel()
-        (self._on_ask_error if owner == ASK else self._on_error)(message)
+        self._on_error(message)
 
     def _on_error(self, message, operation_id=""):
         if operation_id and not self.dictation_operation.accepts(operation_id):
@@ -726,16 +507,6 @@ class WordArc:
             self.dictation_operation.transition(operation.State.IDLE)
         self._report(message, self.overlay)
         self._set_state(IDLE)
-
-    def _on_ask_error(self, message, operation_id=""):
-        if operation_id and not self.ask_operation.accepts(operation_id):
-            return
-        if self.ask_operation.state in (operation.State.RECORDING,
-                                        operation.State.PROCESSING):
-            self.ask_operation.transition(operation.State.FAILED)
-            self.ask_operation.transition(operation.State.IDLE)
-        self._report(message, self.ask_overlay)
-        self._set_ask_state(IDLE)
 
     def _report(self, message, overlay):
         logging.getLogger("wordarc.ui").warning("operation reported an error")
@@ -750,7 +521,6 @@ class WordArc:
         if self.settings_window is None:
             self.settings_window = SettingsWindow(
                 self.conf, launch_command(), meeting_command(), self.meetings,
-                ask_command(),
             )
             self.settings_window.applied.connect(self._apply_settings)
             self.settings_window.finished.connect(self._settings_closed)
@@ -760,17 +530,21 @@ class WordArc:
 
     def _settings_closed(self, *_):
         # Don't drop the object while its own signal is still being delivered.
-        QTimer.singleShot(0, lambda: setattr(self, "settings_window", None))
+        def finish_close():
+            self.settings_window = None
+            if (not self._quitting
+                    and (not self.conf["close_to_tray"]
+                         or not QSystemTrayIcon.isSystemTrayAvailable())):
+                self.app.quit()
+        QTimer.singleShot(0, finish_close)
 
     def _apply_settings(self):
         theme.ThemeManager.apply(self.conf["theme_mode"], self.app)
         self.overlay.corner = self.conf["overlay_corner"]
-        self.ask_overlay.corner = self.conf["overlay_corner"]
         self._build_tray()
         self._refresh_tray()
         self.evdev.stop()
         self.evdev.start({"toggle": self.conf["shortcut"],
-                          "ask": self.conf["assistant_shortcut"],
                           "meeting": self.conf["meeting_shortcut"]})
 
     def restart(self):
@@ -787,7 +561,6 @@ class WordArc:
         self._quitting = True
         self.evdev.stop()
         self.pipeline.cancel()
-        self.ask_pipeline.cancel()
         self.meetings.cancel()
         if self.recording:
             self.recorder.cancel()
@@ -797,7 +570,6 @@ class WordArc:
             self.meeting_ticker.stop()
             self.meeting_recorder.stop()
         self.overlay.dismiss()
-        self.ask_overlay.dismiss()
         self.tray.hide()
 
 
@@ -822,10 +594,6 @@ def meeting_command():
     return f'"{sys.executable}" "{os.path.realpath(__file__)}" meeting'
 
 
-def ask_command():
-    return f'"{sys.executable}" "{os.path.realpath(__file__)}" ask'
-
-
 def send_command(command, timeout=800):
     """Hand a command to the running instance; False when there is none."""
     for name in SERVER_NAMES:
@@ -841,12 +609,24 @@ def send_command(command, timeout=800):
     return False
 
 
+def _should_open_settings(command, has_api_keys, tray_available):
+    return (command in ("", "settings") or not has_api_keys
+            or not tray_available)
+
+
 def main():
+    # Windows otherwise labels source-mode launches as pythonw.exe and shows
+    # Python's icon in the taskbar even though Qt has a WordArc window icon.
+    set_windows_app_id()
     migration = brand_migration.migrate(
         cfg.LEGACY_CONFIG_DIR, cfg.CONFIG_DIR,
         cfg.LEGACY_DATA_DIR, cfg.DATA_DIR,
     )
     diagnostics.setup()
+    try:
+        startup.ensure_current_command()
+    except startup.StartupError as exc:
+        logging.getLogger("wordarc.startup").warning("%s", exc)
     migration_log = logging.getLogger("wordarc.migration")
     if migration.copied_files or migration.credential_migrated:
         migration_log.info("legacy migration completed: files=%d credential=%s",
@@ -857,7 +637,8 @@ def main():
     command = args[0] if args else ""
 
     if command and command not in ("toggle", "cancel", "settings", "restart",
-                                   "quit", "start", "stop", "ask", "ask-reset",
+                                   "quit", "start", "stop", "background",
+                                   "ask", "ask-reset",
                                    "ask-cancel", "meeting", "meeting-cancel"):
         print(__doc__)
         return 2
@@ -875,10 +656,11 @@ def main():
         return 0
 
     if command in ("cancel", "quit", "stop", "restart", "meeting-cancel",
-                   "ask-reset", "ask-cancel"):
+                   "ask", "ask-reset", "ask-cancel"):
         return 0
 
-    if not QSystemTrayIcon.isSystemTrayAvailable():
+    tray_available = QSystemTrayIcon.isSystemTrayAvailable()
+    if not tray_available:
         print("wordarc: no system tray found, running anyway")
 
     conf = cfg.Config()
@@ -907,9 +689,6 @@ def main():
                 "start": wordarc.start,
                 "stop": wordarc.stop,
                 "cancel": wordarc.cancel,
-                "ask": wordarc.toggle_ask,
-                "ask-cancel": wordarc.cancel_ask,
-                "ask-reset": wordarc.reset_conversation,
                 "meeting": wordarc.toggle_meeting,
                 "meeting-cancel": wordarc.cancel_meeting,
                 "settings": wordarc.open_settings,
@@ -928,12 +707,11 @@ def main():
 
     # No key for the chosen transcription provider means nothing can work yet,
     # so the settings window is the only useful thing to open.
-    if command == "settings" or not wordarc.conf.transcribe_target().api_key:
+    if _should_open_settings(command, bool(wordarc.conf.gemini_keys()),
+                             tray_available):
         wordarc.open_settings()
     elif command == "toggle":
         QTimer.singleShot(0, wordarc.toggle)
-    elif command == "ask":
-        QTimer.singleShot(0, wordarc.toggle_ask)
     elif command == "meeting":
         QTimer.singleShot(0, wordarc.toggle_meeting)
 

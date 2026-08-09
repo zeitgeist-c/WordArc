@@ -77,7 +77,14 @@ class FileTranscriber(QObject):
             if len(chunks) > 1:
                 self.progress.emit(t("Splitting into {count} chunks…", count=len(chunks)))
 
-            api_key = conf.gemini_key()
+            client = api.GeminiClient(
+                conf.gemini_keys(),
+                should_stop=self._stop.is_set,
+                on_fallback=lambda slot, _exc: self.progress.emit(t(
+                    "Default API did not respond; trying API {number}...",
+                    number=slot,
+                )),
+            )
             model = conf["gemini_transcribe_model"]
             pieces = []
             segments = []
@@ -86,11 +93,10 @@ class FileTranscriber(QObject):
                 self.progress.emit(
                     t("Transcribing chunk {index}/{count}…", index=index, count=len(chunks))
                 )
-                text = api.transcribe(
-                    api_key, model, chunk_path,
+                text = client.transcribe(
+                    model, chunk_path,
                     language=conf["language"],
                     prompt=conf["transcribe_prompt"],
-                    should_stop=self._stop.is_set,
                 )
                 if timestamps:
                     stamp = format_timestamp(offset)
@@ -103,7 +109,7 @@ class FileTranscriber(QObject):
             if do_cleanup and text:
                 self._check()
                 self.progress.emit(t("Cleaning up…"))
-                text = self._cleanup(text, timestamps)
+                text = self._cleanup(client, text, timestamps)
 
             self.finished.emit(text, segments)
 
@@ -115,19 +121,17 @@ class FileTranscriber(QObject):
             if workdir:
                 shutil.rmtree(workdir, ignore_errors=True)
 
-    def _cleanup(self, text, timestamps):
+    def _cleanup(self, client, text, timestamps):
         conf = self.conf
         prompt = conf.cleanup_prompt(with_timestamps=timestamps, subtitles=True)
         out = []
         for block in split_text(text, timestamps):
             self._check()
-            out.append(api.cleanup(
+            out.append(client.cleanup(
                 block,
-                conf.gemini_key(),
                 conf["cleanup_model"],
                 prompt,
                 reasoning=conf["cleanup_reasoning"],
-                should_stop=self._stop.is_set,
             ))
         return ("\n" if timestamps else "\n\n").join(out)
 
