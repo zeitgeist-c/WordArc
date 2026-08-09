@@ -42,3 +42,18 @@ def test_window_close_quits_if_system_tray_is_unavailable():
                            return_value=False):
         controller._settings_closed()
     controller.app.quit.assert_called_once_with()
+
+
+def test_shutdown_stops_meeting_pipeline_without_missing_cancel_method():
+    controller = wordarc.WordArc.__new__(wordarc.WordArc)
+    controller.evdev = mock.Mock()
+    controller.pipeline = mock.Mock()
+    controller.meetings = mock.Mock(spec=["stop"])
+    controller.state = wordarc.IDLE
+    controller.meeting_state = wordarc.M_IDLE
+    controller.overlay = mock.Mock()
+    controller.tray = mock.Mock()
+
+    controller.shutdown()
+
+    controller.meetings.stop.assert_called_once_with()
