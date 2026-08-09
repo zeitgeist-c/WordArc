@@ -1,6 +1,6 @@
 # WordArc Windows kurulumu
 
-`WordArc-Setup-v0.4.1.exe` başka bir Windows 10/11 x64 bilgisayara
+`WordArc-Setup-v0.4.2.exe` başka bir Windows 10/11 x64 bilgisayara
 kopyalanıp doğrudan çalıştırılabilir. Python veya FFmpeg kurulumu gerekmez.
 
 Kurulum kullanıcı profiline yapılır; yönetici yetkisi istemez. Başlat menüsü

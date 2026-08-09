@@ -3,12 +3,14 @@ setlocal
 cd /d "%~dp0"
 
 if exist "%~dp0.venv\Scripts\pythonw.exe" (
+    if "%~1"=="" "%~dp0.venv\Scripts\pythonw.exe" "%~dp0wordarc.py" restart
     start "WordArc" "%~dp0.venv\Scripts\pythonw.exe" "%~dp0wordarc.py" %*
     exit /b 0
 )
 
 where pythonw.exe >nul 2>&1
 if %errorlevel% equ 0 (
+    if "%~1"=="" pythonw.exe "%~dp0wordarc.py" restart
     start "WordArc" pythonw.exe "%~dp0wordarc.py" %*
     exit /b 0
 )

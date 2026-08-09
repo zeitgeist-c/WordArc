@@ -561,7 +561,7 @@ class WordArc:
         self._quitting = True
         self.evdev.stop()
         self.pipeline.cancel()
-        self.meetings.cancel()
+        self.meetings.stop()
         if self.recording:
             self.recorder.cancel()
         # A meeting in progress is closed properly rather than thrown away: the
