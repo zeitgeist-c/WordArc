@@ -47,4 +47,9 @@ if ($LASTEXITCODE -ne 0 -or $AppVersion -notmatch '^\d+\.\d+\.\d+$') {
 $VersionedName = "WordArc $AppVersion.exe"
 $VersionedExe = Join-Path $PSScriptRoot "dist\$VersionedName"
 Move-Item -LiteralPath $RawExe -Destination $VersionedExe -Force
-Write-Host "Build completed: dist\$VersionedName" -ForegroundColor Green
+$LauncherName = "WordArc $AppVersion.bat"
+$LauncherPath = Join-Path $PSScriptRoot "dist\$LauncherName"
+$Launcher = "@echo off`r`nsetlocal`r`ncd /d `"%~dp0`"`r`n" +
+    "start `"WordArc $AppVersion`" `"%~dp0$VersionedName`" %*`r`n"
+[IO.File]::WriteAllText($LauncherPath, $Launcher, [Text.UTF8Encoding]::new($false))
+Write-Host "Build completed: dist\$VersionedName + $LauncherName" -ForegroundColor Green
