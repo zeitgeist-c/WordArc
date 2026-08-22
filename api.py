@@ -14,10 +14,11 @@ import urllib.error
 import urllib.request
 from typing import Callable
 
+from brand import BRAND
 from i18n import t
 
 APP_URL = "https://github.com/zeitgeist-c/wordarc"
-USER_AGENT = f"wordarc/0.4 (+{APP_URL})"
+USER_AGENT = f"wordarc/{BRAND.version} (+{APP_URL})"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta"
 GEMINI_UPLOAD_URL = "https://generativelanguage.googleapis.com/upload/v1beta/files"
 GEMINI_API_KEY_ENV = "GEMINI_API_KEY"

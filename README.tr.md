@@ -4,11 +4,11 @@ WordArc konuşmayı düzenlenmiş metne dönüştürür ve güvenilir toplantı 
 
 ## Kurulum
 
-1. `wordarc.exe` dosyasını indirin veya kaynaktan derleyin.
-2. `wordarc.exe` ile `install.ps1` dosyasını aynı klasöre koyup `install.ps1` çalıştırın.
+1. Güncel `WordArc-X.Y.Z.exe` dosyasını indirin veya kaynaktan derleyin.
+2. Bu EXE ile `install.ps1` dosyasını aynı klasöre koyup `install.ps1` çalıştırın.
 3. WordArc'ı başlatın. İlk çalıştırmada Ayarlar açılır.
 
-Varsayılan kısayol `Ctrl+Space` tuşudur: kaydı başlatmak ve yazıya çevirmek için birer kez basın. Dikte, ajan, toplantı ve ayarlar işlemlerine tepsi menüsünden de erişilebilir.
+Varsayılan kısayol `Ctrl+Space` tuşudur: kaydı başlatmak ve yazıya çevirmek için birer kez basın. Kayıt sırasında `Escape` tuşuna basarsanız kayıt yazıya çevrilmeden ve AI'a gönderilmeden silinir. Dikte, ajan, toplantı ve ayarlar işlemlerine tepsi menüsünden de erişilebilir.
 
 ## Geliştirme
 
@@ -23,7 +23,7 @@ python wordarc.py
 .\build.ps1
 ```
 
-Çıktı `dist\wordarc.exe` olur. Build; sabitlenmiş FFmpeg sürümünü ve özetini doğrular, testleri/import kontrolünü ve bağımlılık denetimini çalıştırır, `sbom.json` üretir, deterministik WordArc ikonunu oluşturur ve PyInstaller paketini hazırlar.
+Çıktılar `dist\WordArc-X.Y.Z.exe` ve onunla eşleşen `dist\WordArc-X.Y.Z.bat` olur. Build; sabitlenmiş FFmpeg sürümünü ve özetini doğrular, testleri/import kontrolünü ve bağımlılık denetimini çalıştırır, `sbom.json` üretir, deterministik WordArc ikonunu oluşturur ve PyInstaller paketini hazırlar.
 
 ## Veri, gizlilik ve geçiş
 

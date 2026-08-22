@@ -12,6 +12,10 @@ class TestParseShortcut(unittest.TestCase):
         m1, v1 = hotkey.parse_shortcut("ctrl+space")
         m2, v2 = hotkey.parse_shortcut("CTRL+SPACE")
         self.assertEqual((m1, v1), (m2, v2))
+    def test_escape_without_modifier(self):
+        mods, vk = hotkey.parse_shortcut("Escape")
+        self.assertTrue(mods & hotkey.MOD_NOREPEAT)
+        self.assertEqual(vk, hotkey.KEYS["escape"])
     def test_letter(self):
         mods, vk = hotkey.parse_shortcut("Ctrl+V")
         self.assertEqual(vk, ord("V"))

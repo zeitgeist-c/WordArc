@@ -4,11 +4,11 @@ WordArc turns speech into polished text and captures microphone and system audio
 
 ## Install
 
-1. Download `wordarc.exe` or build it from source.
-2. Put `wordarc.exe` and `install.ps1` in the same folder, then run `install.ps1`.
+1. Download the current `WordArc-X.Y.Z.exe` or build it from source.
+2. Put that EXE and `install.ps1` in the same folder, then run `install.ps1`.
 3. Start WordArc. Settings opens on first launch.
 
-The default shortcut is `Ctrl+Space`: press once to record and again to transcribe. The tray menu exposes dictation, agent, meeting and settings actions.
+The default shortcut is `Ctrl+Space`: press once to record and again to transcribe. Press `Escape` while recording to discard it without transcription or AI processing. The tray menu exposes dictation, agent, meeting and settings actions.
 
 ## Development
 
@@ -25,7 +25,7 @@ Run the reproducible checks and build:
 .\build.ps1
 ```
 
-The packaged result is `dist\wordarc.exe`. Build verifies the pinned FFmpeg binary, runs tests and import checks, audits dependencies, emits `sbom.json`, renders the deterministic WordArc icon, and then invokes PyInstaller.
+The packaged results are `dist\WordArc-X.Y.Z.exe` and its matching launcher `dist\WordArc-X.Y.Z.bat`. Build verifies the pinned FFmpeg binary, runs tests and import checks, audits dependencies, emits `sbom.json`, renders the deterministic WordArc icon, and then invokes PyInstaller.
 
 ## Data, privacy and migration
 

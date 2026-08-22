@@ -1,8 +1,8 @@
 #define MyAppName "WordArc"
-#define MyAppVersion "0.4.2"
+#define MyAppVersion "0.4.3"
 #define MyAppPublisher "zeitgeist-c"
 #define MyAppURL "https://github.com/zeitgeist-c/wordarc"
-#define MyAppExeName MyAppName + " " + MyAppVersion + ".exe"
+#define MyAppExeName MyAppName + "-" + MyAppVersion + ".exe"
 
 [Setup]
 AppId={{B71A7DF7-1585-4BA8-A528-6DE5AA07A849}
@@ -20,7 +20,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=.
-OutputBaseFilename=WordArc-Setup-v{#MyAppVersion}
+OutputBaseFilename=WordArc-{#MyAppVersion}
 SetupIconFile=..\assets\brand\wordarc.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64
