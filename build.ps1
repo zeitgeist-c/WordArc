@@ -16,13 +16,17 @@ $ActualHash = (Get-FileHash -LiteralPath $Ffmpeg -Algorithm SHA256).Hash
 if ($ActualHash -ne $ExpectedFfmpegSha256) {
     throw "ffmpeg.exe hash mismatch. Expected $ExpectedFfmpegSha256, got $ActualHash."
 }
+$AppVersion = (& $Python -c "from brand import BRAND; print(BRAND.version)").Trim()
+if ($LASTEXITCODE -ne 0 -or $AppVersion -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Could not read a valid WordArc version from brand.py."
+}
 
 & (Join-Path $PSScriptRoot "check.ps1") -Python $Python -Audit
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 # Some Windows extraction/scanner paths leave PyInstaller's generated cache
 # read-only. Clear that attribute only inside this project's disposable work dir.
-$PyInstallerWork = Join-Path $PSScriptRoot "build\wordarc"
+$PyInstallerWork = Join-Path $PSScriptRoot "build\wordarc-$AppVersion"
 if (Test-Path -LiteralPath $PyInstallerWork) {
     Get-ChildItem -LiteralPath $PyInstallerWork -Recurse -Force | ForEach-Object {
         $_.Attributes = $_.Attributes -band (-bnot [IO.FileAttributes]::ReadOnly)
@@ -33,21 +37,18 @@ if (Test-Path -LiteralPath $PyInstallerWork) {
 
 & $Python (Join-Path $PSScriptRoot "tools\build_brand_assets.py")
 if ($LASTEXITCODE -ne 0) { throw "Brand asset generation failed." }
-& $Python -m PyInstaller --clean --noconfirm (Join-Path $PSScriptRoot "wordarc.spec")
+& $Python -m PyInstaller --clean --noconfirm --workpath $PyInstallerWork `
+    (Join-Path $PSScriptRoot "wordarc.spec")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $RawExe = Join-Path $PSScriptRoot "dist\wordarc.exe"
 if (-not (Test-Path -LiteralPath $RawExe)) {
     throw "Expected dist\wordarc.exe was not produced."
 }
-$AppVersion = (& $Python -c "from brand import BRAND; print(BRAND.version)").Trim()
-if ($LASTEXITCODE -ne 0 -or $AppVersion -notmatch '^\d+\.\d+\.\d+$') {
-    throw "Could not read a valid WordArc version from brand.py."
-}
-$VersionedName = "WordArc $AppVersion.exe"
+$VersionedName = "WordArc-$AppVersion.exe"
 $VersionedExe = Join-Path $PSScriptRoot "dist\$VersionedName"
 Move-Item -LiteralPath $RawExe -Destination $VersionedExe -Force
-$LauncherName = "WordArc $AppVersion.bat"
+$LauncherName = "WordArc-$AppVersion.bat"
 $LauncherPath = Join-Path $PSScriptRoot "dist\$LauncherName"
 $Launcher = "@echo off`r`nsetlocal`r`ncd /d `"%~dp0`"`r`n" +
     "start `"WordArc $AppVersion`" `"%~dp0$VersionedName`" %*`r`n"

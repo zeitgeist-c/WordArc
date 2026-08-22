@@ -47,6 +47,7 @@ def test_window_close_quits_if_system_tray_is_unavailable():
 def test_shutdown_stops_meeting_pipeline_without_missing_cancel_method():
     controller = wordarc.WordArc.__new__(wordarc.WordArc)
     controller.evdev = mock.Mock()
+    controller.cancel_hotkey = mock.Mock()
     controller.pipeline = mock.Mock()
     controller.meetings = mock.Mock(spec=["stop"])
     controller.state = wordarc.IDLE
@@ -57,3 +58,16 @@ def test_shutdown_stops_meeting_pipeline_without_missing_cancel_method():
     controller.shutdown()
 
     controller.meetings.stop.assert_called_once_with()
+    controller.cancel_hotkey.stop.assert_called_once_with()
+
+
+def test_escape_is_global_only_while_recording():
+    controller = wordarc.WordArc.__new__(wordarc.WordArc)
+    controller.cancel_hotkey = mock.Mock()
+    controller._refresh_tray = mock.Mock()
+
+    controller._set_state(wordarc.RECORDING)
+    controller.cancel_hotkey.start.assert_called_once_with({"cancel": "Escape"})
+
+    controller._set_state(wordarc.BUSY)
+    controller.cancel_hotkey.stop.assert_called_once_with()

@@ -16,7 +16,7 @@ if %errorlevel% equ 0 (
 )
 
 set "WORDARC_EXE="
-for /f "delims=" %%F in ('dir /b /a-d /o-d "%~dp0dist\WordArc *.exe" 2^>nul') do if not defined WORDARC_EXE set "WORDARC_EXE=%~dp0dist\%%F"
+for /f "delims=" %%F in ('dir /b /a-d /o-d "%~dp0dist\WordArc-*.exe" 2^>nul') do if not defined WORDARC_EXE set "WORDARC_EXE=%~dp0dist\%%F"
 if defined WORDARC_EXE (
     echo Python bulunamadi; son derlenen WordArc surumu aciliyor.
     start "WordArc" "%WORDARC_EXE%" %*

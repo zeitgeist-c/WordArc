@@ -1,7 +1,6 @@
 # WordArc installer for Windows: Start Menu shortcut + autostart.
 $ErrorActionPreference = "Stop"
 $AppDir = "$env:LOCALAPPDATA\Programs\WordArc"
-$Exe = "$AppDir\wordarc.exe"
 $StartMenu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
 $ShortcutPath = "$StartMenu\WordArc.lnk"
 $LegacyShortcut = "$StartMenu\Verbatim.lnk"
@@ -9,10 +8,14 @@ $AutostartKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 
 Write-Host "Installing WordArc" -Foreground Cyan
 New-Item -ItemType Directory -Path $AppDir -Force | Out-Null
-if (-not (Test-Path "$PSScriptRoot\wordarc.exe")) {
-    throw "wordarc.exe was not found next to install.ps1; run .\build.ps1 first."
+$Packages = @(Get-ChildItem -LiteralPath $PSScriptRoot -File |
+    Where-Object { $_.Name -match '^WordArc-\d+\.\d+\.\d+\.exe$' })
+if ($Packages.Count -ne 1) {
+    throw "Expected exactly one WordArc-X.Y.Z.exe next to install.ps1."
 }
-Copy-Item "$PSScriptRoot\wordarc.exe" $Exe -Force
+$Package = $Packages[0]
+$Exe = Join-Path $AppDir $Package.Name
+Copy-Item -LiteralPath $Package.FullName -Destination $Exe -Force
 
 $Shell = New-Object -ComObject WScript.Shell
 $Shortcut = $Shell.CreateShortcut($ShortcutPath)
@@ -27,4 +30,4 @@ New-ItemProperty -Path $AutostartKey -Name "WordArc" -Value $Exe -PropertyType S
 Remove-ItemProperty -Path $AutostartKey -Name "Verbatim" -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $LegacyShortcut -Force -ErrorAction SilentlyContinue
 
-Write-Host "WordArc installed. Start it from the Start Menu or run wordarc.exe." -ForegroundColor Green
+Write-Host "WordArc installed. Start it from the Start Menu or run $($Package.Name)." -ForegroundColor Green

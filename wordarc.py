@@ -84,6 +84,7 @@ class WordArc:
         self.meeting_recorder = audio.MeetingRecorder()
         self.meetings = MeetingPipeline(self.conf)
         self.evdev = hotkey.EvdevHotkey()
+        self.cancel_hotkey = hotkey.EvdevHotkey()
 
         self.recorder.level.connect(self._on_level)
         self.recorder.stopped.connect(self._on_recorded)
@@ -101,6 +102,7 @@ class WordArc:
         self.meetings.failed.connect(self._on_meeting_failed)
         self.evdev.triggered.connect(self._on_hotkey)
         self.evdev.failed.connect(self._on_error)
+        self.cancel_hotkey.triggered.connect(lambda _name: self.cancel())
 
         self.elapsed = QElapsedTimer()
         self.meeting_elapsed = QElapsedTimer()
@@ -177,6 +179,12 @@ class WordArc:
 
     def _set_state(self, state):
         self.state = state
+        # Escape must only be global while dictation is recording. Keeping it
+        # registered while idle would swallow Escape in every other program.
+        if state == RECORDING:
+            self.cancel_hotkey.start({"cancel": "Escape"})
+        else:
+            self.cancel_hotkey.stop()
         self._refresh_tray()
 
     def _set_meeting_state(self, state):
@@ -560,6 +568,7 @@ class WordArc:
     def shutdown(self):
         self._quitting = True
         self.evdev.stop()
+        self.cancel_hotkey.stop()
         self.pipeline.cancel()
         self.meetings.stop()
         if self.recording:

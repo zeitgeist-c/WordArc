@@ -16,9 +16,13 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if ($Audit) {
-    & $Python -m pip_audit -r requirements-lock.txt
+    # requirements-lock.txt contains the complete, exactly pinned runtime set;
+    # avoid re-resolving large GUI wheels during every release build.
+    & $Python -m pip_audit -r requirements-lock.txt --no-deps --disable-pip `
+        --vulnerability-service osv --timeout 15 --progress-spinner off
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & $Python -m cyclonedx_py requirements requirements-lock.txt --output-file sbom.json
+    & $Python -m cyclonedx_py requirements requirements-lock.txt `
+        --output-reproducible --output-file sbom.json
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
