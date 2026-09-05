@@ -654,8 +654,13 @@ def main():
                            migration.copied_files, migration.credential_migrated)
     for warning in migration.warnings:
         migration_log.warning("legacy migration: %s", warning)
+    # Support quick version check
+    if "--version" in sys.argv:
+        print(f"WordArc version {BRAND.version}")
+        return 0
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     command = args[0] if args else ""
+
 
     if command and command not in ("toggle", "cancel", "settings", "restart",
                                    "quit", "start", "stop", "background",
