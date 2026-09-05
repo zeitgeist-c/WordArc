@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import QApplication
 
 import config as cfg
 import settings_ui
+from i18n import t
 
 
 class TestSettingsSmoke(unittest.TestCase):
@@ -49,12 +50,12 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertTrue(window.windowTitle().startswith("WordArc"))
         self.assertGreaterEqual(window.width(), 920)
         self.assertGreaterEqual(window.height(), 700)
-        self.assertEqual(window.stack.count(), 7)
-        self.assertEqual(tuple(window._pages), (
-            "dictation", "meeting", "audio_file", "minutes",
-            "history", "shared_ai", "application",
+        self.assertEqual(window.tabs.count(), 4)
+        self.assertEqual(tuple(window._tab_index), (
+            "dictation", "history", "meeting", "minutes",
+            "audio_file", "settings", "shared_ai", "application",
         ))
-        self.assertEqual(window._current_page, "dictation")
+        self.assertEqual(window.tabs.currentIndex(), 0)
         self.assertFalse(window.history_enabled.isChecked())
         self.assertFalse(window.start_with_windows.isChecked())
         self.assertTrue(window.close_to_tray.isChecked())
@@ -69,17 +70,19 @@ class TestSettingsSmoke(unittest.TestCase):
     def test_navigation_selects_exact_page(self):
         window = self.window
         self.assertTrue(window.navigate_to("meeting"))
-        self.assertEqual(window._current_page, "meeting")
-        payloads = [
-            window.navigation.item(index).data(settings_ui.Qt.ItemDataRole.UserRole)
-            for index in range(window.navigation.count())
-        ]
-        self.assertIn(("page", "dictation"), payloads)
-        self.assertIn(("page", "meeting"), payloads)
-        self.assertNotIn(("page", "agent"), payloads)
-        current = window.navigation.currentItem().data(
-            settings_ui.Qt.ItemDataRole.UserRole)
-        self.assertEqual(current, ("page", "meeting"))
+        self.assertEqual(window.tabs.currentIndex(), 1)
+        # Absorbed pages land on the tab that holds them.
+        self.assertTrue(window.navigate_to("minutes"))
+        self.assertEqual(window.tabs.currentIndex(), 1)
+        self.assertTrue(window.navigate_to("history"))
+        self.assertEqual(window.tabs.currentIndex(), 0)
+        self.assertTrue(window.navigate_to("shared_ai"))
+        self.assertEqual(window.tabs.currentIndex(), 3)
+        self.assertFalse(window.navigate_to("agent"))
+        self.assertEqual(
+            [window.tabs.tabText(index) for index in range(window.tabs.count())],
+            [t("Dictation"), t("Meeting"), t("Audio file"), t("Settings")],
+        )
 
     def test_noop_save_preserves_every_config_key_and_emits_once(self):
         window = self.window
@@ -98,11 +101,7 @@ class TestSettingsSmoke(unittest.TestCase):
         window = self.window
         window.conf["assistant_provider"] = "codex"
         window.conf["assistant_prompt"] = "legacy custom prompt"
-        payloads = [
-            window.navigation.item(index).data(settings_ui.Qt.ItemDataRole.UserRole)
-            for index in range(window.navigation.count())
-        ]
-        self.assertNotIn(("page", "agent"), payloads)
+        self.assertNotIn("agent", window._tab_index)
         with mock.patch.object(settings_ui.startup, "set_enabled"), \
              mock.patch.object(settings_ui.QMessageBox, "information"):
             window._save()
@@ -135,17 +134,12 @@ class TestSettingsSmoke(unittest.TestCase):
         window = self.window
         window.resize(760, 560)
         window.show()
-        for page_id, info in window._pages.items():
+        for page_id in window._tab_index:
             window.navigate_to(page_id)
             self.app.processEvents()
-            scroller = info["scroller"]
-            if scroller is None:
-                continue
-            self.assertEqual(
-                scroller.horizontalScrollBar().maximum(), 0, page_id
-            )
-            if page_id == "meeting":
+        for index in range(window.tabs.count()):
+            for scroller in window.tabs.widget(index).findChildren(
+                    settings_ui.QScrollArea):
                 self.assertEqual(
-                    scroller.widget().findChildren(settings_ui.QScrollArea), []
+                    scroller.horizontalScrollBar().maximum(), 0, index
                 )
-        self.assertEqual(window.navigation.horizontalScrollBar().maximum(), 0)

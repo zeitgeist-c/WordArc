@@ -560,13 +560,13 @@ TR = {
     "WordArc: the meeting is written up": "WordArc: tutanak hazır",
     "Meeting failed: {error}": "Toplantı başarısız: {error}",
     "WordArc: the meeting could not be written up": "WordArc: tutanak çıkarılamadı",
-    "{error}\n\nThe recording has been kept. Settings → Minutes can try again.":
-        "{error}\n\nSes kaydı duruyor. Ayarlar → Tutanaklar üzerinden yeniden "
+    "{error}\n\nThe recording has been kept. Settings → Meeting can try again.":
+        "{error}\n\nSes kaydı duruyor. Ayarlar → Toplantı üzerinden yeniden "
         "denenebilir.",
     "Recording saved. The previous meeting is still being written up, so start "
-    "this one from Settings → Minutes when it is done.":
+    "this one from Settings → Meeting when it is done.":
         "Kayıt saklandı. Önceki toplantının tutanağı hâlâ çıkarılıyor; bu kaydı o "
-        "bitince Ayarlar → Tutanaklar üzerinden başlat.",
+        "bitince Ayarlar → Toplantı üzerinden başlat.",
     "The recording stopped on its own; the sound device may have gone away. "
     "Keeping what was captured.":
         "Kayıt kendiliğinden durdu, ses aygıtı çekilmiş olabilir. O ana kadar "
@@ -643,8 +643,8 @@ TR = {
     "Keep the recording after the minutes are written":
         "Tutanak çıktıktan sonra ses kaydını sakla",
     "A run that fails keeps its recording either way, so it can be tried again "
-    "from the Minutes tab. This is about the ones that worked.":
-        "Başarısız olan bir işlemin kaydı zaten saklanır, Tutanaklar sekmesinden "
+    "from the Meeting tab. This is about the ones that worked.":
+        "Başarısız olan bir işlemin kaydı zaten saklanır, Toplantı sekmesinden "
         "yeniden denenebilsin diye. Buradaki ayar başarıyla bitenler için.",
     "none": "yok",
     "Type a key combination first.": "Önce bir tuş kombinasyonu yaz.",

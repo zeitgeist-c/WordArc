@@ -386,7 +386,7 @@ class WordArc:
             self._on_meeting_failed(entry["base"], str(exc))
             return
         # On the way out there is no time to write anything up; the recording is
-        # on disk and listed, and the Minutes tab can pick it up next time.
+        # on disk and listed, and the Meeting tab can pick it up next time.
         if self._quitting:
             return
         if not self.meetings.run(entry):
@@ -396,7 +396,7 @@ class WordArc:
             self.tray.showMessage(
                 "WordArc",
                 t("Recording saved. The previous meeting is still being written "
-                  "up, so start this one from Settings → Minutes when it is done."),
+                  "up, so start this one from Settings → Meeting when it is done."),
                 QSystemTrayIcon.MessageIcon.Information, 10000,
             )
             return
@@ -440,7 +440,7 @@ class WordArc:
         self.overlay.show_error(t("Meeting failed: {error}", error=first_line))
         self.tray.showMessage(
             t("WordArc: the meeting could not be written up"),
-            t("{error}\n\nThe recording has been kept. Settings → Minutes can "
+            t("{error}\n\nThe recording has been kept. Settings → Meeting can "
               "try again.", error=error),
             QSystemTrayIcon.MessageIcon.Warning, 12000,
         )
