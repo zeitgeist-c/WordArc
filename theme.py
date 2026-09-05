@@ -92,29 +92,32 @@ def stylesheet(colors: Palette) -> str:
     QLabel#brandName {{ font-size: 18pt; font-weight: 700; }}
     QLabel#pageTitle {{ font-size: 15pt; font-weight: 650; }}
     QLabel#pageDescription, QLabel#muted {{ color: {colors.muted}; }}
-    QWidget#settingsSidebar {{ background: transparent; }}
+    QTabWidget#settingsTabs::pane {{
+        background: transparent;
+        border: 0;
+    }}
+    QTabWidget#settingsTabs QTabBar::tab {{
+        background: transparent;
+        border: 0;
+        border-bottom: 0;
+        border-radius: 10px;
+        padding: 10px 18px;
+        margin: 0 4px 6px 0;
+        color: {colors.muted};
+        font-weight: 400;
+    }}
+    QTabWidget#settingsTabs QTabBar::tab:hover {{
+        background: {colors.hover}; color: {colors.text};
+    }}
+    QTabWidget#settingsTabs QTabBar::tab:selected {{
+        background: {colors.selected};
+        color: {colors.text};
+        font-weight: 600;
+    }}
     QWidget#sharedAiNote {{
         background: {colors.surface_alt};
         border: 1px solid {colors.border};
         border-radius: 10px;
-    }}
-    QListWidget#settingsNavigation {{
-        background: {colors.surface};
-        border: 1px solid {colors.border};
-        border-radius: 14px;
-        padding: 10px;
-        outline: 0;
-    }}
-    QListWidget#settingsNavigation::item {{
-        border-radius: 10px;
-        padding: 11px 12px;
-        margin: 2px 0;
-    }}
-    QListWidget#settingsNavigation::item:hover {{ background: {colors.hover}; }}
-    QListWidget#settingsNavigation::item:selected {{
-        background: {colors.selected};
-        color: {colors.text};
-        font-weight: 600;
     }}
     QGroupBox {{
         background: {colors.surface};

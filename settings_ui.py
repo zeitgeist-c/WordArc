@@ -5,15 +5,15 @@ import logging
 import threading
 
 from PyQt6.QtCore import QSize, Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import (QBrush, QColor, QDesktopServices, QFont, QGuiApplication,
-                         QIcon, QKeySequence, QShortcut)
+from PyQt6.QtGui import (QDesktopServices, QFont, QGuiApplication, QIcon,
+                         QKeySequence, QShortcut)
 from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QInputDialog,
     QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
-    QPushButton, QScrollArea, QSizePolicy, QSpinBox, QStackedWidget, QStyle,
-    QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSizePolicy, QSpinBox, QStyle,
+    QTabWidget, QVBoxLayout, QWidget,
 )
 
 import api
@@ -165,67 +165,44 @@ class SettingsWindow(QDialog):
 
     def _build_navigation(self):
         self._shared_ai_labels = []
-        self._pages = {}
-        bodies = {
-            "dictation": self._dictation_tab(),
-            "meeting": self._meeting_tab(),
-            "audio_file": self._file_tab(),
-            "minutes": self._minutes_tab(),
-            "history": self._history_tab(),
-            "shared_ai": self._shared_ai_tab(),
-            "application": self._general_tab(),
-        }
+        self.tabs = QTabWidget()
+        self.tabs.setObjectName("settingsTabs")
+        tab_font = QFont()
+        tab_font.setPointSize(11)
+        self.tabs.setFont(tab_font)
+        self.tabs.tabBar().setIconSize(QSize(22, 22))
+        # Old logical page ids keep working: aliases point at the tab that
+        # absorbed them (history lives in dictation, minutes in meeting).
+        self._tab_index = {}
+        style = self.style()
         specs = [
-            ("dictation", "Dictation", "Record, transcribe and paste spoken text.", QStyle.StandardPixmap.SP_MediaVolume, True),
-            ("meeting", "Meeting", "Capture microphone and system audio reliably.", QStyle.StandardPixmap.SP_MediaVolume, True),
-            ("audio_file", "Audio file", "Transcribe an existing recording.", QStyle.StandardPixmap.SP_DialogOpenButton, False),
-            ("minutes", "Minutes", "Review and retry meeting summaries.", QStyle.StandardPixmap.SP_FileDialogContentsView, False),
-            ("history", "History", "Review and control locally stored transcripts.", QStyle.StandardPixmap.SP_FileDialogListView, False),
-            ("shared_ai", "Shared AI", "Gemini access and models shared by every task.", QStyle.StandardPixmap.SP_DriveNetIcon, True),
-            ("application", "Application", "Language, startup and appearance behavior.", QStyle.StandardPixmap.SP_ComputerIcon, True),
+            ("dictation", ("history",), "Dictation",
+             "Record, transcribe and paste spoken text.",
+             style.standardIcon(QStyle.StandardPixmap.SP_MediaVolume),
+             self._dictation_tab(), True),
+            ("meeting", ("minutes",), "Meeting",
+             "Capture microphone and system audio reliably.",
+             style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay),
+             self._meeting_tab(), True),
+            ("audio_file", (), "Audio file",
+             "Transcribe an existing recording.",
+             style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton),
+             self._file_tab(), False),
+            ("settings", ("shared_ai", "application"), "Settings",
+             "Models, language, startup and appearance.",
+             style.standardIcon(QStyle.StandardPixmap.SP_ComputerIcon),
+             self._settings_tab(), True),
         ]
-        self.stack = QStackedWidget()
-        for page_id, title, description, icon_kind, scroll in specs:
-            wrapped, scroller = self._wrap_page(bodies[page_id], title, description, scroll)
-            self._pages[page_id] = {
-                "index": self.stack.addWidget(wrapped),
-                "title": title,
-                "icon": self.style().standardIcon(icon_kind),
-                "scroller": scroller,
-            }
-        self._navigation_groups = [
-            ("Tasks", ("dictation", "meeting", "audio_file")),
-            ("Records", ("minutes", "history")),
-            ("Common", ("shared_ai", "application")),
-        ]
-
-        sidebar = QWidget()
-        sidebar.setObjectName("settingsSidebar")
-        sidebar.setFixedWidth(248)
-        sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(0, 0, 0, 0)
-        sidebar_layout.setSpacing(8)
-        self.navigation = QListWidget()
-        self.navigation.setObjectName("settingsNavigation")
-        self.navigation.setSpacing(4)
-        self.navigation.setIconSize(QSize(26, 26))
-        nav_font = QFont()
-        nav_font.setPointSize(11)
-        self.navigation.setFont(nav_font)
-        self.navigation.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self.navigation.setTextElideMode(Qt.TextElideMode.ElideRight)
-        self.navigation.currentItemChanged.connect(self._navigation_changed)
-        sidebar_layout.addWidget(self.navigation, 1)
-
+        for main_id, aliases, title, description, icon, body, scroll in specs:
+            wrapped, _scroller = self._wrap_page(body, title, description, scroll)
+            index = self.tabs.addTab(wrapped, icon, t(title))
+            self._tab_index[main_id] = index
+            for alias in aliases:
+                self._tab_index[alias] = index
         content = QWidget()
-        content_layout = QHBoxLayout(content)
+        content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(14)
-        content_layout.addWidget(sidebar)
-        content_layout.addWidget(self.stack, 1)
-        self._populate_navigation("dictation")
+        content_layout.addWidget(self.tabs)
         return content
 
     def _wrap_page(self, page, title, description, scroll=True):
@@ -257,65 +234,17 @@ class SettingsWindow(QDialog):
             layout.addWidget(page, 1)
         return container, scroller
 
-    def _populate_navigation(self, selected_page=None):
-        selected_page = selected_page or getattr(self, "_current_page", "dictation")
-        self.navigation.blockSignals(True)
-        self.navigation.clear()
-        selected_item = None
-        for group, page_ids in self._navigation_groups:
-            heading = QListWidgetItem(f"  {t(group).upper()}")
-            font = heading.font()
-            font.setBold(True)
-            font.setPointSize(9)
-            heading.setFont(font)
-            heading.setForeground(QBrush(QColor(theme.palette().muted)))
-            heading.setFlags(
-                heading.flags()
-                & ~Qt.ItemFlag.ItemIsSelectable
-                & ~Qt.ItemFlag.ItemIsEnabled
-            )
-            heading.setData(Qt.ItemDataRole.UserRole, ("group", group))
-            self.navigation.addItem(heading)
-            for page_id in page_ids:
-                info = self._pages[page_id]
-                item = QListWidgetItem(info["icon"], t(info["title"]))
-                item.setData(Qt.ItemDataRole.UserRole, ("page", page_id))
-                self.navigation.addItem(item)
-                if page_id == selected_page:
-                    selected_item = item
-        if selected_item is not None:
-            self.navigation.setCurrentItem(selected_item)
-        self.navigation.blockSignals(False)
-
-    def _navigation_changed(self, current, _previous):
-        if current is None:
-            return
-        payload = current.data(Qt.ItemDataRole.UserRole)
-        if not payload:
-            return
-        kind, value = payload
-        if kind == "page":
-            self._show_page(value)
-
     def _show_page(self, page_id):
-        info = self._pages.get(page_id)
-        if info is None:
+        index = self._tab_index.get(page_id)
+        if index is None:
             return
-        self._current_page = page_id
-        self.stack.setCurrentIndex(info["index"])
+        self.tabs.setCurrentIndex(index)
 
     def navigate_to(self, page_id):
-        """Open one logical page."""
-        if page_id not in self._pages:
+        """Open the tab holding one logical page."""
+        if page_id not in self._tab_index:
             return False
         self._show_page(page_id)
-        self.navigation.blockSignals(True)
-        for index in range(self.navigation.count()):
-            item = self.navigation.item(index)
-            if item.data(Qt.ItemDataRole.UserRole) == ("page", page_id):
-                self.navigation.setCurrentItem(item)
-                break
-        self.navigation.blockSignals(False)
         return True
 
     def _shared_ai_note(self):
@@ -451,6 +380,7 @@ class SettingsWindow(QDialog):
         form.addRow("", self.cleanup_enabled)
         form.addRow(self._shared_ai_note())
         layout.addWidget(cleanup)
+        layout.addWidget(self._history_box())
         layout.addStretch(1)
         return page
 
@@ -715,7 +645,7 @@ class SettingsWindow(QDialog):
         )
         self.meeting_keep_audio.setToolTip(t(
             "A run that fails keeps its recording either way, so it can be tried "
-            "again from the Minutes tab. This is about the ones that worked."
+            "again from the Meeting tab. This is about the ones that worked."
         ))
         recording_form.addRow("", self.meeting_keep_audio)
         privacy = QLabel(t(
@@ -742,14 +672,34 @@ class SettingsWindow(QDialog):
             lambda: self.meeting_prompt.setPlainText(cfg.default_meeting_prompt())
         )
         layout.addWidget(reset, 0, Qt.AlignmentFlag.AlignRight)
+        layout.addWidget(self._minutes_box())
 
         # Everything above is more than one screenful; let it scroll rather than
         # squeezing the prompt box down to nothing.
         return page
 
-    def _minutes_tab(self):
+    def _settings_tab(self):
+        """Shared AI and application pages stacked in one tab."""
         page = QWidget()
         layout = QVBoxLayout(page)
+        for source in (self._shared_ai_tab(), self._general_tab()):
+            if layout.count():
+                line = QFrame()
+                line.setFrameShape(QFrame.Shape.HLine)
+                layout.addWidget(line)
+            source_layout = source.layout()
+            while source_layout.count():
+                item = source_layout.takeAt(0)
+                if item.spacerItem() is not None:
+                    continue
+                layout.addItem(item)
+            source.deleteLater()
+        layout.addStretch(1)
+        return page
+
+    def _minutes_box(self):
+        box = QGroupBox(t("Minutes"))
+        layout = QVBoxLayout(box)
 
         self.minutes_list = QListWidget()
         self.minutes_list.setWordWrap(True)
@@ -763,8 +713,9 @@ class SettingsWindow(QDialog):
 
         self.minutes_view = QPlainTextEdit()
         self.minutes_view.setReadOnly(True)
+        self.minutes_view.setMinimumHeight(200)
         self.minutes_view.setPlaceholderText(t("Pick a meeting to read it."))
-        layout.addWidget(self.minutes_view, 1)
+        layout.addWidget(self.minutes_view)
 
         copy = QPushButton(t("Copy"))
         copy.clicked.connect(
@@ -791,7 +742,7 @@ class SettingsWindow(QDialog):
         row.addWidget(delete)
         row.addWidget(reload_)
         layout.addLayout(row)
-        return page
+        return box
 
     def _file_tab(self):
         page = QWidget()
@@ -875,15 +826,16 @@ class SettingsWindow(QDialog):
         layout.addLayout(out_row)
         return page
 
-    def _history_tab(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
+    def _history_box(self):
+        box = QGroupBox(t("History"))
+        layout = QVBoxLayout(box)
         self.history_enabled = QCheckBox(
             t("Store dictation history on this computer")
         )
         layout.addWidget(self.history_enabled)
         self.history = QListWidget()
         self.history.setWordWrap(True)
+        self.history.setMinimumHeight(170)
         self.history.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection
         )
@@ -892,7 +844,7 @@ class SettingsWindow(QDialog):
         delete_key = QShortcut(QKeySequence.StandardKey.Delete, self.history)
         delete_key.setContext(Qt.ShortcutContext.WidgetShortcut)
         delete_key.activated.connect(self._delete_history)
-        layout.addWidget(self.history, 1)
+        layout.addWidget(self.history)
 
         self.history_limit = QSpinBox()
         self.history_limit.setRange(0, 10000)
@@ -924,7 +876,7 @@ class SettingsWindow(QDialog):
         row.addWidget(clear)
         row.addWidget(reload_)
         layout.addLayout(row)
-        return page
+        return box
 
     @staticmethod
     def _shortcut_box(placeholder=""):
