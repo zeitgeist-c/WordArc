@@ -1,6 +1,7 @@
 """Raw PCM capture with a live level meter, via sounddevice (WASAPI)."""
 
 import array
+import logging
 import math
 import os
 import queue
@@ -15,6 +16,8 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from i18n import t
 from audio_capture import AudioCapture
+
+_log = logging.getLogger("wordarc.audio")
 
 RATE = 16000
 CHANNELS = 1
@@ -221,7 +224,7 @@ class MeetingRecorder(QObject, _CaptureBase):
             self.failed.emit(t("Could not start recording: {error}", error=exc))
             return
         mic_dev = _match_input_device(mic_target)
-        sys_dev = _match_loopback_device(system_target)
+        sys_dev = _match_loopback_device(system_target) if system_target else None
         try:
             self._mic_stream = sd.InputStream(
                 samplerate=RATE, channels=1, dtype="int16",
@@ -229,11 +232,26 @@ class MeetingRecorder(QObject, _CaptureBase):
                 callback=lambda d, f, ti, s: self._mic_cb(d, f, ti, s))
             self._mic_stream.start()
         except Exception:
-            self._cleanup_file()
             self._mic_stream = None
-            self._remove_partial()
-            self.failed.emit(t("Could not open the microphone."))
-            return
+            if mic_target:
+                # The saved microphone is still listed but no longer opens
+                # (a disconnected Bluetooth headset): fall back to the default
+                # input for this run instead of losing the whole meeting.
+                _log.warning("saved meeting microphone %r did not open; "
+                             "falling back to the default input", mic_target)
+                try:
+                    self._mic_stream = sd.InputStream(
+                        samplerate=RATE, channels=1, dtype="int16",
+                        blocksize=CHUNK_FRAMES, device=None,
+                        callback=lambda d, f, ti, s: self._mic_cb(d, f, ti, s))
+                    self._mic_stream.start()
+                except Exception:
+                    self._mic_stream = None
+            if self._mic_stream is None:
+                self._cleanup_file()
+                self._remove_partial()
+                self.failed.emit(t("Could not open the microphone."))
+                return
         if sys_dev is None:
             try:
                 self._sys_stream = AudioCapture(RATE, CHUNK_FRAMES).open_loopback(
@@ -250,7 +268,7 @@ class MeetingRecorder(QObject, _CaptureBase):
             except Exception:
                 self._sys_stream = None
                 # No system capture is not fatal — record a silent right channel.
-        if self._sys_stream is None:
+        if self._sys_stream is None and system_target:
             self._cleanup_file()
             self._mic_stream.stop()
             self._mic_stream = None
@@ -400,6 +418,7 @@ def _match_input_device(target):
     """Map a stable device target (or a legacy name) to a device index."""
     if not target:
         return None
+    target = target.strip()
     devices = list(sd.query_devices())
     if target.startswith(DEVICE_TARGET_PREFIX):
         try:

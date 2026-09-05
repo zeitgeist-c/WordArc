@@ -1,5 +1,58 @@
 import unittest
+import array
+import os
+import shutil
+import tempfile
+import wave
+
 import meeting
+
+
+def _write_stereo(path, seconds=1.0, rate=16000):
+    frames = int(seconds * rate)
+    samples = array.array("h")
+    for _ in range(frames):
+        samples.append(0)
+        samples.append(0)
+    with wave.open(path, "wb") as wav:
+        wav.setnchannels(2)
+        wav.setsampwidth(2)
+        wav.setframerate(rate)
+        wav.writeframes(samples.tobytes())
+
+
+class _FakeConf(dict):
+    def meeting_hint(self):
+        return ""
+
+    def speaker_names(self):
+        return ("Me", "Them")
+
+
+class _FakeClient:
+    def transcribe(self, model, path, language="", prompt=""):
+        if "mine" in os.path.basename(path):
+            return "mine words"
+        return "theirs words"
+
+
+class TestTranscribeTimeline(unittest.TestCase):
+    def test_chunks_become_timestamped_turns(self):
+        workdir = tempfile.mkdtemp(prefix="wordarc-test-meeting-")
+        self.addCleanup(shutil.rmtree, workdir, True)
+        wav_path = os.path.join(workdir, "rec.wav")
+        _write_stereo(wav_path)
+        self.assertAlmostEqual(meeting.wav_duration(wav_path), 1.0, places=2)
+        conf = _FakeConf({
+            "gemini_transcribe_model": "test-model",
+            "meeting_language": "",
+            "language": "tr",
+            "skip_silent": False,
+        })
+        pipe = meeting.MeetingPipeline(conf)
+        out = pipe._transcribe(_FakeClient(), wav_path, workdir)
+        self.assertEqual(
+            out, "[00:00] Me: mine words\n[00:00] Them: theirs words")
 
 class TestMergeTurns(unittest.TestCase):
     def test_simple_interleave(self):

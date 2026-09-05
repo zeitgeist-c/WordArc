@@ -132,6 +132,29 @@ class TestMeetingRecorderReuse(unittest.TestCase):
             recorder._writer()
         self.assertTrue(recorder._error_reported)
 
+    def test_saved_mic_falls_back_to_default_when_it_no_longer_opens(self):
+        recorder = audio.MeetingRecorder()
+        fd, path = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        os.unlink(path)
+        calls = []
+
+        def flaky(*args, **kwargs):
+            calls.append(kwargs.get("device"))
+            if len(calls) == 1:
+                raise OSError("device gone")
+            return _FakeInput(*args, **kwargs)
+
+        with mock.patch.object(audio, "_match_input_device", return_value=24), \
+             mock.patch.object(audio, "_match_loopback_device", return_value=2), \
+             mock.patch.object(audio.sd, "InputStream", flaky):
+            recorder.start(path, mic_target="sd:3:gone")
+        try:
+            self.assertTrue(recorder.active)
+            self.assertEqual(calls, [24, None])
+        finally:
+            recorder.cancel()
+
 
 if __name__ == "__main__":
     unittest.main()
