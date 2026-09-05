@@ -384,8 +384,8 @@ class SettingsWindow(QDialog):
         layout.addStretch(1)
         return page
 
-    def _general_tab(self):
-        page = QWidget()
+    def _general_tab(self, page=None, embedded=False):
+        page = page if page is not None else QWidget()
         layout = QVBoxLayout(page)
         interface = QGroupBox(t("Interface"))
         form = QFormLayout(interface)
@@ -428,11 +428,12 @@ class SettingsWindow(QDialog):
         diagnostics.clicked.connect(self._open_diagnostics)
         support_form.addRow("", diagnostics)
         layout.addWidget(support)
-        layout.addStretch(1)
+        if not embedded:
+            layout.addStretch(1)
         return page
 
-    def _shared_ai_tab(self):
-        page = QWidget()
+    def _shared_ai_tab(self, page=None, embedded=False):
+        page = page if page is not None else QWidget()
         outer = QVBoxLayout(page)
 
         # API keys first, then model selection.
@@ -547,7 +548,8 @@ class SettingsWindow(QDialog):
         self.transcribe_prompt.setMaximumHeight(100)
         glossary_layout.addWidget(self.transcribe_prompt)
         outer.addWidget(glossary)
-        outer.addStretch(1)
+        if not embedded:
+            outer.addStretch(1)
         return page
 
     def _meeting_tab(self):
@@ -679,22 +681,18 @@ class SettingsWindow(QDialog):
         return page
 
     def _settings_tab(self):
-        """Shared AI and application pages stacked in one tab."""
+        """Shared AI and application sections built straight into one tab.
+
+        (An earlier version built two throwaway pages and moved their rows
+        over; that dance crashed Qt on tab switches, so it is gone.)
+        """
         page = QWidget()
-        layout = QVBoxLayout(page)
-        for source in (self._shared_ai_tab(), self._general_tab()):
-            if layout.count():
-                line = QFrame()
-                line.setFrameShape(QFrame.Shape.HLine)
-                layout.addWidget(line)
-            source_layout = source.layout()
-            while source_layout.count():
-                item = source_layout.takeAt(0)
-                if item.spacerItem() is not None:
-                    continue
-                layout.addItem(item)
-            source.deleteLater()
-        layout.addStretch(1)
+        self._shared_ai_tab(page, embedded=True)
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        page.layout().addWidget(line)
+        self._general_tab(page, embedded=True)
+        page.layout().addStretch(1)
         return page
 
     def _minutes_box(self):
