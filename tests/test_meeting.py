@@ -54,6 +54,50 @@ class TestTranscribeTimeline(unittest.TestCase):
         self.assertEqual(
             out, "[00:00] Me: mine words\n[00:00] Them: theirs words")
 
+    def test_empty_transcript_names_the_silent_side(self):
+        import api
+        workdir = tempfile.mkdtemp(prefix="wordarc-test-meeting-")
+        self.addCleanup(shutil.rmtree, workdir, True)
+        wav_path = os.path.join(workdir, "rec.wav")
+        _write_stereo(wav_path)
+        conf = _FakeConf({
+            "gemini_transcribe_model": "test-model",
+            "meeting_language": "",
+            "language": "tr",
+            "skip_silent": False,
+        })
+        pipe = meeting.MeetingPipeline(conf)
+
+        class _MuteClient:
+            def transcribe(self, model, path, language="", prompt=""):
+                return "  "
+
+        with self.assertRaises(api.ApiError) as ctx:
+            pipe._transcribe(_MuteClient(), wav_path, workdir)
+        self.assertIn("The recording is kept", str(ctx.exception))
+
+    def test_all_silent_chunks_list_both_sides(self):
+        import api
+        workdir = tempfile.mkdtemp(prefix="wordarc-test-meeting-")
+        self.addCleanup(shutil.rmtree, workdir, True)
+        wav_path = os.path.join(workdir, "rec.wav")
+        _write_stereo(wav_path)
+        conf = _FakeConf({
+            "gemini_transcribe_model": "test-model",
+            "meeting_language": "",
+            "language": "tr",
+            "skip_silent": True,
+            "silence_db": -59.0,
+            "speech_margin_db": 10.0,
+            "min_voiced_seconds": 0.3,
+        })
+        pipe = meeting.MeetingPipeline(conf)
+        with self.assertRaises(api.ApiError) as ctx:
+            pipe._transcribe(_FakeClient(), wav_path, workdir)
+        message = str(ctx.exception)
+        self.assertIn("Me", message)
+        self.assertIn("Them", message)
+
 class TestMergeTurns(unittest.TestCase):
     def test_simple_interleave(self):
         segs = [(0, 2, "a", "mine"), (2, 4, "b", "theirs"), (4, 6, "c", "mine")]
