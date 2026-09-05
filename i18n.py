@@ -605,6 +605,14 @@ TR = {
 
     # --- settings: meeting --------------------------------------------------
     "Minutes": "Tutanaklar",
+    "Your microphone plus whatever comes out of your speakers.":
+        "Mikrofonun ve hoparlörden çıkan ses birlikte.",
+    "Labels for the two sides of the conversation.":
+        "Konuşmanın iki tarafının etiketleri.",
+    "The model that turns the transcript into minutes.":
+        "Transkripti tutanağa çeviren model.",
+    "How long a meeting may run, and what is kept.":
+        "Toplantı süresi ve nelerin saklandığı.",
     "A meeting is recorded from two devices at once: your microphone and "
     "whatever comes out of your speakers. Nothing has to guess who was "
     "speaking, because the two never share a channel.":

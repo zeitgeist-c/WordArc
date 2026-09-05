@@ -161,3 +161,12 @@ class TestSettingsSmoke(unittest.TestCase):
             muted = [label for label in card.findChildren(settings_ui.QLabel)
                      if label.objectName() == "muted"]
             self.assertTrue(muted, card.title())
+
+    def test_meeting_uses_section_cards(self):
+        window = self.window
+        window.navigate_to("meeting")
+        cards = window.tabs.widget(1).findChildren(settings_ui.QGroupBox)
+        titles = [card.title() for card in cards]
+        for expected in ("Sound", "Who is talking", "Minutes", "Recording",
+                         "Minutes instruction", "Minutes"):
+            self.assertIn(t(expected), titles)
