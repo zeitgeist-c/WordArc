@@ -162,6 +162,22 @@ class TestSettingsSmoke(unittest.TestCase):
                      if label.objectName() == "muted"]
             self.assertTrue(muted, card.title())
 
+    def test_header_language_switch_emits_and_persists(self):
+        window = self.window
+        fired = []
+        window.language_changed.connect(lambda: fired.append(True))
+        window.header_lang.setCurrentIndex(window.header_lang.findData("en"))
+        self.assertEqual(window.conf["ui_language"], "en")
+        self.assertTrue(fired)
+
+    def test_file_tab_uses_section_cards(self):
+        window = self.window
+        window.navigate_to("audio_file")
+        cards = window.tabs.widget(2).findChildren(settings_ui.QGroupBox)
+        titles = [card.title() for card in cards]
+        for expected in ("File", "Options", "Transcript"):
+            self.assertIn(t(expected), titles)
+
     def test_meeting_uses_section_cards(self):
         window = self.window
         window.navigate_to("meeting")

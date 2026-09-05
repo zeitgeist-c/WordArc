@@ -531,10 +531,22 @@ class WordArc:
                 self.conf, launch_command(), meeting_command(), self.meetings,
             )
             self.settings_window.applied.connect(self._apply_settings)
+            self.settings_window.language_changed.connect(self._reopen_settings)
             self.settings_window.finished.connect(self._settings_closed)
         self.settings_window.show()
         self.settings_window.raise_()
         self.settings_window.activateWindow()
+
+    def _reopen_settings(self):
+        """Rebuild the settings window so the new language applies at once."""
+        if self.settings_window is not None:
+            # Blocked so close() does not trip _settings_closed (which would
+            # drop the fresh window and could quit the app); closeEvent still
+            # stops a running file transcription directly.
+            self.settings_window.blockSignals(True)
+            self.settings_window.close()
+            self.settings_window = None
+        self.open_settings()
 
     def _settings_closed(self, *_):
         # Don't drop the object while its own signal is still being delivered.
