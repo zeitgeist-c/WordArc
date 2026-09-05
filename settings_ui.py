@@ -99,7 +99,6 @@ class SettingsWindow(QDialog):
         self.setWindowIcon(QIcon(str(brand_asset("wordarc.ico"))))
         self.resize(920, 700)
         self.setMinimumSize(760, 560)
-        self._theme_syncing = False
 
         header = QWidget()
         header_layout = QHBoxLayout(header)
@@ -118,15 +117,16 @@ class SettingsWindow(QDialog):
         header_layout.addLayout(identity)
         header_layout.addStretch()
         header_layout.addWidget(QLabel(t("Language")))
-        self.header_lang = QComboBox()
+        self.header_lang = QPushButton()
         self.header_lang.setMinimumWidth(110)
-        self.header_lang.addItem("Türkçe", "tr")
-        self.header_lang.addItem("English", "en")
-        self.header_lang.currentIndexChanged.connect(self._header_lang_changed)
+        self.header_lang.clicked.connect(self._toggle_lang)
         header_layout.addWidget(self.header_lang)
         header_layout.addWidget(QLabel(t("Theme")))
-        self.header_theme = self._theme_combo()
-        # Present the theme once while keeping the existing load/save alias.
+        self.header_theme = QPushButton()
+        self.header_theme.setMinimumWidth(110)
+        self.header_theme.clicked.connect(self._cycle_theme)
+        # The application tab never had its own theme control; the alias stays
+        # so external code keeps working.
         self.general_theme = self.header_theme
         header_layout.addWidget(self.header_theme)
 
@@ -162,15 +162,6 @@ class SettingsWindow(QDialog):
         self.transcribe_model.currentTextChanged.connect(self._refresh_shared_ai_summaries)
         self.cleanup_model.currentTextChanged.connect(self._refresh_shared_ai_summaries)
         self.navigate_to("dictation")
-
-    def _theme_combo(self):
-        combo = QComboBox()
-        combo.setMinimumWidth(132)
-        combo.addItem(t("Dark"), "dark")
-        combo.addItem(t("Light"), "light")
-        combo.addItem(t("System"), "system")
-        combo.currentIndexChanged.connect(self._theme_changed)
-        return combo
 
     def _build_navigation(self):
         self._shared_ai_labels = []
@@ -283,33 +274,46 @@ class SettingsWindow(QDialog):
         for label in self._shared_ai_labels:
             label.setText(summary)
 
-    def _header_lang_changed(self, _index):
-        """Apply the header language at once by rebuilding this window."""
-        if not hasattr(self, "header_lang"):
-            return
-        code = self.header_lang.currentData() or "tr"
+    THEME_ORDER = ("dark", "light", "system")
+    THEME_LABELS = {"dark": "Dark", "light": "Light", "system": "System"}
+
+    def _refresh_header_lang(self):
+        code = self.conf["ui_language"]
+        self.header_lang.setText("English" if code == "en" else "Türkçe")
+
+    def _refresh_header_theme(self):
+        mode = self.conf["theme_mode"]
+        if mode not in self.THEME_ORDER:
+            mode = "dark"
+        self.header_theme.setText(t(self.THEME_LABELS[mode]))
+
+    def _toggle_lang(self):
+        """Flip the language at once by rebuilding this window."""
+        code = "en" if self.conf["ui_language"] != "en" else "tr"
         if code == self.conf["ui_language"]:
             return
         self.conf["ui_language"] = code
+        self._select_data(self.ui_language, code)
         try:
             self.conf.save()
         except OSError:
             logging.getLogger("wordarc.ui").warning(
                 "language changed but could not be persisted")
         i18n.set_language(code)
+        self._refresh_header_lang()
         self.language_changed.emit()
 
-    def _theme_changed(self, _index):
-        if self._theme_syncing or not hasattr(self, "header_theme"):
-            return
-        sender = self.sender()
-        mode = sender.currentData() or "dark"
-        self._theme_syncing = True
-        for combo in (self.header_theme, getattr(self, "general_theme", None)):
-            if combo is not None:
-                self._select_data(combo, mode)
-        self._theme_syncing = False
+    def _cycle_theme(self):
+        """Step to the next theme; each click applies immediately."""
+        try:
+            mode = self.THEME_ORDER[
+                (self.THEME_ORDER.index(self.conf["theme_mode"]) + 1)
+                % len(self.THEME_ORDER)
+            ]
+        except ValueError:
+            mode = "dark"
         self.conf["theme_mode"] = mode
+        self._refresh_header_theme()
         theme.ThemeManager.apply(mode, QGuiApplication.instance())
         try:
             self.conf.save()
@@ -965,10 +969,8 @@ class SettingsWindow(QDialog):
 
     def _load(self):
         conf = self.conf
-        self._theme_syncing = True
-        self._select_data(self.header_theme, conf["theme_mode"])
-        self._select_data(self.general_theme, conf["theme_mode"])
-        self._theme_syncing = False
+        self._refresh_header_theme()
+        self._refresh_header_lang()
         try:
             starts_with_windows = startup.is_enabled()
         except startup.StartupError:
@@ -976,12 +978,7 @@ class SettingsWindow(QDialog):
         self.start_with_windows.setChecked(starts_with_windows)
         self.close_to_tray.setChecked(bool(conf["close_to_tray"]))
         self._select_data(self.ui_language, conf["ui_language"])
-        self.header_lang.blockSignals(True)
-        self._select_data(
-            self.header_lang,
-            conf["ui_language"] if conf["ui_language"] in ("tr", "en") else "tr",
-        )
-        self.header_lang.blockSignals(False)
+        self._refresh_header_lang()
         self._select_data(self.mic, conf["mic_target"])
         self._select_data(self.language, conf["language"])
         self.auto_paste.setChecked(conf["auto_paste"])
@@ -1039,11 +1036,11 @@ class SettingsWindow(QDialog):
 
     def _save(self):
         conf = self.conf
-        conf["theme_mode"] = self.header_theme.currentData() or "dark"
+        # Theme and header language apply on click and persist at once;
+        # Save keeps them, it does not read them back from the buttons.
         conf["start_with_windows"] = self.start_with_windows.isChecked()
         conf["close_to_tray"] = self.close_to_tray.isChecked()
-        conf["ui_language"] = self.header_lang.currentData() or "tr"
-        self._select_data(self.ui_language, conf["ui_language"])
+        conf["ui_language"] = self.ui_language.currentData() or "auto"
         conf["mic_target"] = self.mic.currentData() or ""
         conf["language"] = self.language.currentData() or "auto"
         conf["auto_paste"] = self.auto_paste.isChecked()
