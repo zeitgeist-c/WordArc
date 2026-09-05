@@ -1,5 +1,6 @@
 import os
 import queue
+import shutil
 import tempfile
 import unittest
 from unittest import mock
@@ -131,6 +132,21 @@ class TestMeetingRecorderReuse(unittest.TestCase):
              mock.patch.object(audio.time, "monotonic", side_effect=[10.0, 11.0]):
             recorder._writer()
         self.assertTrue(recorder._error_reported)
+
+    def test_start_creates_missing_parent_directory(self):
+        tmp = tempfile.mkdtemp(prefix="wordarc-test-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        path = os.path.join(tmp, "nope", "sub", "rec.wav")
+        recorder = audio.MeetingRecorder()
+        with mock.patch.object(audio, "_match_input_device", return_value=None), \
+             mock.patch.object(audio, "_match_loopback_device", return_value=2), \
+             mock.patch.object(audio.sd, "InputStream", _FakeInput):
+            recorder.start(path)
+        try:
+            self.assertTrue(recorder.active)
+            self.assertTrue(os.path.isdir(os.path.dirname(path)))
+        finally:
+            recorder.cancel()
 
     def test_saved_mic_falls_back_to_default_when_it_no_longer_opens(self):
         recorder = audio.MeetingRecorder()
