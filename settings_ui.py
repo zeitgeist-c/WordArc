@@ -325,8 +325,8 @@ class SettingsWindow(QDialog):
         for label in self._shared_ai_labels:
             label.setText(summary)
 
-    THEME_ORDER = ("dark", "light", "system")
-    THEME_LABELS = {"dark": "Dark", "light": "Light", "system": "System"}
+    THEME_ORDER = ("dark", "light")
+    THEME_LABELS = {"dark": "Dark", "light": "Light"}
 
     def _refresh_header_lang(self):
         code = self.conf["ui_language"]
