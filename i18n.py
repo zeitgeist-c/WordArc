@@ -131,6 +131,15 @@ TR = {
     "Cleanup rules": "Temizleme kuralları",
     "Audio file": "Ses dosyası",
     "Shortcut": "Kısayol",
+    "The key that starts and stops dictation.":
+        "Dikteyi başlatıp durduran tuş.",
+    "Where your voice comes in.": "Sesin nereden girdiği.",
+    "Where the finished text goes.": "Bitmiş metnin nereye gittiği.",
+    "How long a recording may run, and what is kept.":
+        "Kaydın süresi ve nelerin saklandığı.",
+    "An optional second pass that tidies the transcript.":
+        "Transkripti toparlayan isteğe bağlı ikinci tur.",
+    "Advanced": "Gelişmiş",
     "History": "Geçmiş",
     "Save": "Kaydet",
     "Theme": "Tema",
