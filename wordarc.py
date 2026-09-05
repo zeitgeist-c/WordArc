@@ -59,11 +59,6 @@ M_IDLE, M_RECORDING, M_WORKING = "idle", "recording", "working"
 # Anything arriving inside this window is that echo, not a second press.
 ECHO_MS = 0
 
-# How long the indicator stays up at the start of a meeting. Long enough to see
-# both halves of the waveform move, which is the one check that matters, and
-# short enough not to sit in the corner for the rest of the hour.
-PEEK_MS = 12000
-
 
 class WordArc:
     def __init__(self, app, conf=None):
@@ -102,7 +97,7 @@ class WordArc:
         self.meetings.failed.connect(self._on_meeting_failed)
         self.evdev.triggered.connect(self._on_hotkey)
         self.evdev.failed.connect(self._on_error)
-        self.cancel_hotkey.triggered.connect(lambda _name: self.cancel())
+        self.cancel_hotkey.triggered.connect(self._on_cancel_key)
 
         self.elapsed = QElapsedTimer()
         self.meeting_elapsed = QElapsedTimer()
@@ -179,18 +174,28 @@ class WordArc:
 
     def _set_state(self, state):
         self.state = state
-        # Escape must only be global while dictation is recording. Keeping it
+        self._refresh_cancel_hotkey()
+        self._refresh_tray()
+
+    def _refresh_cancel_hotkey(self):
+        # Escape must only be global while something is recording. Keeping it
         # registered while idle would swallow Escape in every other program.
-        if state == RECORDING:
+        if self.state == RECORDING or self.meeting_state == M_RECORDING:
             self.cancel_hotkey.start({"cancel": "Escape"})
         else:
             self.cancel_hotkey.stop()
-        self._refresh_tray()
+
+    def _on_cancel_key(self, _name):
+        if self.recording:
+            self.cancel()
+        elif self.meeting_state == M_RECORDING:
+            self.cancel_meeting()
 
     def _set_meeting_state(self, state):
         self.meeting_state = state
         if state != M_WORKING:
             self.meeting_message = ""
+        self._refresh_cancel_hotkey()
         self._refresh_tray()
 
     def _refresh_tray(self):
@@ -337,7 +342,6 @@ class WordArc:
         self.meeting_elapsed.restart()
         self.meeting_ticker.start()
         self.overlay.show_meeting()
-        QTimer.singleShot(PEEK_MS, self._conceal_meeting_overlay)
         self._set_meeting_state(M_RECORDING)
 
     def stop_meeting(self):
@@ -359,10 +363,6 @@ class WordArc:
         if self.overlay.state == "meeting":
             self.overlay.dismiss()
         self._set_meeting_state(M_IDLE)
-
-    def _conceal_meeting_overlay(self):
-        if self.overlay.state == "meeting":
-            self.overlay.dismiss()
 
     def _on_meeting_levels(self, mine, theirs):
         self.overlay.push_levels(mine, theirs)

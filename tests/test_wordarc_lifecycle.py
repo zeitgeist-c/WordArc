@@ -65,9 +65,42 @@ def test_escape_is_global_only_while_recording():
     controller = wordarc.WordArc.__new__(wordarc.WordArc)
     controller.cancel_hotkey = mock.Mock()
     controller._refresh_tray = mock.Mock()
+    controller.meeting_state = wordarc.M_IDLE
 
     controller._set_state(wordarc.RECORDING)
     controller.cancel_hotkey.start.assert_called_once_with({"cancel": "Escape"})
 
     controller._set_state(wordarc.BUSY)
     controller.cancel_hotkey.stop.assert_called_once_with()
+
+
+def test_escape_arms_for_meeting_and_cancels_it():
+    controller = wordarc.WordArc.__new__(wordarc.WordArc)
+    controller.cancel_hotkey = mock.Mock()
+    controller._refresh_tray = mock.Mock()
+    controller.state = wordarc.IDLE
+    controller.meeting_state = wordarc.M_IDLE
+    controller.meeting_message = ""
+
+    controller._set_meeting_state(wordarc.M_RECORDING)
+    controller.cancel_hotkey.start.assert_called_once_with({"cancel": "Escape"})
+
+    controller.cancel = mock.Mock()
+    controller.cancel_meeting = mock.Mock()
+    controller._on_cancel_key("cancel")
+    controller.cancel.assert_not_called()
+    controller.cancel_meeting.assert_called_once_with()
+
+    controller._set_meeting_state(wordarc.M_IDLE)
+    controller.cancel_hotkey.stop.assert_called_once_with()
+
+
+def test_escape_prefers_dictation_over_meeting():
+    controller = wordarc.WordArc.__new__(wordarc.WordArc)
+    controller.state = wordarc.RECORDING
+    controller.meeting_state = wordarc.M_RECORDING
+    controller.cancel = mock.Mock()
+    controller.cancel_meeting = mock.Mock()
+    controller._on_cancel_key("cancel")
+    controller.cancel.assert_called_once_with()
+    controller.cancel_meeting.assert_not_called()
