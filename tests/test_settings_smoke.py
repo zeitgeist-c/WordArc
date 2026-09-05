@@ -143,3 +143,21 @@ class TestSettingsSmoke(unittest.TestCase):
                 self.assertEqual(
                     scroller.horizontalScrollBar().maximum(), 0, index
                 )
+
+    def test_dictation_uses_section_cards(self):
+        window = self.window
+        window.navigate_to("dictation")
+        cards = window.tabs.widget(0).findChildren(settings_ui.QGroupBox)
+        titles = [card.title() for card in cards]
+        for expected in ("Start", "Sound", "Output", "Recording",
+                         "Cleanup", "History"):
+            self.assertIn(t(expected), titles)
+        # Every section card explains itself in one muted line.
+        main = [card for card in cards
+                if card.title() in {t("Start"), t("Sound"), t("Output"),
+                                    t("Recording"), t("Cleanup")}]
+        self.assertEqual(len(main), 5)
+        for card in main:
+            muted = [label for label in card.findChildren(settings_ui.QLabel)
+                     if label.objectName() == "muted"]
+            self.assertTrue(muted, card.title())

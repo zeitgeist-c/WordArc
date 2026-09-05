@@ -298,58 +298,56 @@ class SettingsWindow(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        start = QGroupBox(t("Start"))
-        form = QFormLayout(start)
-
+        start, body = self._section_card(
+            "Start", "The key that starts and stops dictation.")
         self.shortcut = self._shortcut_box("Ctrl+Space")
-        form.addRow(t("Shortcut"), self.shortcut)
+        body.addWidget(self._label_row("Shortcut", self.shortcut))
         self.shortcut_status = QLabel("")
+        self.shortcut_status.setObjectName("muted")
         self.shortcut_status.setWordWrap(True)
-        form.addRow(self.shortcut_status)
-
+        body.addWidget(self.shortcut_status)
         layout.addWidget(start)
-        sound = QGroupBox(t("Sound"))
-        form = QFormLayout(sound)
 
+        sound, body = self._section_card(
+            "Sound", "Where your voice comes in.")
         self.mic = QComboBox()
         self.refresh_audio_devices = QPushButton(t("Reload"))
         self.refresh_audio_devices.clicked.connect(self._refresh_audio_devices)
-        form.addRow(t("Microphone"), self._row(self.mic, self.refresh_audio_devices))
-
+        body.addWidget(self._label_row(
+            "Microphone", self._row(self.mic, self.refresh_audio_devices)))
         self.language = QComboBox()
         for label, code in LANGUAGES:
             self.language.addItem(t(label), code)
-        form.addRow(t("Speech language"), self.language)
-
+        body.addWidget(self._label_row("Speech language", self.language))
         layout.addWidget(sound)
-        output = QGroupBox(t("Output"))
-        form = QFormLayout(output)
 
+        output, body = self._section_card(
+            "Output", "Where the finished text goes.")
         self.auto_paste = QCheckBox(t("Paste the text into the focused window"))
-        form.addRow("", self.auto_paste)
-
+        body.addWidget(self.auto_paste)
         self.paste_shortcut = QComboBox()
         self.paste_shortcut.addItems(PASTE_SHORTCUTS)
         self.paste_shortcut.setToolTip(
             t("Terminals usually want ctrl+shift+v. Change this if pasting does nothing.")
         )
-        form.addRow(t("Paste key"), self.paste_shortcut)
-
+        body.addWidget(self._label_row("Paste key", self.paste_shortcut))
         self.restore_clipboard = QCheckBox(t("Restore the previous clipboard after pasting"))
-        form.addRow("", self.restore_clipboard)
-
+        body.addWidget(self.restore_clipboard)
         layout.addWidget(output)
-        recording = QGroupBox(t("Recording"))
-        form = QFormLayout(recording)
 
+        recording, body = self._section_card(
+            "Recording", "How long a recording may run, and what is kept.")
         self.max_seconds = QSpinBox()
         self.max_seconds.setRange(10, 3600)
         self.max_seconds.setSuffix(t(" s"))
-        form.addRow(t("Longest recording"), self.max_seconds)
-
+        body.addWidget(self._label_row("Longest recording", self.max_seconds))
         self.skip_silent = QCheckBox(t("Skip silent recordings (don't call the API)"))
-        form.addRow("", self.skip_silent)
+        body.addWidget(self.skip_silent)
+        self.keep_audio = QCheckBox(t("Keep audio files (%LOCALAPPDATA%\\WordArc\\recordings)"))
+        body.addWidget(self.keep_audio)
 
+        advanced = QGroupBox(t("Advanced"))
+        advanced_form = QFormLayout(advanced)
         self.silence_db = QSpinBox()
         self.silence_db.setRange(-80, -20)
         self.silence_db.setSuffix(" dB")
@@ -359,26 +357,22 @@ class SettingsWindow(QDialog):
             "speech gets dropped; raise it if noise still gets through.",
             margin=10,
         ))
-        form.addRow(t("Silence threshold"), self.silence_db)
-
+        advanced_form.addRow(t("Silence threshold"), self.silence_db)
         self.filter_hallucinations = QCheckBox(
             t("Discard stock phrases models invent for near-silent audio")
         )
         self.filter_hallucinations.setToolTip(
             t("Whisper answers silence with things like “Thanks for watching”.")
         )
-        form.addRow("", self.filter_hallucinations)
-
-        self.keep_audio = QCheckBox(t("Keep audio files (%LOCALAPPDATA%\\WordArc\\recordings)"))
-        form.addRow("", self.keep_audio)
-
+        advanced_form.addRow("", self.filter_hallucinations)
+        body.addWidget(advanced)
         layout.addWidget(recording)
-        cleanup = QGroupBox(t("Cleanup"))
-        form = QFormLayout(cleanup)
 
+        cleanup, body = self._section_card(
+            "Cleanup", "An optional second pass that tidies the transcript.")
         self.cleanup_enabled = QCheckBox(t("Clean the transcript with a model"))
-        form.addRow("", self.cleanup_enabled)
-        form.addRow(self._shared_ai_note())
+        body.addWidget(self.cleanup_enabled)
+        body.addWidget(self._shared_ai_note())
         layout.addWidget(cleanup)
         layout.addWidget(self._history_box())
         layout.addStretch(1)
@@ -833,7 +827,7 @@ class SettingsWindow(QDialog):
         layout.addWidget(self.history_enabled)
         self.history = QListWidget()
         self.history.setWordWrap(True)
-        self.history.setMinimumHeight(170)
+        self.history.setMinimumHeight(220)
         self.history.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection
         )
@@ -871,9 +865,12 @@ class SettingsWindow(QDialog):
         row.addWidget(copy)
         row.addWidget(delete)
         row.addStretch(1)
-        row.addWidget(clear)
-        row.addWidget(reload_)
         layout.addLayout(row)
+        row2 = QHBoxLayout()
+        row2.addWidget(clear)
+        row2.addWidget(reload_)
+        row2.addStretch(1)
+        layout.addLayout(row2)
         return box
 
     @staticmethod
@@ -897,6 +894,33 @@ class SettingsWindow(QDialog):
         holder = QWidget()
         holder.setLayout(layout)
         return holder
+
+    @staticmethod
+    def _label_row(label, widget):
+        """A labelled row: muted label on top, control below it."""
+        holder = QWidget()
+        layout = QVBoxLayout(holder)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        caption = QLabel(t(label))
+        caption.setObjectName("muted")
+        layout.addWidget(caption)
+        layout.addWidget(widget)
+        return holder
+
+    @staticmethod
+    def _section_card(title, description):
+        """A roomy card: bold title, one muted description line, content."""
+        box = QGroupBox(t(title))
+        outer = QVBoxLayout(box)
+        detail = QLabel(t(description))
+        detail.setObjectName("muted")
+        detail.setWordWrap(True)
+        outer.addWidget(detail)
+        inner = QVBoxLayout()
+        inner.setSpacing(10)
+        outer.addLayout(inner)
+        return box, inner
 
     # ---- load / save ----------------------------------------------------
 
