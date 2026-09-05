@@ -50,7 +50,10 @@ $VersionedExe = Join-Path $PSScriptRoot "dist\$VersionedName"
 Move-Item -LiteralPath $RawExe -Destination $VersionedExe -Force
 $LauncherName = "WordArc-$AppVersion.bat"
 $LauncherPath = Join-Path $PSScriptRoot "dist\$LauncherName"
-$Launcher = "@echo off`r`nsetlocal`r`ncd /d `"%~dp0`"`r`n" +
+$Launcher = "@echo off`r`nsetlocal`r`n" +
+    "rem Kill stale instances so the new exe starts fresh`r`n" +
+    "taskkill /F /IM `"WordArc-*.exe`" >nul 2>&1`r`n" +
+    "cd /d `"%~dp0`"`r`n" +
     "start `"WordArc $AppVersion`" `"%~dp0$VersionedName`" %*`r`n"
 [IO.File]::WriteAllText($LauncherPath, $Launcher, [Text.UTF8Encoding]::new($false))
 Write-Host "Build completed: dist\$VersionedName + $LauncherName" -ForegroundColor Green
