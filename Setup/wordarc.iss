@@ -1,5 +1,5 @@
 #define MyAppName "WordArc"
-#define MyAppVersion "0.4.3"
+#define MyAppVersion "0.4.4"
 #define MyAppPublisher "zeitgeist-c"
 #define MyAppURL "https://github.com/zeitgeist-c/wordarc"
 #define MyAppExeName MyAppName + "-" + MyAppVersion + ".exe"
