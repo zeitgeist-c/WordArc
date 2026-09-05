@@ -864,13 +864,10 @@ class SettingsWindow(QDialog):
         row = QHBoxLayout()
         row.addWidget(copy)
         row.addWidget(delete)
+        row.addWidget(clear)
+        row.addWidget(reload_)
         row.addStretch(1)
         layout.addLayout(row)
-        row2 = QHBoxLayout()
-        row2.addWidget(clear)
-        row2.addWidget(reload_)
-        row2.addStretch(1)
-        layout.addLayout(row2)
         return box
 
     @staticmethod
