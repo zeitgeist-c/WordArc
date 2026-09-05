@@ -32,7 +32,7 @@ class Palette:
 
 
 DARK = Palette(
-    "dark", "#0B0E14", "#141925", "#1B2230", "#2B3447", "#F3F6FC",
+    "dark", "#0B0E14", "#141925", "#262E3E", "#2B3447", "#F3F6FC",
     "#94A0B5", "#8B5CF6", "#22D3EE", "#20283A", "#292448",
     "#FF6B7A", "#F5B84B", "#48D597",
 )
@@ -124,36 +124,97 @@ def stylesheet(colors: Palette) -> str:
         color: {colors.text};
         background: {colors.surface};
     }}
-    QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit,
-    QListWidget {{
-        background: {colors.surface_alt};
+    QLineEdit, QPlainTextEdit {{
+        background: {colors.surface};
         border: 1px solid {colors.border};
-        border-radius: 9px;
-        padding: 7px 10px;
+        border-radius: 6px;
+        padding: 6px 10px;
         selection-background-color: {colors.violet};
         selection-color: white;
     }}
-    QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{ min-height: 22px; }}
-    QLineEdit:hover, QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover,
-    QPlainTextEdit:hover, QListWidget:hover {{ border-color: {colors.muted}; }}
-    QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
-    QPlainTextEdit:focus, QListWidget:focus {{
-        border: 2px solid {colors.violet};
-        padding: 6px 9px;
+    QLineEdit:hover, QPlainTextEdit:hover {{
+        background: {colors.hover}; border-color: {colors.violet};
     }}
-    QComboBox::drop-down {{ border: 0; width: 28px; }}
+    QLineEdit:focus, QPlainTextEdit:focus {{
+        border: 2px solid {colors.violet}; padding: 5px 9px;
+    }}
+    QComboBox {{
+        background: {colors.surface};
+        border: 1px solid {colors.border};
+        border-radius: 6px;
+        padding: 6px 10px;
+        min-height: 22px;
+        selection-background-color: {colors.violet};
+        selection-color: white;
+    }}
+    QComboBox:hover {{ background: {colors.hover}; border-color: {colors.violet}; }}
+    QComboBox:focus {{ border: 2px solid {colors.violet}; padding: 5px 9px; }}
+    QComboBox::drop-down {{ border: 0; width: 24px; }}
     QComboBox QAbstractItemView {{
         background: {colors.surface};
         border: 1px solid {colors.border};
+        border-radius: 6px;
+        outline: 0;
+        padding: 4px;
         selection-background-color: {colors.selected};
+        selection-color: {colors.text};
     }}
+    QComboBox QAbstractItemView::item {{
+        padding: 6px 8px;
+        margin: 2px 0;
+        border-radius: 4px;
+    }}
+    QComboBox QAbstractItemView::item:selected {{
+        background: {colors.selected}; color: {colors.text};
+    }}
+    QComboBox QAbstractItemView::item:hover {{
+        background: {colors.hover}; color: {colors.text};
+    }}
+    QSpinBox, QDoubleSpinBox {{
+        background: {colors.surface};
+        border: 1px solid {colors.border};
+        border-radius: 6px;
+        padding: 6px 10px;
+        min-height: 22px;
+    }}
+    QSpinBox:hover, QDoubleSpinBox:hover {{
+        background: {colors.hover}; border-color: {colors.violet};
+    }}
+    QSpinBox:focus, QDoubleSpinBox:focus {{
+        border: 2px solid {colors.violet}; padding: 5px 9px;
+    }}
+    QSpinBox::up-button, QSpinBox::down-button,
+    QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+        background: transparent;
+        border: 0;
+        width: 22px;
+    }}
+    QSpinBox::up-button:hover, QSpinBox::down-button:hover,
+    QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{
+        background: {colors.hover};
+        border-radius: 4px;
+    }}
+    QListWidget {{
+        background: {colors.surface};
+        border: 1px solid {colors.border};
+        border-radius: 6px;
+        padding: 4px;
+    }}
+    QListWidget::item {{
+        padding: 6px 8px;
+        margin: 2px 0;
+        border-radius: 4px;
+    }}
+    QListWidget::item:selected {{ background: {colors.selected}; color: {colors.text}; }}
+    QListWidget::item:hover {{ background: {colors.hover}; }}
     QPushButton {{
         min-height: 24px;
-        background: {colors.surface_alt};
-        border: 1px solid {colors.border};
-        border-radius: 9px;
-        padding: 6px 14px;
+        background: {colors.surface};
+        border: none;
+        border-radius: 6px;
+        padding: 6px 12px;
         font-weight: 600;
+        color: {colors.text};
     }}
     QPushButton:hover {{ background: {colors.hover}; border-color: {colors.violet}; }}
     QPushButton:pressed {{ background: {colors.selected}; }}

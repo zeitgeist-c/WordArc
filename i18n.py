@@ -653,6 +653,7 @@ TR = {
     "Sound": "Ses",
     "Same as dictation": "Diktedekiyle aynı",
     "Current output": "Geçerli çıkış",
+    "Meeting audio source": "Toplantı ses kaynağı",
     "The other participants": "Karşı tarafın sesi",
     "Wear headphones if you can. Through speakers your microphone hears the "
     "other side as well, and although a line that lands on both channels at "

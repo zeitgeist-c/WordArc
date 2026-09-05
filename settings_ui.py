@@ -647,7 +647,7 @@ class SettingsWindow(QDialog):
         self.meeting_system.addItem(t("Current output"), "")
         for name, desc in audio.list_monitors():
             self.meeting_system.addItem(desc, name)
-        body.addWidget(self._label_row(t("Meeting audio source"), self.meeting_system))
+        body.addWidget(self._label_row("Meeting audio source", self.meeting_system))
 
         self._refresh_audio_devices()
 
