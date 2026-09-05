@@ -524,16 +524,30 @@ def list_sources():
 
 
 def list_monitors():
-    """[(name, description)] for the loopback of the default output.
+    """[(name, description)] for every usable meeting loopback.
 
-    settings_ui already inserts a 'Current output' item with data='', so when
-    no real loopback device is visible we return [] rather than duplicating it.
+    All PortAudio "(loopback)" inputs first (every output, not just the
+    default), then the Windows Core Audio speakers as fallback. The UI
+    already inserts a 'Current output' item with data='', so an empty
+    list simply means "nothing beyond the default was seen".
     """
-    dev = _match_loopback_device("")
-    if dev is None:
-        return AudioCapture.output_devices()
-    d = sd.query_devices(dev)
-    return [(d["name"], d["name"])]
+    seen = set()
+    out = []
+    try:
+        devices = list(sd.query_devices())
+    except Exception:
+        devices = []
+    for d in devices:
+        name = d.get("name") or ""
+        if d.get("max_input_channels", 0) > 0 and "loopback" in name.lower():
+            if name not in seen:
+                seen.add(name)
+                out.append((name, name))
+    for name, label in AudioCapture.output_devices():
+        if name not in seen:
+            seen.add(name)
+            out.append((name, label))
+    return out
 
 
 def default_monitor():
