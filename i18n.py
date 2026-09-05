@@ -111,6 +111,8 @@ TR = {
     # --- api errors ----------------------------------------------------
     "{service} API key is empty. Add it in Settings.":
         "{service} API anahtarı boş. Ayarlar'dan gir.",
+    "Gemini API key is empty. Add it in Settings.":
+        "Gemini API anahtarı boş. Ayarlar'dan gir.",
     "Transcript came back empty.": "Transkript boş döndü.",
     "The cleanup model returned an empty reply.": "Temizleme modeli boş yanıt döndü.",
     "Gemini returned no candidates.": "Gemini yanıt döndürmedi.",
@@ -147,6 +149,7 @@ TR = {
     "Records": "Kayıtlar",
     "Common": "Ortak",
     "Shared AI": "Ortak AI",
+    "Settings": "Ayarlar",
     "Application": "Uygulama",
     "Search settings…": "Ayarlarda ara…",
     "No settings found": "Eşleşen ayar bulunamadı",
@@ -342,10 +345,18 @@ TR = {
     "Audio and video files": "Ses ve video dosyaları",
     "All files": "Tüm dosyalar",
     "Add timestamps": "Zaman damgası ekle",
-    "Prefixes every segment with [mm:ss]. Uses whisper-1 on whichever provider "
-    "you picked, the only model that returns segment times.":
-        "Her bölümün başına [dd:ss] koyar. Bölüm zamanı döndüren tek model olan "
-        "whisper-1, seçtiğin sağlayıcı üzerinden kullanılır.",
+    "Prefixes every chunk with [mm:ss], so the transcript can be "
+    "saved as subtitles (.srt).":
+        "Her parçanın başına [dd:ss] koyar, transkript altyazı (.srt) "
+        "olarak kaydedilebilir.",
+    "The selected file no longer exists.": "Seçili dosya artık yok.",
+    "No speech was heard on {sides}. The recording is kept.":
+        "{sides} tarafında hiç konuşma duyulmadı. Kayıt saklanıyor.",
+    "The audio held no recognisable speech. The recording is kept.":
+        "Seste tanınabilir konuşma yoktu. Kayıt saklanıyor.",
+    "Unnamed audio device": "Adsız ses aygıtı",
+    "Language": "Dil",
+    "Error": "Hata",
     "Run the cleanup model afterwards": "Sonrasında temizleme modelinden geçir",
     "With its own rules, under Cleanup rules: written for subtitles, so the "
     "lines keep their place and nothing is shortened.":
@@ -362,6 +373,21 @@ TR = {
     "No timestamped lines to turn into subtitles.":
         "Altyazıya çevrilecek zaman damgalı satır yok.",
     "Save transcript": "Transkripti kaydet",
+    "Pick an audio or video file to transcribe.":
+        "Yazıya çevrilecek ses veya video dosyasını seç.",
+    "How the transcript should look.": "Transkriptin nasıl görüneceği.",
+    "The finished text.": "Bitmiş metin.",
+    "Your Gemini API keys, tried from top to bottom.":
+        "Gemini API anahtarların, yukarıdan aşağıya denenir.",
+    "The model that turns speech into text.":
+        "Konuşmayı yazıya çeviren model.",
+    "The model that tidies transcripts.": "Transkripti toparlayan model.",
+    "Words the models should spell right.":
+        "Modellerin doğru yazması gereken kelimeler.",
+    "Language and appearance.": "Dil ve görünüm.",
+    "What happens when Windows and WordArc start.":
+        "Windows ve WordArc açıldığında ne olacağı.",
+    "When something breaks.": "Bir şey bozulduğunda.",
     "Text files": "Metin dosyaları",
     "Subtitle files": "Altyazı dosyaları",
     "Converting audio…": "Ses dönüştürülüyor…",

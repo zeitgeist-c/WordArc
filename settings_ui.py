@@ -21,6 +21,7 @@ import audio
 import config as cfg
 import filetranscribe
 import hotkey
+import i18n
 import meeting
 import startup
 import theme
@@ -73,6 +74,7 @@ AUDIO_FILTER = ("*.mp3 *.wav *.m4a *.ogg *.opus *.flac *.aac *.wma "
 
 class SettingsWindow(QDialog):
     applied = pyqtSignal()
+    language_changed = pyqtSignal()
 
     _models_loaded = pyqtSignal(list, str)
     _transcribe_models_loaded = pyqtSignal(list, str)
@@ -115,6 +117,13 @@ class SettingsWindow(QDialog):
         identity.addWidget(subtitle)
         header_layout.addLayout(identity)
         header_layout.addStretch()
+        header_layout.addWidget(QLabel(t("Language")))
+        self.header_lang = QComboBox()
+        self.header_lang.setMinimumWidth(110)
+        self.header_lang.addItem("Türkçe", "tr")
+        self.header_lang.addItem("English", "en")
+        self.header_lang.currentIndexChanged.connect(self._header_lang_changed)
+        header_layout.addWidget(self.header_lang)
         header_layout.addWidget(QLabel(t("Theme")))
         self.header_theme = self._theme_combo()
         # Present the theme once while keeping the existing load/save alias.
@@ -274,6 +283,22 @@ class SettingsWindow(QDialog):
         for label in self._shared_ai_labels:
             label.setText(summary)
 
+    def _header_lang_changed(self, _index):
+        """Apply the header language at once by rebuilding this window."""
+        if not hasattr(self, "header_lang"):
+            return
+        code = self.header_lang.currentData() or "tr"
+        if code == self.conf["ui_language"]:
+            return
+        self.conf["ui_language"] = code
+        try:
+            self.conf.save()
+        except OSError:
+            logging.getLogger("wordarc.ui").warning(
+                "language changed but could not be persisted")
+        i18n.set_language(code)
+        self.language_changed.emit()
+
     def _theme_changed(self, _index):
         if self._theme_syncing or not hasattr(self, "header_theme"):
             return
@@ -381,46 +406,48 @@ class SettingsWindow(QDialog):
     def _general_tab(self, page=None, embedded=False):
         page = page if page is not None else QWidget()
         layout = QVBoxLayout(page)
-        interface = QGroupBox(t("Interface"))
-        form = QFormLayout(interface)
-
+        interface, body = self._section_card(
+            "Interface", "Language and appearance.")
         self.ui_language = QComboBox()
         for label, code in UI_LANGUAGES:
             self.ui_language.addItem(t(label), code)
         self.ui_language.setToolTip(
             t("Restart WordArc for the language change to reach every window.")
         )
-        form.addRow(t("Interface language"), self.ui_language)
+        body.addWidget(self._label_row("Interface language", self.ui_language))
 
         self.corner = QComboBox()
         for value in CORNERS:
             self.corner.addItem(t(value), value)
-        form.addRow(t("Indicator corner"), self.corner)
+        body.addWidget(self._label_row("Indicator corner", self.corner))
         layout.addWidget(interface)
 
-        startup_box = QGroupBox(t("Startup"))
-        startup_form = QFormLayout(startup_box)
+        startup_box, body = self._section_card(
+            "Startup", "What happens when Windows and WordArc start.")
         self.start_with_windows = QCheckBox(
             t("Start WordArc when Windows starts")
         )
         self.start_with_windows.setToolTip(t(
             "Starts WordArc for this Windows user without administrator permission."
         ))
-        startup_form.addRow("", self.start_with_windows)
+        body.addWidget(self.start_with_windows)
         self.close_to_tray = QCheckBox(t(
             "Keep running in the system tray when the window is closed"
         ))
         self.close_to_tray.setToolTip(t(
             "When disabled, the title-bar close button, Escape and Alt+F4 quit WordArc."
         ))
-        startup_form.addRow("", self.close_to_tray)
+        body.addWidget(self.close_to_tray)
         layout.addWidget(startup_box)
 
-        support = QGroupBox(t("Support"))
-        support_form = QFormLayout(support)
+        support, body = self._section_card(
+            "Support", "When something breaks.")
         diagnostics = QPushButton(t("Open diagnostics folder"))
         diagnostics.clicked.connect(self._open_diagnostics)
-        support_form.addRow("", diagnostics)
+        diag_row = QHBoxLayout()
+        diag_row.addWidget(diagnostics)
+        diag_row.addStretch(1)
+        body.addLayout(diag_row)
         layout.addWidget(support)
         if not embedded:
             layout.addStretch(1)
@@ -431,20 +458,20 @@ class SettingsWindow(QDialog):
         outer = QVBoxLayout(page)
 
         # API keys first, then model selection.
-        keys = QGroupBox(t("Keys"))
-        keys_layout = QVBoxLayout(keys)
+        keys, keys_body = self._section_card(
+            "Keys", "Your Gemini API keys, tried from top to bottom.")
         key_help = QLabel(t(
             "Keys are tried from top to bottom and stored only in Windows Credential Manager."
         ))
         key_help.setWordWrap(True)
         key_help.setObjectName("muted")
-        keys_layout.addWidget(key_help)
+        keys_body.addWidget(key_help)
         self.gemini_keys_list = QListWidget()
         self.gemini_keys_list.setMinimumHeight(116)
         self.gemini_keys_list.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection
         )
-        keys_layout.addWidget(self.gemini_keys_list)
+        keys_body.addWidget(self.gemini_keys_list)
         self.gemini_add_button = QPushButton(t("Add API"))
         self.gemini_edit_button = QPushButton(t("Edit"))
         self.gemini_remove_button = QPushButton(t("Remove"))
@@ -468,37 +495,37 @@ class SettingsWindow(QDialog):
         ):
             key_buttons.addWidget(button)
         key_buttons.addStretch(1)
-        keys_layout.addLayout(key_buttons)
+        keys_body.addLayout(key_buttons)
         self.gemini_test_label = QLabel("")
         self.gemini_test_label.setWordWrap(True)
-        keys_layout.addWidget(self.gemini_test_label)
+        keys_body.addWidget(self.gemini_test_label)
         outer.addWidget(keys)
 
-        stt = QGroupBox(t("Speech to text"))
-        stt_form = QFormLayout(stt)
+        stt, stt_body = self._section_card(
+            "Speech to text", "The model that turns speech into text.")
 
         self.transcribe_model = QComboBox()
         self.transcribe_model.setEditable(True)
         self.transcribe_model.addItems(TRANSCRIBE_MODELS)
         self.refresh_transcribe_models = QPushButton(t("Fetch model list"))
         self.refresh_transcribe_models.clicked.connect(self._load_transcribe_models)
-        stt_form.addRow(t("Model"),
-                        self._row(self.transcribe_model, self.refresh_transcribe_models))
-        # A spanning row: in the narrow field column a wrapped label gets a
-        # height that fits one line, and the rest of the text is cut off.
+        stt_body.addWidget(self._label_row(
+            "Model", self._row(self.transcribe_model, self.refresh_transcribe_models)))
         self.transcribe_status = QLabel("")
+        self.transcribe_status.setObjectName("muted")
         self.transcribe_status.setWordWrap(True)
-        stt_form.addRow(self.transcribe_status)
+        stt_body.addWidget(self.transcribe_status)
         outer.addWidget(stt)
 
-        orr = QGroupBox(t("Transcript cleanup"))
-        orr_form = QFormLayout(orr)
+        orr, orr_body = self._section_card(
+            "Transcript cleanup", "The model that tidies transcripts.")
         self.cleanup_model = QComboBox()
         self.cleanup_model.setEditable(True)
         self.cleanup_model.addItems(CLEANUP_MODELS)
         self.refresh_models = QPushButton(t("Fetch model list"))
         self.refresh_models.clicked.connect(self._load_models)
-        orr_form.addRow(t("Model"), self._row(self.cleanup_model, self.refresh_models))
+        orr_body.addWidget(self._label_row(
+            "Model", self._row(self.cleanup_model, self.refresh_models)))
 
         self.cleanup_reasoning = QComboBox()
         for label, value in REASONING_LEVELS:
@@ -508,39 +535,45 @@ class SettingsWindow(QDialog):
               "a light job, so more thinking mostly costs time and tokens. Models "
               "that cannot think ignore this.")
         )
-        orr_form.addRow(t("Thinking"), self.cleanup_reasoning)
+        orr_body.addWidget(self._label_row("Thinking", self.cleanup_reasoning))
 
         self.models_label = QLabel("")
+        self.models_label.setObjectName("muted")
         self.models_label.setWordWrap(True)
-        orr_form.addRow(self.models_label)
+        orr_body.addWidget(self.models_label)
 
         cleanup_intro = QLabel(t(
             "System instruction shared by dictation and optional meeting cleanup."
         ))
+        cleanup_intro.setObjectName("muted")
         cleanup_intro.setWordWrap(True)
-        orr_form.addRow(cleanup_intro)
+        orr_body.addWidget(cleanup_intro)
         self.cleanup_prompt = QPlainTextEdit()
         self.cleanup_prompt.setMinimumHeight(180)
-        orr_form.addRow(self.cleanup_prompt)
+        orr_body.addWidget(self.cleanup_prompt)
         reset_cleanup = QPushButton(t("Reset to default"))
         reset_cleanup.clicked.connect(
             lambda: self.cleanup_prompt.setPlainText(cfg.default_cleanup_prompt())
         )
-        orr_form.addRow("", reset_cleanup)
+        reset_row = QHBoxLayout()
+        reset_row.addStretch(1)
+        reset_row.addWidget(reset_cleanup)
+        orr_body.addLayout(reset_row)
         outer.addWidget(orr)
 
-        glossary = QGroupBox(t("Names and terms"))
-        glossary_layout = QVBoxLayout(glossary)
+        glossary, glossary_body = self._section_card(
+            "Names and terms", "Words the models should spell right.")
         glossary_hint = QLabel(t(
             "Names and terms you say often (optional). They go to the transcription "
             "model as a hint, and to the cleanup model as a glossary, so it can repair "
             "the ones that still come out wrong."
         ))
+        glossary_hint.setObjectName("muted")
         glossary_hint.setWordWrap(True)
-        glossary_layout.addWidget(glossary_hint)
+        glossary_body.addWidget(glossary_hint)
         self.transcribe_prompt = QPlainTextEdit()
         self.transcribe_prompt.setMaximumHeight(100)
-        glossary_layout.addWidget(self.transcribe_prompt)
+        glossary_body.addWidget(self.transcribe_prompt)
         outer.addWidget(glossary)
         if not embedded:
             outer.addStretch(1)
@@ -742,6 +775,8 @@ class SettingsWindow(QDialog):
         layout.addWidget(intro)
         layout.addWidget(self._shared_ai_note())
 
+        file_card, body = self._section_card(
+            "File", "Pick an audio or video file to transcribe.")
         pick = QPushButton(t("Choose file…"))
         pick.clicked.connect(self._choose_file)
         self.file_label = QLabel(t("No file selected"))
@@ -749,34 +784,41 @@ class SettingsWindow(QDialog):
         row = QHBoxLayout()
         row.addWidget(pick)
         row.addWidget(self.file_label, 1)
-        layout.addLayout(row)
+        body.addLayout(row)
+        layout.addWidget(file_card)
 
+        options, body = self._section_card(
+            "Options", "How the transcript should look.")
         self.file_timestamps = QCheckBox(t("Add timestamps"))
         self.file_timestamps.setToolTip(
             t("Prefixes every chunk with [mm:ss], so the transcript can be "
               "saved as subtitles (.srt).")
         )
-        layout.addWidget(self.file_timestamps)
+        body.addWidget(self.file_timestamps)
 
         self.file_cleanup = QCheckBox(t("Run the cleanup model afterwards"))
         self.file_cleanup.setToolTip(
             t("With its own rules, under Cleanup rules: written for subtitles, so "
               "the lines keep their place and nothing is shortened.")
         )
-        layout.addWidget(self.file_cleanup)
+        body.addWidget(self.file_cleanup)
 
-        file_prompt_label = QLabel(t("Audio file cleanup instruction"))
-        file_prompt_label.setWordWrap(True)
-        layout.addWidget(file_prompt_label)
         self.file_cleanup_prompt = QPlainTextEdit()
         self.file_cleanup_prompt.setMaximumHeight(110)
-        layout.addWidget(self.file_cleanup_prompt)
+        body.addWidget(self._label_row(
+            "Audio file cleanup instruction", self.file_cleanup_prompt))
         reset_file_prompt = QPushButton(t("Reset to default"))
         reset_file_prompt.clicked.connect(
             lambda: self.file_cleanup_prompt.setPlainText(cfg.default_file_cleanup_prompt())
         )
-        layout.addWidget(reset_file_prompt, 0, Qt.AlignmentFlag.AlignRight)
+        reset_row = QHBoxLayout()
+        reset_row.addStretch(1)
+        reset_row.addWidget(reset_file_prompt)
+        body.addLayout(reset_row)
+        layout.addWidget(options)
 
+        transcript, body = self._section_card(
+            "Transcript", "The finished text.")
         self.file_run = QPushButton(t("Transcribe"))
         self.file_run.clicked.connect(self._run_file)
         self.file_stop = QPushButton(t("Stop"))
@@ -786,15 +828,16 @@ class SettingsWindow(QDialog):
         run_row.addWidget(self.file_run)
         run_row.addWidget(self.file_stop)
         run_row.addStretch(1)
-        layout.addLayout(run_row)
+        body.addLayout(run_row)
 
         self.file_status = QLabel("")
         self.file_status.setWordWrap(True)
-        layout.addWidget(self.file_status)
+        body.addWidget(self.file_status)
 
         self.file_output = QPlainTextEdit()
         self.file_output.setPlaceholderText("…")
-        layout.addWidget(self.file_output, 1)
+        self.file_output.setMinimumHeight(200)
+        body.addWidget(self.file_output)
 
         copy = QPushButton(t("Copy"))
         copy.clicked.connect(
@@ -813,7 +856,8 @@ class SettingsWindow(QDialog):
         out_row.addWidget(save)
         out_row.addWidget(self.file_save_srt)
         out_row.addStretch(1)
-        layout.addLayout(out_row)
+        body.addLayout(out_row)
+        layout.addWidget(transcript)
         return page
 
     def _history_box(self):
@@ -932,6 +976,12 @@ class SettingsWindow(QDialog):
         self.start_with_windows.setChecked(starts_with_windows)
         self.close_to_tray.setChecked(bool(conf["close_to_tray"]))
         self._select_data(self.ui_language, conf["ui_language"])
+        self.header_lang.blockSignals(True)
+        self._select_data(
+            self.header_lang,
+            conf["ui_language"] if conf["ui_language"] in ("tr", "en") else "tr",
+        )
+        self.header_lang.blockSignals(False)
         self._select_data(self.mic, conf["mic_target"])
         self._select_data(self.language, conf["language"])
         self.auto_paste.setChecked(conf["auto_paste"])
@@ -992,7 +1042,8 @@ class SettingsWindow(QDialog):
         conf["theme_mode"] = self.header_theme.currentData() or "dark"
         conf["start_with_windows"] = self.start_with_windows.isChecked()
         conf["close_to_tray"] = self.close_to_tray.isChecked()
-        conf["ui_language"] = self.ui_language.currentData() or "auto"
+        conf["ui_language"] = self.header_lang.currentData() or "tr"
+        self._select_data(self.ui_language, conf["ui_language"])
         conf["mic_target"] = self.mic.currentData() or ""
         conf["language"] = self.language.currentData() or "auto"
         conf["auto_paste"] = self.auto_paste.isChecked()
