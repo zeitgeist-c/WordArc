@@ -66,27 +66,20 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertEqual(window.conf["theme_mode"], "light")
         self.assertEqual(self.app.property("wordarcTheme"), "light")
 
-    def test_setting_search_navigates_to_exact_control(self):
+    def test_navigation_selects_exact_page(self):
         window = self.window
-        window.search_box.setText("mikrofon")
+        self.assertTrue(window.navigate_to("meeting"))
+        self.assertEqual(window._current_page, "meeting")
         payloads = [
             window.navigation.item(index).data(settings_ui.Qt.ItemDataRole.UserRole)
             for index in range(window.navigation.count())
         ]
-        self.assertIn(("setting", "dictation_mic"), payloads)
-        self.assertIn(("setting", "meeting_mic"), payloads)
-
-        target = next(
-            window.navigation.item(index)
-            for index in range(window.navigation.count())
-            if window.navigation.item(index).data(
-                settings_ui.Qt.ItemDataRole.UserRole
-            ) == ("setting", "meeting_mic")
-        )
-        window.navigation.setCurrentItem(target)
-        self.app.processEvents()
-        self.assertEqual(window._current_page, "meeting")
-        self.assertEqual(window.search_box.text(), "")
+        self.assertIn(("page", "dictation"), payloads)
+        self.assertIn(("page", "meeting"), payloads)
+        self.assertNotIn(("page", "agent"), payloads)
+        current = window.navigation.currentItem().data(
+            settings_ui.Qt.ItemDataRole.UserRole)
+        self.assertEqual(current, ("page", "meeting"))
 
     def test_noop_save_preserves_every_config_key_and_emits_once(self):
         window = self.window
@@ -105,7 +98,6 @@ class TestSettingsSmoke(unittest.TestCase):
         window = self.window
         window.conf["assistant_provider"] = "codex"
         window.conf["assistant_prompt"] = "legacy custom prompt"
-        window.search_box.setText("ajan agent claude codex")
         payloads = [
             window.navigation.item(index).data(settings_ui.Qt.ItemDataRole.UserRole)
             for index in range(window.navigation.count())
