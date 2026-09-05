@@ -500,7 +500,7 @@ class Config:
         # keeps that behaviour. New installs default to disabled.
         if "config_schema" not in stored and "history_limit" in stored:
             self.data["history_enabled"] = True
-        if self.data.get("theme_mode") not in ("dark", "light", "system"):
+        if self.data.get("theme_mode") not in ("dark", "light"):
             self.data["theme_mode"] = "dark"
         self.data["config_schema"] = CONFIG_SCHEMA
 

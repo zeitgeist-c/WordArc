@@ -5,14 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QGuiApplication, QPalette
+from PyQt6.QtGui import QColor, QPalette
 
 
 class ThemeMode(str, Enum):
     DARK = "dark"
     LIGHT = "light"
-    SYSTEM = "system"
 
 
 @dataclass(frozen=True)
@@ -54,18 +52,10 @@ def normalize(mode) -> ThemeMode:
         return ThemeMode.DARK
 
 
-def system_mode() -> ThemeMode:
-    try:
-        scheme = QGuiApplication.styleHints().colorScheme()
-        return (ThemeMode.DARK if scheme == Qt.ColorScheme.Dark
-                else ThemeMode.LIGHT)
-    except (AttributeError, RuntimeError):
-        return ThemeMode.DARK
-
-
 def resolve(mode) -> ThemeMode:
-    selected = normalize(mode)
-    return system_mode() if selected == ThemeMode.SYSTEM else selected
+    # Only dark and light exist; anything else (including the retired
+    # "system" value in old configs) falls back to dark via normalize.
+    return normalize(mode)
 
 
 def palette(mode=None) -> Palette:
@@ -254,7 +244,6 @@ class ThemeManager:
     selected_mode = ThemeMode.DARK
     resolved_mode = ThemeMode.DARK
     _app = None
-    _connected = False
 
     @classmethod
     def apply(cls, mode, app=None):
@@ -275,10 +264,4 @@ class ThemeManager:
             trayicon.set_theme(colors)
         except ImportError:
             pass
-        if (cls._app is not None and not cls._connected
-                and hasattr(QGuiApplication.styleHints(), "colorSchemeChanged")):
-            QGuiApplication.styleHints().colorSchemeChanged.connect(
-                lambda _scheme: cls.apply(cls.selected_mode)
-                if cls.selected_mode == ThemeMode.SYSTEM else None)
-            cls._connected = True
         return cls.resolved_mode

@@ -231,7 +231,6 @@ TR = {
         "Dikte ile isteğe bağlı toplantı temizlemesinin ortak sistem talimatı.",
     "Dark": "Koyu",
     "Light": "Açık",
-    "System": "Sistem",
     "Dictation, meetings and agents — in one flow.":
         "Dikte, toplantı ve ajanlar — tek akışta.",
     "Core behavior, audio input and appearance.":
