@@ -51,11 +51,17 @@ def name(text, case=""):
 
 
 TR = {
+    "Yes": "Evet",
+    "No": "Hayır",
+    "OK": "Tamam",
+
     # --- tray ---------------------------------------------------------
     "Start recording": "Kaydı başlat",
     "Stop and transcribe": "Kaydı bitir ve yaz",
     "Working…": "İşleniyor…",
+    "Cancel": "İptal",
     "Cancel recording": "Kaydı iptal et",
+    "Cancel": "İptal",
     "Settings…": "Ayarlar…",
     "Restart": "Yeniden başlat",
     "Quit": "Çık",

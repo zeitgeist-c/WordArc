@@ -90,7 +90,7 @@ class TestSettingsSmoke(unittest.TestCase):
         applied = mock.Mock()
         window.applied.connect(applied)
         with mock.patch.object(settings_ui.startup, "set_enabled") as startup_set, \
-             mock.patch.object(settings_ui.QMessageBox, "information"):
+             mock.patch.object(settings_ui, "info_box"):
             window._save()
         self.assertEqual(window.conf.data, before)
         startup_set.assert_called_once_with(False)
@@ -103,7 +103,7 @@ class TestSettingsSmoke(unittest.TestCase):
         window.conf["assistant_prompt"] = "legacy custom prompt"
         self.assertNotIn("agent", window._tab_index)
         with mock.patch.object(settings_ui.startup, "set_enabled"), \
-             mock.patch.object(settings_ui.QMessageBox, "information"):
+             mock.patch.object(settings_ui, "info_box"):
             window._save()
         self.assertEqual(window.conf["assistant_provider"], "codex")
         self.assertEqual(window.conf["assistant_prompt"], "legacy custom prompt")
@@ -123,16 +123,41 @@ class TestSettingsSmoke(unittest.TestCase):
         with mock.patch.object(
             settings_ui.startup, "set_enabled",
             side_effect=settings_ui.startup.StartupError("registry failed"),
-        ), mock.patch.object(settings_ui.QMessageBox, "warning") as warning, \
-             mock.patch.object(settings_ui.QMessageBox, "information") as information:
+        ), mock.patch.object(settings_ui, "warn_box") as warning, \
+             mock.patch.object(settings_ui, "info_box") as information:
             window._save()
         warning.assert_called_once()
         information.assert_not_called()
         applied.assert_not_called()
 
+    def test_confirm_buttons_speak_the_ui_language(self):
+        import i18n
+        previous = i18n.language()
+        i18n.set_language("tr")
+        try:
+            box = settings_ui.QMessageBox(
+                settings_ui.QMessageBox.Icon.Question, "t", "t",
+                settings_ui.QMessageBox.StandardButton.Yes
+                | settings_ui.QMessageBox.StandardButton.No)
+            settings_ui._box_button_texts(box)
+            yes = box.button(settings_ui.QMessageBox.StandardButton.Yes)
+            no = box.button(settings_ui.QMessageBox.StandardButton.No)
+            self.assertEqual(yes.text(), "Evet")
+            self.assertEqual(no.text(), "Hayır")
+            with mock.patch.object(
+                settings_ui.QMessageBox, "exec",
+                return_value=settings_ui.QMessageBox.StandardButton.Yes,
+            ):
+                self.assertTrue(settings_ui.confirm_box(None, "t", "t"))
+        finally:
+            i18n.set_language(previous)
+
     def test_minimum_size_has_no_horizontal_or_nested_page_scrollers(self):
         window = self.window
-        window.resize(760, 560)
+        # The window must shrink to its floor for small screens.
+        self.assertLessEqual(window.minimumWidth(), 520)
+        self.assertLessEqual(window.minimumHeight(), 400)
+        window.resize(520, 400)
         window.show()
         for page_id in window._tab_index:
             window.navigate_to(page_id)
