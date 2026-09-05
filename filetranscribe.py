@@ -98,6 +98,8 @@ class FileTranscriber(QObject):
                     language=conf["language"],
                     prompt=conf["transcribe_prompt"],
                 )
+                end = offset + wav_duration(chunk_path)
+                segments.append((offset, end, text.strip()))
                 if timestamps:
                     stamp = format_timestamp(offset)
                     pieces.append(f"[{stamp}] {text.strip()}")
@@ -117,6 +119,8 @@ class FileTranscriber(QObject):
             self.progress.emit(t("Stopped."))
         except (api.ApiError, OSError, subprocess.SubprocessError, wave.Error) as exc:
             self.failed.emit(str(exc))
+        except Exception as exc:  # noqa: BLE001 — any surprise must unlock the UI
+            self.failed.emit(f"{type(exc).__name__}: {exc}")
         finally:
             if workdir:
                 shutil.rmtree(workdir, ignore_errors=True)
@@ -210,6 +214,13 @@ def _to_wav(path, workdir):
         raise api.ApiError(t("Could not read the file: {error}",
                              error=tail[-1] if tail else res.returncode))
     return out
+
+
+def wav_duration(path):
+    """Length of a WAV file in seconds."""
+    with contextlib.closing(wave.open(path, "rb")) as wav:
+        rate = wav.getframerate() or 1
+        return wav.getnframes() / float(rate)
 
 
 def split_wav(wav_path, workdir):

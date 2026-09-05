@@ -88,7 +88,11 @@ class SettingsWindow(QDialog):
         self.meetings = meetings
         # Each provider keeps its own transcription model, so switching the
         # provider back and forth never overwrites the other one's.
-        self.transcriber = FileTranscriber(conf, self)
+        # No parent on purpose: the worker thread may still emit after this
+        # window is closed, and a signal emitted on a deleted child crashes
+        # the whole app. Without a parent the object outlives the window and
+        # Qt drops signals to dead slots safely.
+        self.transcriber = FileTranscriber(conf)
         self.setObjectName("settingsRoot")
         self.setWindowTitle(t("WordArc Settings"))
         self.setWindowIcon(QIcon(str(brand_asset("wordarc.ico"))))
@@ -941,8 +945,8 @@ class SettingsWindow(QDialog):
 
         self.file_timestamps = QCheckBox(t("Add timestamps"))
         self.file_timestamps.setToolTip(
-            t("Prefixes every segment with [mm:ss]. Uses whisper-1 on whichever "
-              "provider you picked, the only model that returns segment times.")
+            t("Prefixes every chunk with [mm:ss], so the transcript can be "
+              "saved as subtitles (.srt).")
         )
         layout.addWidget(self.file_timestamps)
 
@@ -1444,6 +1448,10 @@ class SettingsWindow(QDialog):
     def _run_file(self):
         if not getattr(self, "file_path", "") or self.transcriber.busy:
             return
+        if not os.path.isfile(self.file_path):
+            self.file_status.setText(
+                t("Failed: {error}", error=t("The selected file no longer exists.")))
+            return
         self.file_output.clear()
         self.file_segments = []
         self.file_save_srt.setEnabled(False)
@@ -1463,7 +1471,7 @@ class SettingsWindow(QDialog):
     def _on_file_finished(self, text, segments):
         self.file_output.setPlainText(text)
         self.file_segments = segments
-        self.file_save_srt.setEnabled(bool(segments))
+        self.file_save_srt.setEnabled(self._has_timestamped_lines(text))
         self.file_status.setText(t("Done: {chars} characters.", chars=len(text)))
         self._file_idle()
 
@@ -1474,6 +1482,24 @@ class SettingsWindow(QDialog):
     def _file_idle(self):
         self.file_run.setEnabled(True)
         self.file_stop.setEnabled(False)
+
+    @staticmethod
+    def _has_timestamped_lines(text):
+        return any(
+            filetranscribe.STAMP_RE.match(line.strip())
+            for line in (text or "").splitlines()
+        )
+
+    def closeEvent(self, event):
+        # Closing mid-transcription used to kill the whole app: the worker
+        # thread kept emitting on the deleted transcriber child. Ask it to
+        # stop; the daemon thread dies on its own, the window closes now.
+        try:
+            if getattr(self, "transcriber", None) is not None and self.transcriber.busy:
+                self.transcriber.stop()
+        except (RuntimeError, AttributeError):
+            pass
+        super().closeEvent(event)
 
     def _save_transcript(self):
         self._write_transcript(self.file_output.toPlainText(), ".txt",
