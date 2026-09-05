@@ -63,7 +63,7 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertEqual(window.transcribe_model.currentText(),
                          "gemini-3.5-flash-lite")
         self.assertIs(window.general_theme, window.header_theme)
-        window.header_theme.setCurrentIndex(window.header_theme.findData("light"))
+        window.header_theme.click()
         self.assertEqual(window.conf["theme_mode"], "light")
         self.assertEqual(self.app.property("wordarcTheme"), "light")
 
@@ -162,13 +162,21 @@ class TestSettingsSmoke(unittest.TestCase):
                      if label.objectName() == "muted"]
             self.assertTrue(muted, card.title())
 
-    def test_header_language_switch_emits_and_persists(self):
+    def test_header_buttons_toggle_and_persist(self):
         window = self.window
         fired = []
         window.language_changed.connect(lambda: fired.append(True))
-        window.header_lang.setCurrentIndex(window.header_lang.findData("en"))
+        self.assertEqual(window.header_lang.text(), "Türkçe")
+        window.header_lang.click()
         self.assertEqual(window.conf["ui_language"], "en")
+        self.assertEqual(window.header_lang.text(), "English")
         self.assertTrue(fired)
+        window.header_lang.click()
+        self.assertEqual(window.conf["ui_language"], "tr")
+        self.assertEqual(window.header_theme.text(), t("Dark"))
+        window.header_theme.click()
+        self.assertEqual(window.conf["theme_mode"], "light")
+        self.assertEqual(window.header_theme.text(), t("Light"))
 
     def test_file_tab_uses_section_cards(self):
         window = self.window
