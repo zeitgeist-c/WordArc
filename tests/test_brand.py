@@ -25,7 +25,7 @@ def _app():
 
 def test_brand_identity_and_legacy_entry_point():
     assert BRAND.name == "WordArc"
-    assert BRAND.version == wordarc.__version__ == "0.4.3"
+    assert BRAND.version == wordarc.__version__ == "0.4.4"
     assert BRAND.executable == "wordarc.exe"
     assert wordarc.SERVER_NAME == f"wordarc-{getpass.getuser()}"
     assert wordarc.LEGACY_SERVER_NAME == f"verbatim-{getpass.getuser()}"
