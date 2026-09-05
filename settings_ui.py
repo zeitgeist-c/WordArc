@@ -72,6 +72,49 @@ AUDIO_FILTER = ("*.mp3 *.wav *.m4a *.ogg *.opus *.flac *.aac *.wma "
                 "*.mp4 *.mkv *.webm *.mov *.avi")
 
 
+def _box_button_texts(box):
+    """Qt's standard buttons in the user's language.
+
+    QMessageBox ships English button texts (Yes/No/OK) unless the Qt
+    translator catalogs are installed, which they are not here, so every
+    dialog built below gets its buttons relabelled through t().
+    """
+    for standard, key in (
+        (QMessageBox.StandardButton.Ok, "OK"),
+        (QMessageBox.StandardButton.Yes, "Yes"),
+        (QMessageBox.StandardButton.No, "No"),
+        (QMessageBox.StandardButton.Cancel, "Cancel"),
+    ):
+        button = box.button(standard)
+        if button is not None:
+            button.setText(t(key))
+
+
+def warn_box(parent, title, text):
+    box = QMessageBox(QMessageBox.Icon.Warning, title, text,
+                      QMessageBox.StandardButton.Ok, parent)
+    _box_button_texts(box)
+    box.exec()
+
+
+def info_box(parent, title, text):
+    box = QMessageBox(QMessageBox.Icon.Information, title, text,
+                      QMessageBox.StandardButton.Ok, parent)
+    _box_button_texts(box)
+    box.exec()
+
+
+def confirm_box(parent, title, text):
+    box = QMessageBox(
+        QMessageBox.Icon.Question, title, text,
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        parent,
+    )
+    box.setDefaultButton(QMessageBox.StandardButton.No)
+    _box_button_texts(box)
+    return box.exec() == QMessageBox.StandardButton.Yes
+
+
 class SettingsWindow(QDialog):
     applied = pyqtSignal()
     language_changed = pyqtSignal()
@@ -98,7 +141,15 @@ class SettingsWindow(QDialog):
         self.setWindowTitle(t("WordArc Settings"))
         self.setWindowIcon(QIcon(str(brand_asset("wordarc.ico"))))
         self.resize(920, 700)
-        self.setMinimumSize(760, 560)
+        # Small screens must be able to shrink the window: the floor sits
+        # well below the opening size and every tab scrolls vertically.
+        self.setMinimumSize(520, 400)
+        if os.environ.get("QT_QPA_PLATFORM", "") != "offscreen":
+            screen = QGuiApplication.primaryScreen()
+            if screen is not None:
+                avail = screen.availableGeometry()
+                self.resize(min(920, max(520, avail.width() - 40)),
+                            min(700, max(400, avail.height() - 80)))
 
         header = QWidget()
         header_layout = QHBoxLayout(header)
@@ -118,12 +169,12 @@ class SettingsWindow(QDialog):
         header_layout.addStretch()
         header_layout.addWidget(QLabel(t("Language")))
         self.header_lang = QPushButton()
-        self.header_lang.setMinimumWidth(110)
+        self.header_lang.setMinimumWidth(96)
         self.header_lang.clicked.connect(self._toggle_lang)
         header_layout.addWidget(self.header_lang)
         header_layout.addWidget(QLabel(t("Theme")))
         self.header_theme = QPushButton()
-        self.header_theme.setMinimumWidth(110)
+        self.header_theme.setMinimumWidth(96)
         self.header_theme.clicked.connect(self._cycle_theme)
         # The application tab never had its own theme control; the alias stays
         # so external code keeps working.
@@ -187,7 +238,7 @@ class SettingsWindow(QDialog):
             ("audio_file", (), "Audio file",
              "Transcribe an existing recording.",
              style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton),
-             self._file_tab(), False),
+             self._file_tab(), True),
             ("settings", ("shared_ai", "application"), "Settings",
              "Models, language, startup and appearance.",
              style.standardIcon(QStyle.StandardPixmap.SP_ComputerIcon),
@@ -1096,13 +1147,13 @@ class SettingsWindow(QDialog):
         try:
             startup.set_enabled(conf["start_with_windows"])
         except startup.StartupError as exc:
-            QMessageBox.warning(self, t("Error"), str(exc))
+            warn_box(self, t("Error"), str(exc))
             return
         previous_keys = conf.stored_gemini_keys()
         try:
             cfg.credential_store.write_all(self._gemini_keys)
         except cfg.credential_store.CredentialError as exc:
-            QMessageBox.warning(self, t("Error"), str(exc))
+            warn_box(self, t("Error"), str(exc))
             return
         try:
             conf.save()
@@ -1111,7 +1162,7 @@ class SettingsWindow(QDialog):
                 cfg.credential_store.write_all(previous_keys)
             except cfg.credential_store.CredentialError:
                 pass
-            QMessageBox.warning(self, t("Error"), str(exc))
+            warn_box(self, t("Error"), str(exc))
             return
         # A lowered limit should bite now, not on the next dictation.
         try:
@@ -1120,7 +1171,7 @@ class SettingsWindow(QDialog):
             print(f"wordarc: could not trim the history ({exc})")
         self._load_history()  # the trim may just have dropped rows from the list
         self.applied.emit()
-        QMessageBox.information(self, t("WordArc Settings"), t("Saved successfully."))
+        info_box(self, t("WordArc Settings"), t("Saved successfully."))
 
     @staticmethod
     def _select_data(combo, value):
@@ -1148,7 +1199,11 @@ class SettingsWindow(QDialog):
             combo.clear()
             combo.addItem(default_label, "")
             for target, label in sources:
-                combo.addItem(label, target)
+                # Show trimmed label, keep full label as tooltip for readability
+                display = label if len(label) <= 30 else label[:27] + "…"
+                combo.addItem(display, target)
+                idx = combo.count() - 1
+                combo.setItemData(idx, label, Qt.ItemDataRole.ToolTipRole)
             self._select_data(combo, selected)
             combo.blockSignals(False)
 
@@ -1202,7 +1257,7 @@ class SettingsWindow(QDialog):
         if not key:
             return
         if key in self._gemini_keys:
-            QMessageBox.warning(self, t("Error"), t("This API key is already listed."))
+            warn_box(self, t("Error"), t("Bu API anahtarı zaten listede."))
             return
         self._gemini_keys.append(key)
         self._refresh_gemini_keys(len(self._gemini_keys) - 1)
@@ -1215,7 +1270,7 @@ class SettingsWindow(QDialog):
         if not key:
             return
         if key in self._gemini_keys and key != self._gemini_keys[row]:
-            QMessageBox.warning(self, t("Error"), t("This API key is already listed."))
+            warn_box(self, t("Error"), t("Bu API anahtarı zaten listede."))
             return
         self._gemini_keys[row] = key
         self._refresh_gemini_keys(row)
@@ -1490,7 +1545,7 @@ class SettingsWindow(QDialog):
         if not row:
             return
         if self.meetings is not None and self.meetings.running_base == row["base"]:
-            QMessageBox.information(self, t("Minutes"),
+            info_box(self, t("Minutes"),
                                     t("This one is being written up right now."))
             return
         if not self._confirm(
@@ -1500,7 +1555,7 @@ class SettingsWindow(QDialog):
         try:
             cfg.delete_meetings([row["base"]])
         except OSError as exc:
-            QMessageBox.warning(self, t("Minutes"), t("Failed: {error}", error=exc))
+            warn_box(self, t("Minutes"), t("Failed: {error}", error=exc))
         self._load_minutes()
 
     def _on_minutes_progress(self, _base, message):
@@ -1565,18 +1620,14 @@ class SettingsWindow(QDialog):
         self._rewrite_history(cfg.clear_history)
 
     def _confirm(self, question, title=None):
-        answer = QMessageBox.question(
-            self, title or t("History"), question,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        return answer == QMessageBox.StandardButton.Yes
+        # Use custom confirm box to ensure Turkish button texts.
+        return confirm_box(self, title or t("History"), question)
 
     def _rewrite_history(self, action):
         try:
             action()
         except OSError as exc:
-            QMessageBox.warning(self, t("History"), t("Failed: {error}", error=exc))
+            warn_box(self, t("History"), t("Failed: {error}", error=exc))
         self._load_history()
 
     def _history_menu(self, pos):

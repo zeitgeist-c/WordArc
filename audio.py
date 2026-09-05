@@ -10,7 +10,32 @@ import threading
 import time
 import wave
 
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except ModuleNotFoundError:
+    # Minimal stub for tests when sounddevice unavailable.
+    class _DummyStream:
+        def __init__(self, *args, **kwargs):
+            pass
+        def start(self):
+            pass
+        def stop(self):
+            pass
+        def close(self):
+            pass
+    class _DummySD:
+        InputStream = _DummyStream
+        OutputStream = _DummyStream
+        def query_devices(self, *args):
+            if args:
+                return {"name": "", "hostapi": 0,
+                        "max_input_channels": 0, "max_output_channels": 0}
+            return []
+        def query_hostapis(self):
+            return []
+        default = type('obj', (), {'hostapi': None, 'device': (None, None)})
+    sd = _DummySD()
+
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
