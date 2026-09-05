@@ -549,25 +549,17 @@ class SettingsWindow(QDialog):
     def _meeting_tab(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        intro = QLabel(t(
-            "A meeting is recorded from two devices at once: your microphone and "
-            "whatever comes out of your speakers. Nothing has to guess who was "
-            "speaking, because the two never share a channel."
-        ))
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
-        layout.addWidget(self._shared_ai_note())
 
-        sources = QGroupBox(t("Sound"))
-        sources_form = QFormLayout(sources)
+        sound, body = self._section_card(
+            "Sound", "Your microphone plus whatever comes out of your speakers.")
         self.meeting_mic = QComboBox()
-        sources_form.addRow(t("Microphone"), self.meeting_mic)
+        body.addWidget(self._label_row("Microphone", self.meeting_mic))
 
         self.meeting_system = QComboBox()
         self.meeting_system.addItem(t("Current output"), "")
         for name, desc in audio.list_monitors():
             self.meeting_system.addItem(desc, name)
-        sources_form.addRow(t("The other participants"), self.meeting_system)
+        body.addWidget(self._label_row("The other participants", self.meeting_system))
 
         self._refresh_audio_devices()
 
@@ -577,38 +569,40 @@ class SettingsWindow(QDialog):
             "channels at once is dropped again, the repair is never as clean as "
             "not needing it."
         ))
+        note.setObjectName("muted")
         note.setWordWrap(True)
-        sources_form.addRow(note)
-        layout.addWidget(sources)
+        body.addWidget(note)
+        layout.addWidget(sound)
 
-        people = QGroupBox(t("Who is talking"))
-        people_form = QFormLayout(people)
+        people, body = self._section_card(
+            "Who is talking", "Labels for the two sides of the conversation.")
         self.meeting_self_name = QLineEdit()
         self.meeting_self_name.setPlaceholderText(t("Me"))
-        people_form.addRow(t("You"), self.meeting_self_name)
+        body.addWidget(self._label_row("You", self.meeting_self_name))
         self.meeting_other_name = QLineEdit()
         self.meeting_other_name.setPlaceholderText(t("Other side"))
-        people_form.addRow(t("The other end"), self.meeting_other_name)
+        body.addWidget(self._label_row("The other end", self.meeting_other_name))
         self.meeting_participants = QPlainTextEdit()
         self.meeting_participants.setMaximumHeight(70)
         self.meeting_participants.setPlaceholderText(t("One name per line"))
-        people_form.addRow(t("Expected"), self.meeting_participants)
+        body.addWidget(self._label_row("Expected", self.meeting_participants))
         people_note = QLabel(t(
             "Everyone on the far end shares one label: they reach you as a single "
             "mixed signal. The names go to the transcription model so they come "
             "out spelled right, and to the minutes, which may use one for a line "
             "only when the conversation itself makes clear who was speaking."
         ))
+        people_note.setObjectName("muted")
         people_note.setWordWrap(True)
-        people_form.addRow(people_note)
+        body.addWidget(people_note)
         layout.addWidget(people)
 
-        models = QGroupBox(t("Minutes"))
-        models_form = QFormLayout(models)
+        models, body = self._section_card(
+            "Minutes", "The model that turns the transcript into minutes.")
         self.meeting_model = QComboBox()
         self.meeting_model.setEditable(True)
         self.meeting_model.addItems(MEETING_MODELS)
-        models_form.addRow(t("Model"), self.meeting_model)
+        body.addWidget(self._label_row("Model", self.meeting_model))
         self.meeting_reasoning = QComboBox()
         for label, value in REASONING_LEVELS:
             self.meeting_reasoning.addItem(t(label), value)
@@ -616,26 +610,26 @@ class SettingsWindow(QDialog):
             "Unlike cleanup, this one is worth some thinking: it has to hold a "
             "whole meeting in its head and work out what was actually decided."
         ))
-        models_form.addRow(t("Thinking"), self.meeting_reasoning)
+        body.addWidget(self._label_row("Thinking", self.meeting_reasoning))
         self.meeting_language = QComboBox()
         self.meeting_language.addItem(t("Same as dictation"), "")
         for label, code in LANGUAGES:
             self.meeting_language.addItem(t(label), code)
-        models_form.addRow(t("Speech language"), self.meeting_language)
+        body.addWidget(self._label_row("Speech language", self.meeting_language))
         self.meeting_cleanup = QCheckBox(t("Clean the transcript up first"))
         self.meeting_cleanup.setToolTip(t(
             "Runs the cleanup model over the transcript before the minutes are "
             "written, keeping the timestamps and the speaker labels."
         ))
-        models_form.addRow("", self.meeting_cleanup)
+        body.addWidget(self.meeting_cleanup)
         layout.addWidget(models)
 
-        recording = QGroupBox(t("Recording"))
-        recording_form = QFormLayout(recording)
+        recording, body = self._section_card(
+            "Recording", "How long a meeting may run, and what is kept.")
         self.meeting_max_minutes = QSpinBox()
         self.meeting_max_minutes.setRange(5, 600)
         self.meeting_max_minutes.setSuffix(t(" min"))
-        recording_form.addRow(t("Longest meeting"), self.meeting_max_minutes)
+        body.addWidget(self._label_row("Longest meeting", self.meeting_max_minutes))
         self.meeting_keep_audio = QCheckBox(
             t("Keep the recording after the minutes are written")
         )
@@ -643,31 +637,35 @@ class SettingsWindow(QDialog):
             "A run that fails keeps its recording either way, so it can be tried "
             "again from the Meeting tab. This is about the ones that worked."
         ))
-        recording_form.addRow("", self.meeting_keep_audio)
+        body.addWidget(self.meeting_keep_audio)
         privacy = QLabel(t(
             "Meeting minutes and transcripts are stored as readable text files "
             "under %LOCALAPPDATA%\\WordArc\\meetings."))
+        privacy.setObjectName("muted")
         privacy.setWordWrap(True)
-        recording_form.addRow(privacy)
-
+        body.addWidget(privacy)
         self.meeting_shortcut = self._shortcut_box(t("none"))
-        recording_form.addRow(t("Shortcut"), self.meeting_shortcut)
+        body.addWidget(self._label_row("Shortcut", self.meeting_shortcut))
         self.meeting_shortcut_status = QLabel("")
+        self.meeting_shortcut_status.setObjectName("muted")
         self.meeting_shortcut_status.setWordWrap(True)
-        recording_form.addRow(self.meeting_shortcut_status)
+        body.addWidget(self.meeting_shortcut_status)
         layout.addWidget(recording)
 
-        prompt_label = QLabel(t("System instruction given to the minutes model."))
-        prompt_label.setWordWrap(True)
-        layout.addWidget(prompt_label)
+        prompt_card, prompt_body = self._section_card(
+            "Minutes instruction", "System instruction given to the minutes model.")
         self.meeting_prompt = QPlainTextEdit()
         self.meeting_prompt.setMinimumHeight(200)
-        layout.addWidget(self.meeting_prompt, 1)
+        prompt_body.addWidget(self.meeting_prompt)
         reset = QPushButton(t("Reset to default"))
         reset.clicked.connect(
             lambda: self.meeting_prompt.setPlainText(cfg.default_meeting_prompt())
         )
-        layout.addWidget(reset, 0, Qt.AlignmentFlag.AlignRight)
+        reset_row = QHBoxLayout()
+        reset_row.addStretch(1)
+        reset_row.addWidget(reset)
+        prompt_body.addLayout(reset_row)
+        layout.addWidget(prompt_card)
         layout.addWidget(self._minutes_box())
 
         # Everything above is more than one screenful; let it scroll rather than
