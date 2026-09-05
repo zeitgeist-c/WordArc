@@ -101,25 +101,20 @@ def stylesheet(colors: Palette) -> str:
     QListWidget#settingsNavigation {{
         background: {colors.surface};
         border: 1px solid {colors.border};
-        border-radius: 12px;
-        padding: 7px;
+        border-radius: 14px;
+        padding: 10px;
         outline: 0;
     }}
     QListWidget#settingsNavigation::item {{
-        border-radius: 8px;
-        padding: 8px 9px;
-        margin: 1px 0;
+        border-radius: 10px;
+        padding: 11px 12px;
+        margin: 2px 0;
     }}
     QListWidget#settingsNavigation::item:hover {{ background: {colors.hover}; }}
     QListWidget#settingsNavigation::item:selected {{
         background: {colors.selected};
         color: {colors.text};
-    }}
-    QLineEdit#settingsSearch {{ padding-left: 12px; }}
-    QLineEdit[searchTarget="true"], QComboBox[searchTarget="true"],
-    QSpinBox[searchTarget="true"], QPlainTextEdit[searchTarget="true"],
-    QCheckBox[searchTarget="true"] {{
-        border: 2px solid {colors.cyan};
+        font-weight: 600;
     }}
     QGroupBox {{
         background: {colors.surface};

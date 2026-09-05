@@ -1,13 +1,12 @@
 """Settings window."""
 
 import os
-import unicodedata
 import logging
 import threading
 
-from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
-from PyQt6.QtGui import (QDesktopServices, QGuiApplication, QIcon, QKeySequence,
-                         QShortcut)
+from PyQt6.QtCore import QSize, Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import (QBrush, QColor, QDesktopServices, QFont, QGuiApplication,
+                         QIcon, QKeySequence, QShortcut)
 from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QInputDialog,
@@ -167,7 +166,6 @@ class SettingsWindow(QDialog):
     def _build_navigation(self):
         self._shared_ai_labels = []
         self._pages = {}
-        self._setting_index = {}
         bodies = {
             "dictation": self._dictation_tab(),
             "meeting": self._meeting_tab(),
@@ -203,27 +201,23 @@ class SettingsWindow(QDialog):
 
         sidebar = QWidget()
         sidebar.setObjectName("settingsSidebar")
-        sidebar.setFixedWidth(226)
+        sidebar.setFixedWidth(248)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(8)
-        self.search_box = QLineEdit()
-        self.search_box.setObjectName("settingsSearch")
-        self.search_box.setPlaceholderText(t("Search settings…"))
-        self.search_box.setClearButtonEnabled(True)
-        self.search_box.textChanged.connect(self._search_changed)
-        sidebar_layout.addWidget(self.search_box)
         self.navigation = QListWidget()
         self.navigation.setObjectName("settingsNavigation")
-        self.navigation.setSpacing(2)
+        self.navigation.setSpacing(4)
+        self.navigation.setIconSize(QSize(26, 26))
+        nav_font = QFont()
+        nav_font.setPointSize(11)
+        self.navigation.setFont(nav_font)
         self.navigation.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         self.navigation.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.navigation.currentItemChanged.connect(self._navigation_changed)
         sidebar_layout.addWidget(self.navigation, 1)
-        find_shortcut = QShortcut(QKeySequence.StandardKey.Find, self)
-        find_shortcut.activated.connect(self.search_box.setFocus)
 
         content = QWidget()
         content_layout = QHBoxLayout(content)
@@ -232,7 +226,6 @@ class SettingsWindow(QDialog):
         content_layout.addWidget(sidebar)
         content_layout.addWidget(self.stack, 1)
         self._populate_navigation("dictation")
-        self._build_search_index()
         return content
 
     def _wrap_page(self, page, title, description, scroll=True):
@@ -270,11 +263,17 @@ class SettingsWindow(QDialog):
         self.navigation.clear()
         selected_item = None
         for group, page_ids in self._navigation_groups:
-            heading = QListWidgetItem(t(group).upper())
+            heading = QListWidgetItem(f"  {t(group).upper()}")
             font = heading.font()
             font.setBold(True)
+            font.setPointSize(9)
             heading.setFont(font)
-            heading.setFlags(heading.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            heading.setForeground(QBrush(QColor(theme.palette().muted)))
+            heading.setFlags(
+                heading.flags()
+                & ~Qt.ItemFlag.ItemIsSelectable
+                & ~Qt.ItemFlag.ItemIsEnabled
+            )
             heading.setData(Qt.ItemDataRole.UserRole, ("group", group))
             self.navigation.addItem(heading)
             for page_id in page_ids:
@@ -297,13 +296,6 @@ class SettingsWindow(QDialog):
         kind, value = payload
         if kind == "page":
             self._show_page(value)
-        elif kind == "setting":
-            entry = self._setting_index[value]
-            self.search_box.blockSignals(True)
-            self.search_box.clear()
-            self.search_box.blockSignals(False)
-            self._populate_navigation(entry["page_id"])
-            self.navigate_to(entry["page_id"], value)
 
     def _show_page(self, page_id):
         info = self._pages.get(page_id)
@@ -312,87 +304,19 @@ class SettingsWindow(QDialog):
         self._current_page = page_id
         self.stack.setCurrentIndex(info["index"])
 
-    def navigate_to(self, page_id, setting_id=None):
-        """Open one logical page and optionally focus a setting on it."""
+    def navigate_to(self, page_id):
+        """Open one logical page."""
         if page_id not in self._pages:
             return False
         self._show_page(page_id)
-        if not self.search_box.text():
-            self.navigation.blockSignals(True)
-            for index in range(self.navigation.count()):
-                item = self.navigation.item(index)
-                if item.data(Qt.ItemDataRole.UserRole) == ("page", page_id):
-                    self.navigation.setCurrentItem(item)
-                    break
-            self.navigation.blockSignals(False)
-        if setting_id in self._setting_index:
-            QTimer.singleShot(0, lambda: self._focus_setting(setting_id))
-        return True
-
-    @staticmethod
-    def _normal_search(text):
-        text = str(text or "").casefold().replace("ı", "i")
-        return "".join(
-            char for char in unicodedata.normalize("NFKD", text)
-            if not unicodedata.combining(char)
-        )
-
-    def _search_changed(self, text):
-        query = self._normal_search(text).strip()
-        if not query:
-            self._populate_navigation()
-            return
         self.navigation.blockSignals(True)
-        self.navigation.clear()
-        for setting_id, entry in self._setting_index.items():
-            if query not in entry["haystack"]:
-                continue
-            page = t(self._pages[entry["page_id"]]["title"])
-            path = f"{page}  ›  {t(entry['section'])}"
-            item = QListWidgetItem(f"{t(entry['label'])}\n{path}")
-            item.setData(Qt.ItemDataRole.UserRole, ("setting", setting_id))
-            item.setToolTip(path)
-            self.navigation.addItem(item)
-        if self.navigation.count() == 0:
-            item = QListWidgetItem(t("No settings found"))
-            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-            self.navigation.addItem(item)
+        for index in range(self.navigation.count()):
+            item = self.navigation.item(index)
+            if item.data(Qt.ItemDataRole.UserRole) == ("page", page_id):
+                self.navigation.setCurrentItem(item)
+                break
         self.navigation.blockSignals(False)
-
-    def _add_search_entry(self, setting_id, page_id, section, label, widget,
-                          keywords=""):
-        page_title = self._pages[page_id]["title"]
-        haystack = " ".join((
-            t(label), t(section), t(page_title), label, section, page_title,
-            keywords,
-        ))
-        self._setting_index[setting_id] = {
-            "page_id": page_id,
-            "section": section,
-            "label": label,
-            "widget": widget,
-            "haystack": self._normal_search(haystack),
-        }
-
-    def _focus_setting(self, setting_id):
-        entry = self._setting_index.get(setting_id)
-        if entry is None:
-            return
-        widget = entry["widget"]
-        scroller = self._pages[entry["page_id"]]["scroller"]
-        if scroller is not None:
-            scroller.ensureWidgetVisible(widget, 24, 24)
-        widget.setFocus(Qt.FocusReason.ShortcutFocusReason)
-        widget.setProperty("searchTarget", True)
-        widget.style().unpolish(widget)
-        widget.style().polish(widget)
-        QTimer.singleShot(1400, lambda: self._clear_search_target(widget))
-
-    @staticmethod
-    def _clear_search_target(widget):
-        widget.setProperty("searchTarget", False)
-        widget.style().unpolish(widget)
-        widget.style().polish(widget)
+        return True
 
     def _shared_ai_note(self):
         holder = QWidget()
@@ -420,63 +344,6 @@ class SettingsWindow(QDialog):
         )
         for label in self._shared_ai_labels:
             label.setText(summary)
-
-    def _build_search_index(self):
-        specs = [
-            ("dictation_shortcut", "dictation", "Start", "Shortcut", self.shortcut, "hotkey tuş"),
-            ("dictation_mic", "dictation", "Sound", "Microphone", self.mic, "audio giriş"),
-            ("dictation_language", "dictation", "Sound", "Speech language", self.language, "dil"),
-            ("dictation_auto_paste", "dictation", "Output", "Paste the text into the focused window", self.auto_paste, "çıktı"),
-            ("dictation_paste_key", "dictation", "Output", "Paste key", self.paste_shortcut, "clipboard pano"),
-            ("dictation_restore_clipboard", "dictation", "Output", "Restore the previous clipboard after pasting", self.restore_clipboard, "pano clipboard"),
-            ("dictation_max", "dictation", "Recording", "Longest recording", self.max_seconds, "süre"),
-            ("dictation_silent", "dictation", "Recording", "Skip silent recordings (don't call the API)", self.skip_silent, "sessiz"),
-            ("dictation_silence_db", "dictation", "Recording", "Silence threshold", self.silence_db, "db eşik"),
-            ("dictation_hallucinations", "dictation", "Recording", "Discard stock phrases models invent for near-silent audio", self.filter_hallucinations, "uydurma"),
-            ("dictation_keep_audio", "dictation", "Recording", "Keep audio files (%LOCALAPPDATA%\\WordArc\\recordings)", self.keep_audio, "sakla"),
-            ("dictation_cleanup", "dictation", "Cleanup", "Clean the transcript with a model", self.cleanup_enabled, "temizleme"),
-            ("gemini_key", "shared_ai", "Gemini", "API keys", self.gemini_keys_list, "anahtar credential yedek fallback"),
-            ("transcribe_model", "shared_ai", "Speech to text", "Model", self.transcribe_model, "transkripsiyon"),
-            ("transcribe_glossary", "shared_ai", "Speech to text", "Names and terms", self.transcribe_prompt, "sözlük glossary"),
-            ("cleanup_model", "shared_ai", "Transcript cleanup", "Model", self.cleanup_model, "temizleme"),
-            ("cleanup_reasoning", "shared_ai", "Transcript cleanup", "Thinking", self.cleanup_reasoning, "düşünme"),
-            ("cleanup_prompt", "shared_ai", "Transcript cleanup", "Cleanup instruction", self.cleanup_prompt, "prompt talimat"),
-        ]
-        specs += self._meeting_search_specs()
-        specs += self._other_search_specs()
-        for spec in specs:
-            self._add_search_entry(*spec)
-
-    def _meeting_search_specs(self):
-        return [
-            ("meeting_mic", "meeting", "Sound", "Microphone", self.meeting_mic, "ses giriş"),
-            ("meeting_system", "meeting", "Sound", "The other participants", self.meeting_system, "sistem sesi"),
-            ("meeting_self", "meeting", "Who is talking", "You", self.meeting_self_name, "isim"),
-            ("meeting_other", "meeting", "Who is talking", "The other end", self.meeting_other_name, "isim"),
-            ("meeting_participants", "meeting", "Who is talking", "Expected", self.meeting_participants, "katılımcılar"),
-            ("meeting_model", "meeting", "Minutes", "Model", self.meeting_model, "tutanak"),
-            ("meeting_reasoning", "meeting", "Minutes", "Thinking", self.meeting_reasoning, "düşünme"),
-            ("meeting_language", "meeting", "Minutes", "Speech language", self.meeting_language, "dil"),
-            ("meeting_cleanup", "meeting", "Minutes", "Clean the transcript up first", self.meeting_cleanup, "temizleme"),
-            ("meeting_max", "meeting", "Recording", "Longest meeting", self.meeting_max_minutes, "süre"),
-            ("meeting_keep_audio", "meeting", "Recording", "Keep the recording after the minutes are written", self.meeting_keep_audio, "sakla"),
-            ("meeting_shortcut", "meeting", "Recording", "Shortcut", self.meeting_shortcut, "hotkey"),
-            ("meeting_prompt", "meeting", "Minutes", "Minutes instruction", self.meeting_prompt, "prompt talimat"),
-        ]
-
-    def _other_search_specs(self):
-        return [
-            ("file_timestamps", "audio_file", "Options", "Add timestamps", self.file_timestamps, "altyazı srt"),
-            ("file_cleanup", "audio_file", "Options", "Run the cleanup model afterwards", self.file_cleanup, "temizleme"),
-            ("file_cleanup_prompt", "audio_file", "Options", "Audio file cleanup instruction", self.file_cleanup_prompt, "prompt altyazı"),
-            ("history_enabled", "history", "Storage", "Store dictation history on this computer", self.history_enabled, "sakla gizlilik"),
-            ("close_to_tray", "application", "Startup", "Keep running in the system tray when the window is closed", self.close_to_tray, "kapat sistem tepsisi tray"),
-            ("history_limit", "history", "Storage", "Keep at most", self.history_limit, "sınır"),
-            ("ui_language", "application", "Interface", "Interface language", self.ui_language, "dil"),
-            ("theme", "application", "Interface", "Theme", self.header_theme, "koyu açık dark light"),
-            ("start_with_windows", "application", "Startup", "Start WordArc when Windows starts", self.start_with_windows, "otomatik başlat"),
-            ("overlay_corner", "application", "Interface", "Indicator corner", self.corner, "gösterge"),
-        ]
 
     def _theme_changed(self, _index):
         if self._theme_syncing or not hasattr(self, "header_theme"):
