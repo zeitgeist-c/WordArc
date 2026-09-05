@@ -214,6 +214,8 @@ class MeetingRecorder(QObject, _CaptureBase):
         self._q = queue.Queue(maxsize=256)
         self._max_frames = int(max_seconds * RATE)
         try:
+            parent = os.path.dirname(os.path.abspath(path))
+            os.makedirs(parent, exist_ok=True)
             self._wav = wave.open(path, "wb")
             self._wav.setnchannels(2)
             self._wav.setsampwidth(SAMPLE_WIDTH)
