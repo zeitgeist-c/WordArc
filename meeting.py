@@ -180,6 +180,8 @@ class MeetingPipeline(QObject):
         total = sum(len(chunks) for _, chunks in sides)
 
         segments = []
+        stats = {speaker: {"total": len(chunks), "silent": 0, "empty": 0}
+                 for speaker, chunks in sides}
         done = 0
         for speaker, chunks in sides:
             side = t("you") if speaker == "mine" else t("the others")
@@ -189,6 +191,7 @@ class MeetingPipeline(QObject):
                 self._say(t("Transcribing {side}: {index}/{count}…",
                             side=side, index=done, count=total))
                 if self._silent(chunk_path):
+                    stats[speaker]["silent"] += 1
                     continue
                 text = client.transcribe(
                     model, chunk_path, language=language, prompt=hint,
@@ -196,11 +199,28 @@ class MeetingPipeline(QObject):
                 if text:
                     end = offset + wav_duration(chunk_path)
                     segments.append((offset, end, text, speaker))
+                else:
+                    stats[speaker]["empty"] += 1
         if not segments:
-            raise api.ApiError(t("Neither side of the recording had any speech in it."))
+            raise api.ApiError(self._empty_reason(stats))
 
         names = conf.speaker_names()
         return render_turns(merge_turns(segments), names[0], names[1])
+
+    def _empty_reason(self, stats):
+        """Say which side stayed silent, so the fix is obvious.
+
+        A recording where the meters moved but no minutes came out is
+        almost always one silent channel: the microphone muted, or the
+        call audio going to a device that was not recorded.
+        """
+        names = dict(zip(("mine", "theirs"), self.conf.speaker_names()))
+        silent = [names[s] for s, st in stats.items()
+                  if st["total"] > 0 and st["silent"] >= st["total"]]
+        if silent:
+            return t("No speech was heard on {sides}. The recording is kept.",
+                     sides=", ".join(silent))
+        return t("The audio held no recognisable speech. The recording is kept.")
 
     def _silent(self, path):
         if not self.conf["skip_silent"]:
