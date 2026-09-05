@@ -6,6 +6,7 @@ import tempfile
 import wave
 
 import meeting
+from i18n import t
 
 
 def _write_stereo(path, seconds=1.0, rate=16000):
@@ -74,7 +75,9 @@ class TestTranscribeTimeline(unittest.TestCase):
 
         with self.assertRaises(api.ApiError) as ctx:
             pipe._transcribe(_MuteClient(), wav_path, workdir)
-        self.assertIn("The recording is kept", str(ctx.exception))
+        self.assertIn(
+            t("The audio held no recognisable speech. The recording is kept."),
+            str(ctx.exception))
 
     def test_all_silent_chunks_list_both_sides(self):
         import api
