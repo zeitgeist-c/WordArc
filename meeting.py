@@ -172,35 +172,35 @@ class MeetingPipeline(QObject):
         language = conf["meeting_language"] or conf["language"]
         hint = conf.meeting_hint()
 
-        texts = []
+        sides = []
         for path, speaker in ((mine, "mine"), (theirs, "theirs")):
-            side = t("you") if speaker == "mine" else t("the others")
             chunk_dir = os.path.join(workdir, speaker)
             os.makedirs(chunk_dir, exist_ok=True)
-            chunks = filetranscribe.split_wav(path, chunk_dir)
-            pieces = []
-            for index, (chunk_path, offset) in enumerate(chunks, start=1):
+            sides.append((speaker, filetranscribe.split_wav(path, chunk_dir)))
+        total = sum(len(chunks) for _, chunks in sides)
+
+        segments = []
+        done = 0
+        for speaker, chunks in sides:
+            side = t("you") if speaker == "mine" else t("the others")
+            for chunk_path, offset in chunks:
+                done += 1
                 self._check()
                 self._say(t("Transcribing {side}: {index}/{count}…",
-                            side=side, index=index, count=len(chunks)))
+                            side=side, index=done, count=total))
                 if self._silent(chunk_path):
                     continue
                 text = client.transcribe(
                     model, chunk_path, language=language, prompt=hint,
-                )
-                if text.strip():
-                    pieces.append(text.strip())
-            if pieces:
-                texts.append({"speaker": speaker, "text": " ".join(pieces)})
-        if not texts:
+                ).strip()
+                if text:
+                    end = offset + wav_duration(chunk_path)
+                    segments.append((offset, end, text, speaker))
+        if not segments:
             raise api.ApiError(t("Neither side of the recording had any speech in it."))
 
         names = conf.speaker_names()
-        labels = {"mine": names[0], "theirs": names[1]}
-        parts = []
-        for entry in texts:
-            parts.append(f"{labels[entry['speaker']]}:\n{entry['text']}")
-        return "\n\n".join(parts)
+        return render_turns(merge_turns(segments), names[0], names[1])
 
     def _silent(self, path):
         if not self.conf["skip_silent"]:
@@ -298,6 +298,13 @@ def rms_series(path):
 def wav_rate(path):
     with contextlib.closing(wave.open(path, "rb")) as wav:
         return wav.getframerate()
+
+
+def wav_duration(path):
+    """Length of a WAV file in seconds, for placing chunks on the timeline."""
+    with contextlib.closing(wave.open(path, "rb")) as wav:
+        rate = wav.getframerate() or 1
+        return wav.getnframes() / float(rate)
 
 
 # --- the timeline ----------------------------------------------------------
