@@ -647,7 +647,7 @@ class SettingsWindow(QDialog):
         self.meeting_system.addItem(t("Current output"), "")
         for name, desc in audio.list_monitors():
             self.meeting_system.addItem(desc, name)
-        body.addWidget(self._label_row("The other participants", self.meeting_system))
+        body.addWidget(self._label_row(t("Meeting audio source"), self.meeting_system))
 
         self._refresh_audio_devices()
 
@@ -1186,8 +1186,22 @@ class SettingsWindow(QDialog):
                     break
         combo.setCurrentIndex(index if index >= 0 else 0)
 
+    @staticmethod
+    def _fill_device_combo(combo, items, default_label, selected):
+        """Refill a device box: short visible text, full name as tooltip."""
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem(default_label, "")
+        for target, label in items:
+            display = label if len(label) <= 30 else label[:27] + "…"
+            combo.addItem(display, target)
+            combo.setItemData(combo.count() - 1, label,
+                              Qt.ItemDataRole.ToolTipRole)
+        SettingsWindow._select_data(combo, selected)
+        combo.blockSignals(False)
+
     def _refresh_audio_devices(self, *_):
-        """Rescan hot-plugged inputs while preserving both current selections."""
+        """Rescan hot-plugged devices while preserving current selections."""
         sources = audio.list_sources()
         for combo, default_label in (
                 (getattr(self, "mic", None), t("Default microphone")),
@@ -1195,17 +1209,25 @@ class SettingsWindow(QDialog):
             if combo is None:
                 continue
             selected = combo.currentData() if combo.count() else ""
-            combo.blockSignals(True)
-            combo.clear()
-            combo.addItem(default_label, "")
-            for target, label in sources:
-                # Show trimmed label, keep full label as tooltip for readability
-                display = label if len(label) <= 30 else label[:27] + "…"
-                combo.addItem(display, target)
-                idx = combo.count() - 1
-                combo.setItemData(idx, label, Qt.ItemDataRole.ToolTipRole)
-            self._select_data(combo, selected)
-            combo.blockSignals(False)
+            self._fill_device_combo(combo, sources, default_label, selected)
+        mic_status = getattr(self, "mic_status", None)
+        if mic_status is not None:
+            mic_status.setText(
+                t("{count} inputs found", count=len(sources))
+                if sources else t("No inputs seen — press Reload"))
+        monitors = audio.list_monitors()
+        combo = getattr(self, "meeting_system", None)
+        if combo is not None:
+            selected = combo.currentData() if combo.count() else ""
+            self._fill_device_combo(
+                combo, monitors, t("Current output"), selected)
+        monitor_status = getattr(self, "monitor_status", None)
+        if monitor_status is not None:
+            monitor_status.setText(
+                t("{count} outputs found", count=len(monitors))
+                if monitors else t("No outputs seen — press Reload"))
+
+    # ---- api helpers -----------------------------------------------------
 
     # ---- api helpers -----------------------------------------------------
 
