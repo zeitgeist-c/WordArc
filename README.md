@@ -4,9 +4,7 @@
 
 WordArc turns speech into polished text. Press `Ctrl+Space`, talk, press again — the text is transcribed, cleaned up, and pasted where you work. It also captures microphone and system audio for reliable meeting minutes.
 
-![WordArc screenshots](./docs/screenshots/)
-
-> Screenshots are being added from a clean install (no sample data). The folder above will hold them.
+![Ayarlar - Dikte](./docs/screenshots/01-ayarlar-dikte.png)
 
 ## Features
 
