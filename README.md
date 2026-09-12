@@ -17,7 +17,7 @@ WordArc turns speech into polished text. Press `Ctrl+Space`, talk, press again �
 - **Transcript history (opt-in)** — off by default; when on, history is plain local text files.
 - **Privacy by default** — successful meeting audio is deleted by default; Gemini key lives in Windows Credential Manager (`WordArc/GeminiApiKey`).
 - **Bilingual UI** — Turkish and English; dark default with light and system themes.
-- **Legacy migration** — first launch copies missing files atomically from old Verbatim directories, never overwrites existing WordArc files.
+- **Legacy migration** — first launch copies missing files atomically from previous installs, never overwrites existing WordArc files.
 
 ## Quick start (zero-install state)
 

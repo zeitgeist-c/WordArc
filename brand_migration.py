@@ -1,4 +1,4 @@
-"""Idempotent migration from the legacy Verbatim local identity."""
+"""Idempotent migration from the previous install's local identity."""
 
 from __future__ import annotations
 
