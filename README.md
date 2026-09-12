@@ -1,14 +1,43 @@
 # WordArc — Voice-to-text for Windows
 
-WordArc turns speech into polished text and captures microphone and system audio for reliable meeting minutes.
+> Türkçe için: [README.tr.md](./README.tr.md)
 
-## Install
+WordArc turns speech into polished text. Press `Ctrl+Space`, talk, press again — the text is transcribed, cleaned up, and pasted where you work. It also captures microphone and system audio for reliable meeting minutes.
 
-1. Download the current `WordArc-X.Y.Z.exe` or build it from source.
-2. Put that EXE and `install.ps1` in the same folder, then run `install.ps1`.
-3. Start WordArc. Settings opens on first launch.
+![WordArc screenshots](./docs/screenshots/)
 
-The default shortcut is `Ctrl+Space`: press once to record and again to transcribe. Press `Escape` while recording to discard it without transcription or AI processing. The tray menu exposes dictation, agent, meeting and settings actions.
+> Screenshots are being added from a clean install (no sample data). The folder above will hold them.
+
+## Features
+
+- **Push-to-talk dictation** — `Ctrl+Space` to start/stop, `Escape` discards without transcription or AI processing.
+- **Meeting mode** — `wordarc.py meeting` records mic + system audio (WASAPI loopback), writes minutes-grade transcripts.
+- **System-audio capture** — meeting counterparts are captured even without a mic share.
+- **Voice activity detection** — trims silence before sending audio.
+- **Paste where you work** — result is pasted into the focused app.
+- **Tray service** — dictation, agent, meeting, and settings actions from the tray menu; single instance via local IPC.
+- **Transcript history (opt-in)** — off by default; when on, history is plain local text files.
+- **Privacy by default** — successful meeting audio is deleted by default; Gemini key lives in Windows Credential Manager (`WordArc/GeminiApiKey`).
+- **Bilingual UI** — Turkish and English; dark default with light and system themes.
+- **Legacy migration** — first launch copies missing files atomically from old Verbatim directories, never overwrites existing WordArc files.
+
+## Quick start (zero-install state)
+
+1. Download the current `WordArc-X.Y.Z.exe` and `install.ps1` into the same folder, run `install.ps1`.
+2. Start WordArc — Settings opens on first launch. Enter your Gemini API key.
+3. Press `Ctrl+Space` once, talk, press again. The polished text is pasted.
+
+CLI:
+
+```powershell
+python wordarc.py             # open Settings, keep tray service running
+python wordarc.py background  # run in background (Windows startup)
+python wordarc.py toggle      # start / stop recording
+python wordarc.py cancel      # discard the current recording
+python wordarc.py meeting     # start / end a meeting recording
+python wordarc.py settings    # open the settings window
+python wordarc.py quit        # shut the application down
+```
 
 ## Development
 
@@ -18,25 +47,53 @@ python -m venv .venv
 python wordarc.py
 ```
 
-Run the reproducible checks and build:
+Checks and build:
 
 ```powershell
 .\check.ps1
 .\build.ps1
 ```
 
-The packaged results are `dist\WordArc-X.Y.Z.exe` and its matching launcher `dist\WordArc-X.Y.Z.bat`. Build verifies the pinned FFmpeg binary, runs tests and import checks, audits dependencies, emits `sbom.json`, renders the deterministic WordArc icon, and then invokes PyInstaller.
+`check.ps1` runs pytest, compileall, and an import check over all modules. `build.ps1` verifies the pinned FFmpeg binary, runs tests, audits dependencies, emits `sbom.json`, renders the deterministic icon, and packages `dist\WordArc-X.Y.Z.exe` plus its matching launcher `.bat` via PyInstaller.
 
-## Data, privacy and migration
+## Data and privacy
 
-Configuration lives at `%APPDATA%\WordArc\config.json`; recordings, meetings and diagnostics live under `%LOCALAPPDATA%\WordArc\`. Gemini credentials are stored in Windows Credential Manager as `WordArc/GeminiApiKey`.
+- Settings: `%APPDATA%\WordArc\config.json`
+- Recordings, meetings, diagnostics: `%LOCALAPPDATA%\WordArc\`
+- Gemini key: Windows Credential Manager, `WordArc/GeminiApiKey`
+- History off by default; meeting audio deleted after success by default.
+- `verbatim.py` stays one release as a compatibility entry point.
 
-On first launch, missing files are copied atomically from the old Verbatim directories. A legacy credential is copied, verified and only then removed. Existing WordArc files are never overwritten and old directories are not deleted, so they remain a rollback copy. `verbatim.py` remains a compatibility entry point for one release.
+## Project structure
 
-Transcript history is off by default. If enabled, history and meeting transcripts are readable local text files. Successful meeting audio is deleted by default.
+```text
+wordarc.py        tray app, CLI, single-instance IPC
+worker.py         dictation pipeline
+meeting.py        meeting pipeline
+audio*.py         mic + WASAPI loopback capture
+settings_ui.py    settings window
+hotkey.py         global hotkey
+assets/brand      canonical SVG sources, icon build
+tools/            brand asset + helper scripts
+tests/            pytest suite
+```
 
-## Branding and themes
+## FAQ
 
-The canonical SVG sources are in `assets\brand`. `tools\build_brand_assets.py` generates the multi-resolution Windows icon. Dark is the default theme; Light and System modes can be switched instantly in Settings.
+- **Nothing happens on `Ctrl+Space`?** Another app may own the hotkey — change or free it, then `wordarc.py restart`.
+- **Meeting has no counterpart audio?** System-audio capture needs loopback; check Windows sound settings.
+- **Key rejected?** Re-enter it in Settings; it is stored only in Credential Manager.
 
-WordArc is GPL-3.0. The original Linux project was created by [yusufipk](https://github.com/yusufipk/dikte).
+## Roadmap
+
+- Clean-install screenshots in `docs/screenshots/`
+- More grammars for cleanup polish
+- Per-app paste profiles
+
+## Contributing
+
+See [CONTRIBUTING](./.github/PULL_REQUEST_TEMPLATE.md) flow: open an issue, keep PRs small, run `.\check.ps1` before pushing.
+
+## License
+
+GPL-3.0. The original Linux project was created by [yusufipk](https://github.com/yusufipk/dikte).
