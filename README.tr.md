@@ -17,7 +17,7 @@ WordArc konuşmayı düzenlenmiş metne dönüştürür. `Ctrl+Space` bas, konu�
 - **Metin geçmişi (seçimlik)** — varsayılan kapalı; açılınca geçmiş yerel düz metindir.
 - **Öncelik gizlilikte** — başarılı toplantı sesi varsayılan silinir; Gemini anahtarı Windows Credential Manager'da (`WordArc/GeminiApiKey`).
 - **İki dil** — Türkçe ve İngilizce; koyu varsayılan, açık ve sistem temalı.
-- **Eski Verbatim geçişi** — ilk açılışta eksik dosyalar atomik kopyalanır, mevcut WordArc dosyaları ezilmez.
+- **Eski kurulum geçişi** — ilk açılışta eksik dosyalar atomik kopyalanır, mevcut WordArc dosyaları ezilmez.
 
 ## Hızlı başlangıç (sıfır kurulum)
 
