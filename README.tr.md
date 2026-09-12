@@ -4,9 +4,7 @@
 
 WordArc konuşmayı düzenlenmiş metne dönüştürür. `Ctrl+Space` bas, konuş, tekrar bas — metin yazıya çevrilir, temizlenir ve çalıştığın yere yapıştırılır. Mikrofon + sistem sesiyle güvenilir toplantı tutanağı da alır.
 
-![WordArc ekran görüntüleri](./docs/screenshots/)
-
-> Ekran görüntüleri temiz kurulumdan ekleniyor (örnek veri yok). Yukarıdaki klasöre konacak.
+![Ayarlar - Dikte](./docs/screenshots/01-ayarlar-dikte.png)
 
 ## Özellikler
 
