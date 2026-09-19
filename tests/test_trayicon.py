@@ -11,7 +11,6 @@ class TestTrayIcon(unittest.TestCase):
         trayicon.clear_cache()
 
     def test_idle_name_returns_icon(self):
-        from PyQt6.QtGui import QIcon
         self.assertFalse(trayicon.icon("audio-input-microphone").isNull())
     def test_rec_name_returns_icon(self):
         self.assertFalse(trayicon.icon("media-record").isNull())

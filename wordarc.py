@@ -33,7 +33,6 @@ import audio  # noqa: E402
 import config as cfg  # noqa: E402
 import diagnostics  # noqa: E402
 import hotkey  # noqa: E402
-import i18n  # noqa: E402
 import meeting  # noqa: E402
 import operation  # noqa: E402
 import brand_migration  # noqa: E402

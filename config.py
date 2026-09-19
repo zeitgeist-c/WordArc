@@ -473,6 +473,7 @@ class Config:
         except (json.JSONDecodeError, OSError) as exc:
             print(f"wordarc: could not read settings ({exc}), using defaults")
         self._migrate(stored)
+        self._migrate_plaintext_secret()
         self.data["overlay_corner"] = _CORNER_MIGRATION.get(
             self.data["overlay_corner"], self.data["overlay_corner"]
         )
@@ -503,6 +504,27 @@ class Config:
         if self.data.get("theme_mode") not in ("dark", "light"):
             self.data["theme_mode"] = "dark"
         self.data["config_schema"] = CONFIG_SCHEMA
+
+    def _migrate_plaintext_secret(self):
+        """Move a legacy plaintext API key into the credential store on load.
+
+        Older versions wrote the Gemini key straight into config.json. When such
+        a file is opened, the key is moved to the Windows Credential Manager and
+        the plaintext copy is removed immediately instead of waiting for the
+        next explicit save."""
+        secret = self.data.get("gemini_api_key", "").strip()
+        if not secret:
+            return
+        try:
+            credential_store.write(secret)
+        except credential_store.CredentialError as exc:
+            print(f"wordarc: legacy API key could not be moved to credential store ({exc})")
+            return
+        self.data["gemini_api_key"] = ""
+        try:
+            self.save()
+        except OSError as exc:
+            print(f"wordarc: could not rewrite settings after key migration ({exc})")
 
     def save(self):
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)

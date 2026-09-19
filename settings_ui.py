@@ -20,7 +20,6 @@ import api
 import audio
 import config as cfg
 import filetranscribe
-import hotkey
 import i18n
 import meeting
 import startup

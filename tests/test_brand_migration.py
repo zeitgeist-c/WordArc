@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import brand_migration
 from brand import BRAND
 
