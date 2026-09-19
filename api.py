@@ -303,11 +303,6 @@ def cleanup(text, api_key, model, system_prompt, reasoning="", timeout=180,
                        system_prompt, timeout, should_stop)
 
 
-def chat(messages, api_key, model, system_prompt, reasoning="", timeout=180,
-         should_stop=None):
-    return gemini_chat(messages, api_key, model, system_prompt, timeout, should_stop)
-
-
 def gemini_models(api_key):
     if not api_key:
         raise ApiError(t("Gemini API key is empty. Add it in Settings."), category="user")

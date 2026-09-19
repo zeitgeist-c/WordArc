@@ -56,6 +56,28 @@ class TestConfigLoadSave(unittest.TestCase):
             self.assertEqual(c2.gemini_key(), "ai-test")
             self.assertEqual(c2.gemini_keys(), ["ai-test"])
 
+    def test_plaintext_key_is_migrated_to_credential_store_on_load(self):
+        cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        cfg.CONFIG_FILE.write_text(json.dumps({"gemini_api_key": "legacy-plain"}), encoding="utf-8")
+        stored = {"value": ""}
+        with mock.patch.object(cfg.credential_store, "write",
+                               side_effect=lambda value: stored.update(value=value)):
+            c = cfg.Config()
+        self.assertEqual(stored["value"], "legacy-plain")
+        self.assertEqual(c["gemini_api_key"], "")
+        payload = json.loads(cfg.CONFIG_FILE.read_text(encoding="utf-8"))
+        self.assertEqual(payload["gemini_api_key"], "")
+
+    def test_plaintext_key_stays_when_credential_store_unavailable(self):
+        cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        cfg.CONFIG_FILE.write_text(json.dumps({"gemini_api_key": "legacy-plain"}), encoding="utf-8")
+        with mock.patch.object(cfg.credential_store, "write",
+                               side_effect=cfg.credential_store.CredentialError("unavailable")):
+            c = cfg.Config()
+        self.assertEqual(c["gemini_api_key"], "legacy-plain")
+        payload = json.loads(cfg.CONFIG_FILE.read_text(encoding="utf-8"))
+        self.assertEqual(payload["gemini_api_key"], "legacy-plain")
+
     def test_environment_key_is_used_only_without_stored_keys(self):
         with mock.patch.object(cfg.credential_store, "read_all",
                                return_value=["stored"]), \

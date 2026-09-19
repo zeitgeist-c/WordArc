@@ -76,24 +76,6 @@ def _peak_rms(chunk):
     return min(1.0, peak), min(1.0, rms)
 
 
-def chunk_levels(chunk):
-    return _peak_rms(chunk)
-
-
-def stereo_levels(chunk):
-    """(left peak, right peak) in 0..1 from interleaved int16 stereo."""
-    samples = array.array("h")
-    usable = len(chunk) - (len(chunk) % 4)
-    if usable <= 0:
-        return 0.0, 0.0
-    samples.frombytes(chunk[:usable])
-    left = samples[0::2]
-    right = samples[1::2]
-    lp = min(1.0, max(abs(min(left)), abs(max(left))) / 32768.0) if left else 0.0
-    rp = min(1.0, max(abs(min(right)), abs(max(right))) / 32768.0) if right else 0.0
-    return lp, rp
-
-
 def write_wav(pcm, rate=RATE, channels=CHANNELS, width=SAMPLE_WIDTH):
     fd, path = tempfile.mkstemp(prefix="wordarc-", suffix=".wav")
     with open(fd, "wb") as raw, wave.open(raw, "wb") as wav:
@@ -548,10 +530,3 @@ def list_monitors():
             seen.add(name)
             out.append((name, label))
     return out
-
-
-def default_monitor():
-    dev = _match_loopback_device("")
-    if dev is not None:
-        return sd.query_devices(dev)["name"]
-    return AudioCapture.default_output()
