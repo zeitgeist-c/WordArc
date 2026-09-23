@@ -198,14 +198,10 @@ TR = {
         "Windows başladığında WordArc'ı başlat",
     "Starts WordArc for this Windows user without administrator permission.":
         "WordArc'ı yönetici izni istemeden bu Windows kullanıcısı için başlatır.",
-    "Dictation and meetings — in one flow.":
-        "Dikte ve toplantılar — tek akışta.",
     "Keep running in the system tray when the window is closed":
         "Pencere kapatıldığında sistem tepsisinde çalışmaya devam et",
     "When disabled, the title-bar close button, Escape and Alt+F4 quit WordArc.":
         "Kapalıyken başlık çubuğundaki X, Escape ve Alt+F4 WordArc'ı tamamen kapatır.",
-    "Keys are tried from top to bottom and stored only in Windows Credential Manager.":
-        "Anahtarlar yukarıdan aşağıya denenir ve yalnız Windows Kimlik Bilgisi Yöneticisi'nde saklanır.",
     "API keys": "API anahtarları",
     "Add API": "API ekle",
     "Edit API": "API'yi düzenle",
@@ -231,8 +227,6 @@ TR = {
         "Dikte ile isteğe bağlı toplantı temizlemesinin ortak sistem talimatı.",
     "Dark": "Koyu",
     "Light": "Açık",
-    "Dictation, meetings and agents — in one flow.":
-        "Dikte, toplantı ve ajanlar — tek akışta.",
     "Core behavior, audio input and appearance.":
         "Temel davranış, ses girişi ve görünüm.",
     "Gemini credentials and model choices.":
@@ -712,4 +706,15 @@ TR = {
     "This one is being written up right now.": "Bunun tutanağı şu anda çıkarılıyor.",
     "Delete this meeting, its minutes and its recording?":
         "Bu toplantı, tutanağı ve ses kaydı silinsin mi?",
+
+    # --- ic tasarim + dil temizligi -----------------------------------
+    "File": "Dosya",
+    "Models, language, startup and appearance.":
+        "Modeller, dil, başlangıç ve görünüm.",
+    "Stored only in Windows Credential Manager.":
+        "Yalnız Windows Kimlik Bilgisi Yöneticisi'nde saklanır.",
+    "{count} inputs found": "{count} giriş bulundu",
+    "No inputs seen — press Reload": "Giriş görülmedi — Yenile'ye bas",
+    "{count} outputs found": "{count} çıkış bulundu",
+    "No outputs seen — press Reload": "Çıkış görülmedi — Yenile'ye bas",
 }

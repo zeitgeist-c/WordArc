@@ -258,3 +258,19 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertGreaterEqual(names.count("dangerButton"), 4)
         src = pathlib.Path(settings_ui.__file__).read_text(encoding="utf-8")
         self.assertNotIn("Keys are tried from top to bottom and stored only", src)
+
+    def test_key_prompt_speaks_the_ui_language(self):
+        import i18n
+        previous = i18n.language()
+        i18n.set_language("tr")
+        try:
+            dialog = self.window._key_dialog("Add API", "")
+            dialog.show()
+            self.app.processEvents()
+            texts = [b.text() for b in dialog.findChildren(settings_ui.QPushButton)]
+            self.assertIn("Tamam", texts)
+            self.assertIn("İptal", texts)
+            self.assertEqual(dialog.labelText(), "Gemini API anahtarı")
+            dialog.close()
+        finally:
+            i18n.set_language(previous)
