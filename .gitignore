@@ -8,3 +8,4 @@ Setup/*.exe
 ffmpeg.exe
 verbatim.spec.bak
 sbom.json
+.pytest_cache/

@@ -74,6 +74,7 @@ def copy(text):
             raise PasteError(t("Could not copy to the clipboard."))
         ptr = kernel32.GlobalLock(handle)
         if not ptr:
+            kernel32.GlobalFree(handle)
             raise PasteError(t("Could not copy to the clipboard."))
         ctypes.memmove(ptr, data, len(data))
         kernel32.GlobalUnlock(handle)

@@ -25,6 +25,8 @@ class LoopbackStream:
         wanted = target.casefold().replace("(loopback)", "").strip()
         speaker = next((s for s in speakers if wanted and wanted in s.name.casefold()),
                        None)
+        if wanted and speaker is None:
+            raise OSError(f"Selected output device not found: {target}")
         speaker = speaker or sc.default_speaker()
         if speaker is None:
             raise OSError("No Windows output device is available")
