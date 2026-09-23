@@ -219,3 +219,30 @@ class TestSettingsSmoke(unittest.TestCase):
         for expected in ("Sound", "Who is talking", "Minutes", "Recording",
                          "Minutes instruction", "Minutes"):
             self.assertIn(t(expected), titles)
+
+    def test_header_has_no_tagline_and_pages_have_no_duplicate_title(self):
+        window = self.window
+        labels = window.findChildren(settings_ui.QLabel)
+        texts = [label.text() for label in labels]
+        self.assertNotIn(t("Dictation and meetings — in one flow."), texts)
+        self.assertFalse([text for text in texts if "tek akışta" in text])
+        self.assertEqual([l for l in labels if l.objectName() == "pageTitle"], [])
+        self.assertEqual(
+            len([l for l in labels if l.objectName() == "pageDescription"]), 4)
+        self.assertIsNotNone(window.findChild(settings_ui.QFrame, "headerRule"))
+
+    def test_settings_tab_shows_every_section(self):
+        window = self.window
+        window.resize(920, 700)
+        window.show()
+        self.app.processEvents()
+        window.navigate_to("settings")
+        self.app.processEvents()
+        page = window.tabs.widget(3).findChild(settings_ui.QScrollArea).widget()
+        titles = [box.title() for box in page.findChildren(settings_ui.QGroupBox)]
+        for expected in ("Keys", "Speech to text", "Transcript cleanup",
+                         "Names and terms", "Interface", "Startup", "Support"):
+            self.assertIn(t(expected), titles)
+        for control in (window.ui_language, window.corner,
+                        window.start_with_windows, window.close_to_tray):
+            self.assertTrue(control.isVisibleTo(window), control)

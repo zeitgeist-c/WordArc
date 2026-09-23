@@ -152,18 +152,16 @@ class SettingsWindow(QDialog):
 
         header = QWidget()
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(2, 0, 2, 8)
+        header_layout.setContentsMargins(2, 0, 2, 4)
         logo = QLabel()
         logo.setPixmap(QIcon(str(brand_asset("wordarc-app.svg"))).pixmap(44, 44))
         logo.setFixedSize(48, 48)
         header_layout.addWidget(logo)
         identity = QVBoxLayout()
+        identity.setSpacing(0)
         name = QLabel(f"{BRAND.name} v{BRAND.version}")
         name.setObjectName("brandName")
         identity.addWidget(name)
-        subtitle = QLabel(t("Dictation and meetings — in one flow."))
-        subtitle.setObjectName("muted")
-        identity.addWidget(subtitle)
         header_layout.addLayout(identity)
         header_layout.addStretch()
         header_layout.addWidget(QLabel(t("Language")))
@@ -180,6 +178,10 @@ class SettingsWindow(QDialog):
         self.general_theme = self.header_theme
         header_layout.addWidget(self.header_theme)
 
+        rule = QFrame()
+        rule.setObjectName("headerRule")
+        rule.setFixedHeight(1)
+
         content = self._build_navigation()
 
         # Save keeps the window open, so the window is closed with the titlebar
@@ -192,8 +194,9 @@ class SettingsWindow(QDialog):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(22, 18, 22, 18)
-        layout.setSpacing(8)
+        layout.setSpacing(12)
         layout.addWidget(header)
+        layout.addWidget(rule)
         layout.addWidget(content, 1)
         layout.addWidget(buttons)
 
@@ -244,7 +247,7 @@ class SettingsWindow(QDialog):
              self._settings_tab(), True),
         ]
         for main_id, aliases, title, description, icon, body, scroll in specs:
-            wrapped, _scroller = self._wrap_page(body, title, description, scroll)
+            wrapped, _scroller = self._wrap_page(body, description, scroll)
             index = self.tabs.addTab(wrapped, icon, t(title))
             self._tab_index[main_id] = index
             for alias in aliases:
@@ -255,17 +258,15 @@ class SettingsWindow(QDialog):
         content_layout.addWidget(self.tabs)
         return content
 
-    def _wrap_page(self, page, title, description, scroll=True):
+    def _wrap_page(self, page, description, scroll=True):
         page.setObjectName("pageCard")
         page.setMinimumWidth(0)
         page.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         container = QWidget()
         container.setObjectName("page")
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(4, 16, 4, 4)
-        heading = QLabel(t(title))
-        heading.setObjectName("pageTitle")
-        layout.addWidget(heading)
+        layout.setContentsMargins(4, 18, 4, 8)
+        layout.setSpacing(12)
         detail = QLabel(t(description))
         detail.setObjectName("pageDescription")
         detail.setWordWrap(True)
@@ -376,6 +377,7 @@ class SettingsWindow(QDialog):
     def _dictation_tab(self):
         page = QWidget()
         layout = QVBoxLayout(page)
+        layout.setSpacing(14)
 
         start, body = self._section_card(
             "Start", "The key that starts and stops dictation.")
@@ -459,7 +461,10 @@ class SettingsWindow(QDialog):
 
     def _general_tab(self, page=None, embedded=False):
         page = page if page is not None else QWidget()
-        layout = QVBoxLayout(page)
+        # A page that already carries the shared AI sections keeps its layout:
+        # Qt refuses a second one and these rows would never appear.
+        layout = page.layout() or QVBoxLayout(page)
+        layout.setSpacing(14)
         interface, body = self._section_card(
             "Interface", "Language and appearance.")
         self.ui_language = QComboBox()
@@ -510,6 +515,7 @@ class SettingsWindow(QDialog):
     def _shared_ai_tab(self, page=None, embedded=False):
         page = page if page is not None else QWidget()
         outer = QVBoxLayout(page)
+        outer.setSpacing(14)
 
         # API keys first, then model selection.
         keys, keys_body = self._section_card(
@@ -636,6 +642,7 @@ class SettingsWindow(QDialog):
     def _meeting_tab(self):
         page = QWidget()
         layout = QVBoxLayout(page)
+        layout.setSpacing(14)
 
         sound, body = self._section_card(
             "Sound", "Your microphone plus whatever comes out of your speakers.")
@@ -768,7 +775,8 @@ class SettingsWindow(QDialog):
         page = QWidget()
         self._shared_ai_tab(page, embedded=True)
         line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
+        line.setObjectName("headerRule")
+        line.setFixedHeight(1)
         page.layout().addWidget(line)
         self._general_tab(page, embedded=True)
         page.layout().addStretch(1)
@@ -824,6 +832,7 @@ class SettingsWindow(QDialog):
     def _file_tab(self):
         page = QWidget()
         layout = QVBoxLayout(page)
+        layout.setSpacing(14)
         intro = QLabel(t("Transcribe an existing audio or video file with the same models."))
         intro.setWordWrap(True)
         layout.addWidget(intro)
