@@ -5,6 +5,7 @@ import json
 import os
 import pathlib
 import threading
+import unicodedata
 
 import api
 from brand import BRAND
@@ -456,6 +457,18 @@ _CORNER_MIGRATION = {
 }
 
 
+def _name_key(name):
+    """Comparison key for participant names.
+
+    str.lower() alone leaves Turkish “İ” as “i” plus a combining dot, so
+    “İSMAİL” and “İsmail” would look like two different people and both land in
+    the prompt. Folding the combining marks away — the same trick
+    vad._normalise uses — makes the comparison script-proof.
+    """
+    folded = unicodedata.normalize("NFKD", name.lower())
+    return "".join(char for char in folded if not unicodedata.combining(char))
+
+
 class Config:
     def __init__(self):
         self.data = dict(DEFAULTS)
@@ -622,8 +635,9 @@ class Config:
         extra = [line.strip() for line in listed.replace(",", "\n").splitlines()]
         seen, out = set(), []
         for name in names + extra:
-            if name and name.lower() not in seen:
-                seen.add(name.lower())
+            key = _name_key(name)
+            if name and key not in seen:
+                seen.add(key)
                 out.append(name)
         return "\n".join(out)
 

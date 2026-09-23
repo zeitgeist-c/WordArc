@@ -1,6 +1,20 @@
 from unittest import mock
 
+import os
+import uuid
+
 import wordarc
+
+
+def test_singleton_mutex_allows_one_owner_and_can_be_handed_over():
+    if os.name != "nt":
+        return  # the mutex is a Windows singleton guard
+    name = f"Local\\wordarc-test-{os.getpid()}-{uuid.uuid4().hex}"
+    assert wordarc._acquire_instance_mutex(name)
+    assert not wordarc._acquire_instance_mutex(name), "ikinci sahip olamaz"
+    wordarc._release_instance_mutex()
+    assert wordarc._acquire_instance_mutex(name), "bırakılan kilit yeniden alınmalı"
+    wordarc._release_instance_mutex()
 
 
 def test_manual_launch_opens_settings_and_background_stays_hidden():

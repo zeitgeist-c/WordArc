@@ -1,6 +1,7 @@
 import io
 import os
 import tempfile
+import tracemalloc
 import unittest, json
 import urllib.error
 from unittest import mock
@@ -99,6 +100,101 @@ class TestGeminiRequests(unittest.TestCase):
             with self.assertRaises(api.ApiError):
                 api._upload_file("large.wav", "secret", "audio/wav")
         delete.assert_called_once_with("files/failed", "secret")
+
+
+class TestUploadStreaming(unittest.TestCase):
+    """A long meeting's WAV is streamed, never read whole into memory."""
+
+    def _fake_urlopen(self, upload_payload, upload_failures=0):
+        """Stand-in for urlopen that records what each request carried.
+
+        Drains the body in 8 KB blocks, the way http.client does, so the test
+        measures the app's memory use rather than its own.
+        """
+        calls = []
+        state = {"upload_attempts": 0}
+
+        def urlopen(req, timeout=None):
+            stream = req.data
+            streamed = hasattr(stream, "read")
+            sent, head = 0, b""
+            if streamed:
+                while True:
+                    chunk = stream.read(8192)
+                    if not chunk:
+                        break
+                    sent += len(chunk)
+                    head = head or chunk[:16]
+            else:
+                sent = len(stream)
+            is_upload = "upload" in (req.get_header("X-goog-upload-command") or "")
+            calls.append({"upload": is_upload, "streamed": streamed, "sent": sent,
+                          "head": head, "length": req.get_header("Content-length")})
+            if is_upload:
+                state["upload_attempts"] += 1
+                if state["upload_attempts"] <= upload_failures:
+                    raise urllib.error.HTTPError(
+                        req.full_url, 500, "boom", {"Retry-After": "0"}, None)
+            response = mock.MagicMock()
+            response.read.return_value = (upload_payload if is_upload
+                                          else b'{"file": {}}')
+            response.headers = ({} if is_upload
+                                else {"X-Goog-Upload-URL": "https://upload.test/next"})
+            response.__enter__.return_value = response
+            return response
+
+        return calls, urlopen
+
+    def _temp_wav(self, content=b"0123456789"):
+        fd, path = tempfile.mkstemp(suffix=".wav")
+        os.write(fd, content)
+        os.close(fd)
+        return path
+
+    def test_upload_streams_the_file_and_reopens_it_after_a_retry(self):
+        path = self._temp_wav()
+        calls, urlopen = self._fake_urlopen(
+            b'{"file": {"name": "files/1", "uri": "g://1"}}', upload_failures=1)
+        try:
+            with mock.patch.object(api.urllib.request, "urlopen",
+                                   side_effect=urlopen), \
+                 mock.patch.object(api, "_get_json",
+                                   return_value={"state": "ACTIVE"}):
+                name, uri = api._upload_file(path, "secret", "audio/wav")
+        finally:
+            os.unlink(path)
+        uploads = [call for call in calls if call["upload"]]
+        self.assertEqual((name, uri), ("files/1", "g://1"))
+        self.assertEqual(len(uploads), 2, "500 alan yükleme tekrar denenmeli")
+        self.assertTrue(all(call["streamed"] for call in uploads),
+                        "gövde bytes değil, akış olmalı")
+        self.assertEqual([call["sent"] for call in uploads], [10, 10],
+                         "retry dosyayı baştan okumalı")
+        self.assertEqual([call["head"] for call in uploads], [b"0123456789"] * 2)
+        self.assertEqual([call["length"] for call in uploads], ["10", "10"],
+                         "Content-Length her denemede bulunmalı (chunked'a düşmesin)")
+
+    def test_upload_does_not_read_the_whole_file_into_memory(self):
+        path = self._temp_wav(b"")
+        with open(path, "r+b") as handle:
+            handle.truncate(32 * 1024 * 1024)
+        calls, urlopen = self._fake_urlopen(
+            b'{"file": {"name": "files/2", "uri": "g://2"}}')
+        tracemalloc.start()
+        try:
+            with mock.patch.object(api.urllib.request, "urlopen",
+                                   side_effect=urlopen), \
+                 mock.patch.object(api, "_get_json",
+                                   return_value={"state": "ACTIVE"}):
+                api._upload_file(path, "secret", "audio/wav")
+            peak = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+            os.unlink(path)
+        upload = [call for call in calls if call["upload"]][0]
+        self.assertEqual(upload["sent"], 32 * 1024 * 1024, "tüm dosya gitmeli")
+        self.assertLess(peak, 8 * 1024 * 1024,
+                        "32 MB dosya belleğe alınmamalı (tepe %d bayt)" % peak)
 
 
 class TestGeminiFallback(unittest.TestCase):

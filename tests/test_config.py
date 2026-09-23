@@ -124,6 +124,18 @@ class TestPromptAssembly(unittest.TestCase):
     def test_meeting_prompt_default_tr(self):
         import i18n; i18n.set_language("tr")
         self.assertIn("toplantı tutanağı", cfg.default_meeting_prompt())
+    def test_participants_dedupe_turkish_case_variants(self):
+        c = cfg.Config()
+        c.data["meeting_self_name"] = "İSMAİL"
+        c.data["meeting_other_name"] = ""
+        c.data["meeting_participants"] = "İsmail, ALEX, alex"
+        self.assertEqual(c.participants(), "İSMAİL\nALEX")
+    def test_participants_keep_distinct_names(self):
+        c = cfg.Config()
+        c.data["meeting_self_name"] = "Alex"
+        c.data["meeting_other_name"] = "Ayşe"
+        c.data["meeting_participants"] = ""
+        self.assertEqual(c.participants(), "Alex\nAyşe")
 
 class TestHistory(unittest.TestCase):
     def setUp(self):

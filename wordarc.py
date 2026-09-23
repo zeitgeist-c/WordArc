@@ -13,6 +13,7 @@ Usage:
   wordarc.py quit        shut the application down
 """
 
+import ctypes
 import getpass
 import logging
 import os
@@ -49,15 +50,58 @@ from worker import Pipeline  # noqa: E402
 SERVER_NAME = BRAND.ipc_name(getpass.getuser())
 LEGACY_SERVER_NAME = BRAND.legacy_ipc_name(getpass.getuser())
 SERVER_NAMES = (SERVER_NAME, LEGACY_SERVER_NAME)
+
+# The socket check in main() loses a race when two launches land in the same
+# instant: neither finds the other's socket, and both go on to serve. A named
+# mutex decides the owner instead. "Local\" keeps it to this logon session, the
+# same reach the sockets have.
+SINGLETON_MUTEX = f"Local\\{BRAND.slug}-single-instance"
+ERROR_ALREADY_EXISTS = 183
+_instance_mutex = None
+
+
+def _acquire_instance_mutex(name=None):
+    """True when this process owns the instance; False when another one does.
+
+    Any failure to create the mutex counts as "mine", so a mutex problem can
+    never stop the app from starting.
+    """
+    global _instance_mutex
+    if os.name != "nt":
+        return True
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int,
+                                          ctypes.c_wchar_p]
+        kernel32.CreateMutexW.restype = ctypes.c_void_p
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        handle = kernel32.CreateMutexW(None, 0, name or SINGLETON_MUTEX)
+    except OSError:
+        return True
+    if not handle:
+        return True
+    if ctypes.get_last_error() == ERROR_ALREADY_EXISTS:
+        kernel32.CloseHandle(handle)
+        return False
+    _instance_mutex = (kernel32, handle)
+    return True
+
+
+def _release_instance_mutex():
+    """Hand the instance over, so a restarted copy can take it."""
+    global _instance_mutex
+    if _instance_mutex is None:
+        return
+    kernel32, handle = _instance_mutex
+    _instance_mutex = None
+    try:
+        kernel32.CloseHandle(handle)
+    except OSError:
+        pass
 IDLE, RECORDING, BUSY = "idle", "recording", "busy"
 # A meeting runs alongside dictation rather than through it: writing up an hour
 # of audio takes minutes, and dictation should not be held hostage to it.
 M_IDLE, M_RECORDING, M_WORKING = "idle", "recording", "working"
-
-# The KDE shortcut answers a key press by launching a whole Python process, so
-# its toggle lands well after the built-in listener has handled the same press.
-# Anything arriving inside this window is that echo, not a second press.
-ECHO_MS = 0
 
 
 class WordArc:
@@ -574,6 +618,8 @@ class WordArc:
         self.shutdown()
         for name in SERVER_NAMES:
             QLocalServer.removeServer(name)
+        # Hand the instance over before the replacement starts.
+        _release_instance_mutex()
         if getattr(sys, "frozen", False):
             # Paketlenmiş onefile exe'de __file__ geçici _MEI klasörünü gösterir;
             # yeni süreç yalnız exe + kullanıcı argümanlarıyla başlatılmalı.
@@ -688,6 +734,10 @@ def main():
 
     if command in ("cancel", "quit", "stop", "restart", "meeting-cancel",
                    "ask", "ask-reset", "ask-cancel"):
+        return 0
+
+    # Losing the mutex means another launch got here first, so stand down.
+    if not _acquire_instance_mutex():
         return 0
 
     tray_available = QSystemTrayIcon.isSystemTrayAvailable()
