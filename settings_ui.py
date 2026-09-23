@@ -1333,6 +1333,19 @@ class SettingsWindow(QDialog):
                 if data.casefold().endswith(suffix):
                     index = candidate
                     break
+        # A saved target can name a copy the list no longer shows: the
+        # microphone box keeps one row per device, so the MME/DirectSound
+        # copies were merged into the best one.
+        if index < 0 and str(value).startswith(audio.DEVICE_TARGET_PREFIX):
+            wanted = str(value)[len(audio.DEVICE_TARGET_PREFIX):].split(":", 1)[-1]
+            for candidate in range(combo.count()):
+                data = str(combo.itemData(candidate) or "")
+                if not data.startswith(audio.DEVICE_TARGET_PREFIX):
+                    continue
+                listed = data[len(audio.DEVICE_TARGET_PREFIX):].split(":", 1)[-1]
+                if audio.same_device_name(wanted, listed):
+                    index = candidate
+                    break
         combo.setCurrentIndex(index if index >= 0 else 0)
 
     # What the drop-down needs beside the text itself: the item padding, the

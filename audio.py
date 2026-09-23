@@ -53,14 +53,18 @@ MIN_FRAMES = int(RATE * 0.25)
 CHANNEL_STALL_SECONDS = 5.0
 DEVICE_TARGET_PREFIX = "sd:"
 
-# Force WASAPI when present; fall back silently otherwise.
-try:
-    for i, host in enumerate(sd.query_hostapis()):
-        if host["name"].lower() == "wasapi":
-            sd.default.hostapi = i
-            break
-except Exception:
-    pass
+# Host APIs, best first, among the copies a device can really be opened on.
+# The order is the one this app has always recorded with: MME resamples to the
+# app's rate everywhere, DirectSound next; a WASAPI endpoint that refuses the
+# rate records nothing at all, so it only wins when nothing else opens.
+_HOST_PRIORITY = ("mme", "windows directsound", "windows wasapi")
+# MME truncates every device name to this many characters.
+MME_NAME_LIMIT = 31
+
+# No default device is forced here. PortAudio's own default host API (MME on
+# Windows) resamples to the app's rate, while forcing the WASAPI copies — the
+# obvious-looking `sd.default.hostapi` is read-only anyway — hands back "Invalid
+# sample rate" for the 16 kHz this app records at.
 
 
 def _peak_rms(chunk):
@@ -127,14 +131,29 @@ class Recorder(QObject, _CaptureBase):
         self._error_reported = False
         self._max_bytes = int(max_seconds * RATE * SAMPLE_WIDTH * CHANNELS)
         try:
-            self._stream = sd.InputStream(
-                samplerate=RATE, channels=CHANNELS, dtype="int16",
-                blocksize=CHUNK_FRAMES, device=self._device,
-                callback=self._callback)
-            self._stream.start()
-        except Exception as exc:
+            self._open_stream()
+        except Exception:
             self._stream = None
-            self.failed.emit(t("Could not open the microphone."))
+            if target:
+                # The saved microphone is still listed but no longer opens (a
+                # disconnected Bluetooth headset keeps a dead entry behind):
+                # dictate through the default input instead of failing the take.
+                _log.warning("saved microphone %r did not open; falling back "
+                             "to the default input", target)
+                try:
+                    self._device = None
+                    self._open_stream()
+                except Exception:
+                    self._stream = None
+            if self._stream is None:
+                self.failed.emit(t("Could not open the microphone."))
+
+    def _open_stream(self):
+        self._stream = sd.InputStream(
+            samplerate=RATE, channels=CHANNELS, dtype="int16",
+            blocksize=CHUNK_FRAMES, device=self._device,
+            callback=self._callback)
+        self._stream.start()
 
     def _callback(self, indata, frames, time_info, status):
         if status and not self._error_reported:
@@ -477,31 +496,148 @@ def _match_loopback_device(target):
     return None
 
 
+def _strip_placeholders(text):
+    """Drop INF resource placeholders ("%1", "%0"), glued to words included."""
+    kept = []
+    index = 0
+    while index < len(text):
+        if text[index] == "%":
+            index += 1
+            while index < len(text) and text[index].isdigit():
+                index += 1
+            kept.append(" ")
+            continue
+        kept.append(text[index])
+        index += 1
+    return " ".join("".join(kept).split())
+
+
+def _friendly_name(name):
+    """One readable line for a device name.
+
+    Windows hands PortAudio the raw driver string for the Bluetooth Hands-Free
+    endpoint — "@System32\\drivers\\bthhfenum.sys,#2;%1 Hands-Free%0 ;(REDMI
+    Buds 8 Lite)" — with the %1/%0 placeholders it normally fills in itself.
+    Rebuild it as "Kulaklık (REDMI Buds 8 Lite) — Hands-Free".
+    """
+    flat = " ".join((name or "").split())
+    if "@" not in flat or "%" not in flat:
+        return flat
+    base, _, detail = flat.partition("(")
+    mode = device = ""
+    for chunk in detail.split(";"):
+        chunk = chunk.strip().strip("()")
+        if not chunk or chunk.startswith("@") or ".sys" in chunk:
+            continue
+        if "%" in chunk:
+            mode = _strip_placeholders(chunk) or mode
+        else:
+            device = chunk
+    parts = [part for part in (base.strip(), device, mode) if part]
+    if len(parts) == 3:
+        return f"{parts[0]} ({parts[1]}) — {parts[2]}"
+    if len(parts) == 2:
+        return f"{parts[0]} ({parts[1]})"
+    return flat
+
+
+def same_device_name(left, right):
+    """Whether two device names are copies of the same hardware.
+
+    Windows exposes every device once per host API and the names usually match
+    across them; MME is the exception, it truncates every name to
+    MME_NAME_LIMIT characters, so its copy of a longer name is a prefix of the
+    other copies'. The rule is deliberately narrow: only a name sitting exactly
+    at the limit may stand in for a longer one.
+    """
+    left = " ".join((left or "").split()).casefold()
+    right = " ".join((right or "").split()).casefold()
+    if left == right:
+        return True
+    short, long = (left, right) if len(left) <= len(right) else (right, left)
+    return len(short) == MME_NAME_LIMIT and long.startswith(short)
+
+
+def _host_rank(hostapi_name):
+    """Lower is better: MME, then DirectSound, then WASAPI, then the rest."""
+    folded = (hostapi_name or "").strip().casefold()
+    if folded in _HOST_PRIORITY:
+        return _HOST_PRIORITY.index(folded)
+    return len(_HOST_PRIORITY)
+
+
+def _recordable(index, host_name):
+    """Whether a device copy can record at the settings this app uses.
+
+    WDM-KS copies are left out entirely: that API is kernel-exclusive, never
+    resamples, and keeps a dead entry behind when its device goes away — a
+    disconnected Bluetooth endpoint passes the capability check below and then
+    fails to open, so it would sit in the list as a trap.
+    """
+    if "wdm-ks" in (host_name or "").casefold():
+        return False
+    try:
+        sd.check_input_settings(device=index, samplerate=RATE,
+                                channels=CHANNELS, dtype="int16")
+        return True
+    except Exception:
+        return False
+
+
 def list_sources():
-    """Return stable targets and useful labels for every PortAudio input."""
+    """Stable targets and readable labels, one row per physical device.
+
+    PortAudio lists the same hardware once per host API (MME, DirectSound,
+    WASAPI...), which filled the microphone box with three copies of every
+    device; only the copy that can actually record is kept now, named with the
+    fullest name any of them reported. Devices a single API exposes — the
+    Bluetooth Hands-Free endpoint, for one — keep their own row.
+    """
     try:
         devices = list(sd.query_devices())
         hostapis = list(sd.query_hostapis())
     except Exception:
         return []
-    inputs = [d for d in devices if d.get("max_input_channels", 0) > 0]
-    name_counts = {}
-    for d in inputs:
-        folded = (d.get("name") or "").casefold()
-        name_counts[folded] = name_counts.get(folded, 0) + 1
-    out = []
-    for d in inputs:
+    groups = []
+    for index, d in enumerate(devices):
+        if d.get("max_input_channels", 0) <= 0:
+            continue
         name = d.get("name") or t("Unnamed audio device")
         host_index = d.get("hostapi", -1)
-        target = f"{DEVICE_TARGET_PREFIX}{host_index}:{name}"
-        label = name
-        if name_counts.get(name.casefold(), 0) > 1:
-            try:
-                label = f"{name} ({hostapis[host_index]['name']})"
-            except (IndexError, KeyError, TypeError):
-                pass
-        out.append((target, label))
-    return out
+        try:
+            host_name = hostapis[host_index]["name"]
+        except (IndexError, KeyError, TypeError):
+            host_name = ""
+        entry = (_host_rank(host_name), index, host_index, name, host_name)
+        for group in groups:
+            if same_device_name(group["name"], name):
+                group["members"].append(entry)
+                break
+        else:
+            groups.append({"name": name, "members": [entry]})
+    out = []
+    for group in groups:
+        # A copy that cannot record at the app's settings would only fail the
+        # take, so the recordable ones win even when they are the older API.
+        usable = [m for m in group["members"] if _recordable(m[1], m[4])]
+        _, _, host_index, name, host_name = min(usable or group["members"])
+        label = _friendly_name(max((m[3] for m in group["members"]), key=len))
+        out.append([f"{DEVICE_TARGET_PREFIX}{host_index}:{name}", label,
+                    host_name, bool(usable)])
+    # A device no copy can record from only fails the take, so it stays out of
+    # the box — unless that would empty the list entirely, in which case the
+    # devices are still worth offering.
+    playable = [row for row in out if row[3]]
+    if playable:
+        out = playable
+    # Two different devices can still carry the same name; keep those apart.
+    counts = {}
+    for _, label, *_ in out:
+        folded = label.casefold()
+        counts[folded] = counts.get(folded, 0) + 1
+    return [(target, f"{label} ({host_name})"
+             if host_name and counts[label.casefold()] > 1 else label)
+            for target, label, host_name, _ in out]
 
 
 def list_monitors():
