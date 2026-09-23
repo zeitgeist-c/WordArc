@@ -574,7 +574,12 @@ class WordArc:
         self.shutdown()
         for name in SERVER_NAMES:
             QLocalServer.removeServer(name)
-        subprocess.Popen([sys.executable, os.path.realpath(__file__)] + sys.argv[1:])
+        if getattr(sys, "frozen", False):
+            # Paketlenmiş onefile exe'de __file__ geçici _MEI klasörünü gösterir;
+            # yeni süreç yalnız exe + kullanıcı argümanlarıyla başlatılmalı.
+            subprocess.Popen([sys.executable] + sys.argv[1:])
+        else:
+            subprocess.Popen([sys.executable, os.path.realpath(__file__)] + sys.argv[1:])
         self.app.quit()
 
     def shutdown(self):
