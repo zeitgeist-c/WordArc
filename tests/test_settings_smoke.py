@@ -246,6 +246,38 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertEqual(window.mic.view().minimumWidth(),
                          wanted if wanted <= limit else limit)
 
+    def test_saved_microphone_survives_the_merged_device_rows(self):
+        """A microphone saved as its MME copy still selects the kept row."""
+        window = self.window
+        full = "Mikrofon (3- USBGH8-Plus-7.1-ENC)"
+        window._fill_device_combo(
+            window.mic, [("sd:2:" + full, full)], t("Default microphone"),
+            "sd:0:" + full[:settings_ui.audio.MME_NAME_LIMIT])
+        self.assertEqual(window.mic.currentData(), "sd:2:" + full)
+
+    def test_saved_hands_free_target_matches_its_row(self):
+        """A saved target still matches when the driver line break was lost."""
+        window = self.window
+        broken = ("Kulaklık (@System32\\drivers\\bthhfenum.sys,#2;%1 "
+                  "Hands-Free%0\r\n;(REDMI Buds 8 Lite))")
+        window._fill_device_combo(
+            window.mic, [("sd:2:" + broken,
+                          "Kulaklık (REDMI Buds 8 Lite) — Hands-Free")],
+            t("Default microphone"), "sd:2:" + " ".join(broken.split()))
+        self.assertEqual(window.mic.currentData(), "sd:2:" + broken)
+
+    def test_reload_lists_devices_that_appeared_later(self):
+        """A device plugged in after the window opened shows up on Reload."""
+        window = self.window
+        with mock.patch.object(settings_ui.audio, "list_sources",
+                               return_value=[("sd:2:Bluetooth Mic",
+                                              "Bluetooth Mic")]):
+            window._refresh_audio_devices()
+        texts = [window.mic.itemText(index)
+                 for index in range(window.mic.count())]
+        self.assertEqual(texts, [t("Default microphone"), "Bluetooth Mic"])
+        self.assertEqual(window.mic.itemData(1), "sd:2:Bluetooth Mic")
+
     def test_save_confirms_with_the_banner_and_a_chime(self):
         """A save says so in the window itself; no modal box comes back."""
         window = self.window

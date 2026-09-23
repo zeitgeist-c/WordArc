@@ -39,20 +39,157 @@ class TestAudioDeviceEnumeration(unittest.TestCase):
         {"name": "USB Mic", "hostapi": 1, "max_input_channels": 2},
         {"name": "Speakers", "hostapi": 1, "max_input_channels": 0},
     ]
+    HOSTAPIS = [{"name": "MME"}, {"name": "Windows WASAPI"}]
+    # What Windows hands PortAudio for the Bluetooth hands-free endpoint: a raw
+    # driver string with the resource placeholders left in and a line break.
+    HANDS_FREE = ("Kulaklık (@System32\\drivers\\bthhfenum.sys,#2;%1 "
+                  "Hands-Free%0\r\n;(REDMI Buds 8 Lite))")
 
-    def test_stable_targets_distinguish_duplicate_host_apis(self):
-        with mock.patch.object(audio.sd, "query_devices", return_value=self.DEVICES), \
-             mock.patch.object(audio.sd, "query_hostapis", return_value=[
-                 {"name": "MME"}, {"name": "WASAPI"}]):
-            self.assertEqual(audio.list_sources(), [
-                ("sd:0:USB Mic", "USB Mic (MME)"),
-                ("sd:1:USB Mic", "USB Mic (WASAPI)"),
-            ])
+    def _sources(self, devices, hostapis=None, unopenable=()):
+        """`unopenable` lists device indexes that reject the app's settings."""
+        def check(device=None, **kwargs):
+            if device in unopenable:
+                raise RuntimeError("Invalid sample rate")
+        with mock.patch.object(audio.sd, "query_devices", return_value=devices), \
+             mock.patch.object(audio.sd, "query_hostapis",
+                               return_value=hostapis or self.HOSTAPIS), \
+             mock.patch.object(audio.sd, "check_input_settings",
+                               side_effect=check):
+            return audio.list_sources()
+
+    def test_one_row_per_device_points_at_the_best_host_api(self):
+        """Windows lists every device once per host API; one row is kept."""
+        self.assertEqual(self._sources(self.DEVICES), [
+            ("sd:0:USB Mic", "USB Mic"),
+        ])
+
+    def test_a_copy_the_app_cannot_open_is_passed_over(self):
+        """A WASAPI copy that refuses the rate loses to the MME copy."""
+        self.assertEqual(self._sources(self.DEVICES, unopenable={0}), [
+            ("sd:1:USB Mic", "USB Mic"),
+        ])
+
+    def test_a_device_no_copy_can_open_keeps_its_first_copy(self):
+        """Hiding every device would leave the box empty; keep them then."""
+        self.assertEqual(self._sources(self.DEVICES, unopenable={0, 1}), [
+            ("sd:0:USB Mic", "USB Mic"),
+        ])
+
+    def test_wdm_ks_copies_are_not_offered(self):
+        """Kernel-streaming copies cannot be trusted to open; leave them out."""
+        devices = [
+            {"name": "USB Mic", "hostapi": 0, "max_input_channels": 1},
+            {"name": "Kernel Only Mic", "hostapi": 3, "max_input_channels": 1},
+        ]
+        hostapis = [{"name": "MME"}, {"name": "Windows DirectSound"},
+                    {"name": "Windows WASAPI"}, {"name": "Windows WDM-KS"}]
+        self.assertEqual(self._sources(devices, hostapis), [
+            ("sd:0:USB Mic", "USB Mic"),
+        ])
+
+    def test_mme_truncated_name_merges_with_the_full_one(self):
+        """MME cuts names short; the cut copy is not a second device."""
+        full = "Mikrofon (3- USBGH8-Plus-7.1-ENC)"
+        devices = [
+            {"name": full[:audio.MME_NAME_LIMIT], "hostapi": 0,
+             "max_input_channels": 1},
+            {"name": full, "hostapi": 1, "max_input_channels": 1},
+        ]
+        self.assertEqual(self._sources(devices), [
+            ("sd:0:" + full[:audio.MME_NAME_LIMIT], full),
+        ])
+
+    def test_devices_differing_after_the_cut_stay_apart(self):
+        """Two devices may share their first 31 characters; they are not merged."""
+        devices = [
+            {"name": "Mikrofon (Realtek HD Audio Mic input)", "hostapi": 1,
+             "max_input_channels": 1},
+            {"name": "Mikrofon (Realtek HD Audio Line input)", "hostapi": 1,
+             "max_input_channels": 1},
+        ]
+        self.assertEqual(self._sources(devices), [
+            ("sd:1:Mikrofon (Realtek HD Audio Mic input)",
+             "Mikrofon (Realtek HD Audio Mic input)"),
+            ("sd:1:Mikrofon (Realtek HD Audio Line input)",
+             "Mikrofon (Realtek HD Audio Line input)"),
+        ])
+
+    def test_hands_free_driver_string_becomes_a_readable_row(self):
+        """The hands-free endpoint is its own device, with a readable name."""
+        devices = [
+            {"name": "Kulaklık (REDMI Buds 8 Lite)", "hostapi": 2,
+             "max_input_channels": 1},
+            {"name": self.HANDS_FREE, "hostapi": 2, "max_input_channels": 1},
+        ]
+        self.assertEqual(self._sources(
+            devices, [{"name": "MME"}, {"name": "Windows DirectSound"},
+                      {"name": "Windows WASAPI"}]), [
+            ("sd:2:Kulaklık (REDMI Buds 8 Lite)",
+             "Kulaklık (REDMI Buds 8 Lite)"),
+            ("sd:2:" + self.HANDS_FREE,
+             "Kulaklık (REDMI Buds 8 Lite) — Hands-Free"),
+        ])
+
+    def test_rows_that_would_read_the_same_keep_the_host_api_hint(self):
+        """Two devices whose rows would look alike stay tellable apart."""
+        devices = [
+            {"name": "Kulaklık (REDMI Buds 8 Lite) — Hands-Free", "hostapi": 0,
+             "max_input_channels": 1},
+            {"name": self.HANDS_FREE, "hostapi": 2, "max_input_channels": 1},
+        ]
+        self.assertEqual(self._sources(
+            devices, [{"name": "MME"}, {"name": "Windows DirectSound"},
+                      {"name": "Windows WASAPI"}]), [
+            ("sd:0:Kulaklık (REDMI Buds 8 Lite) — Hands-Free",
+             "Kulaklık (REDMI Buds 8 Lite) — Hands-Free (MME)"),
+            ("sd:2:" + self.HANDS_FREE,
+             "Kulaklık (REDMI Buds 8 Lite) — Hands-Free (Windows WASAPI)"),
+        ])
 
     def test_stable_and_legacy_targets_are_both_accepted(self):
         with mock.patch.object(audio.sd, "query_devices", return_value=self.DEVICES):
             self.assertEqual(audio._match_input_device("sd:1:USB Mic"), 1)
             self.assertEqual(audio._match_input_device("USB Mic"), 0)
+
+
+class TestRecorderDeviceFallback(unittest.TestCase):
+    """A saved device can go away; the take must survive it."""
+
+    def test_a_dead_saved_microphone_falls_back_to_the_default(self):
+        opened = []
+
+        def fake_input_stream(**kwargs):
+            opened.append(kwargs["device"])
+            stream = mock.Mock()
+            if kwargs["device"] is not None:
+                stream.start.side_effect = RuntimeError("Invalid device")
+            return stream
+
+        recorder = audio.Recorder()
+        with mock.patch.object(audio.sd, "query_devices", return_value=[
+                {"name": "Dead Mic", "hostapi": 0, "max_input_channels": 1}]), \
+             mock.patch.object(audio.sd, "InputStream",
+                               side_effect=fake_input_stream), \
+             mock.patch.object(audio, "_log") as log:
+            recorder.start("sd:0:Dead Mic")
+        self.assertEqual(opened, [0, None])
+        self.assertTrue(recorder.active)
+        log.warning.assert_called_once()
+
+    def test_a_dead_default_microphone_still_reports_failure(self):
+        def fake_input_stream(**kwargs):
+            stream = mock.Mock()
+            stream.start.side_effect = RuntimeError("no device")
+            return stream
+
+        recorder = audio.Recorder()
+        errors = []
+        recorder.failed.connect(errors.append)
+        with mock.patch.object(audio.sd, "InputStream",
+                               side_effect=fake_input_stream):
+            recorder.start("")
+        self.assertEqual(len(errors), 1)
+        self.assertFalse(recorder.active)
 
 
 class TestMeetingRecorderReuse(unittest.TestCase):
