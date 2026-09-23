@@ -21,7 +21,6 @@ APP_URL = "https://github.com/zeitgeist-c/wordarc"
 USER_AGENT = f"wordarc/{BRAND.version} (+{APP_URL})"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta"
 GEMINI_UPLOAD_URL = "https://generativelanguage.googleapis.com/upload/v1beta/files"
-GEMINI_API_KEY_ENV = "GEMINI_API_KEY"
 MAX_INLINE_AUDIO_BYTES = 14_000_000
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 _log = logging.getLogger("wordarc.api")
@@ -72,10 +71,45 @@ def _cancelled(should_stop):
         raise Cancelled(t("Stopped."), category="cancelled")
 
 
-def _open(req, timeout, attempts=3, should_stop=None):
+class _FileBody:
+    """A request body that streams a file instead of loading it into memory.
+
+    A long meeting's WAV is hundreds of megabytes, so reading it whole would
+    spike memory for nothing. urllib re-sends ``req.data`` on every retry, and a
+    consumed stream would send zero bytes the second time, so the handle is
+    reopened for each attempt and closed once the request is over.
+    """
+
+    def __init__(self, path):
+        self.path = path
+        self.size = os.path.getsize(path)
+        self._handle = None
+
+    def open(self):
+        self.close()
+        self._handle = open(self.path, "rb")
+        return self._handle
+
+    def close(self):
+        if self._handle is not None:
+            try:
+                self._handle.close()
+            finally:
+                self._handle = None
+
+
+def _open(req, timeout, attempts=3, should_stop=None, body_factory=None):
     """Open a request with bounded retries for transient HTTP failures."""
+    content_length = req.get_header("Content-length")
     for attempt in range(attempts):
         _cancelled(should_stop)
+        if body_factory is not None:
+            req.data = body_factory()
+            # urllib's data setter drops Content-Length on every assignment
+            # (CPython issue 16464), which would quietly turn the upload into a
+            # chunked one, so the length goes back on for each attempt.
+            if content_length is not None:
+                req.add_header("Content-Length", content_length)
         try:
             return urllib.request.urlopen(req, timeout=timeout)
         except urllib.error.HTTPError as exc:
@@ -95,9 +129,10 @@ def _open(req, timeout, attempts=3, should_stop=None):
                 time.sleep(min(0.1, end - time.monotonic()))
 
 
-def _read_response(req, timeout=120, attempts=3, should_stop=None):
+def _read_response(req, timeout=120, attempts=3, should_stop=None,
+                   body_factory=None):
     try:
-        with _open(req, timeout, attempts, should_stop) as resp:
+        with _open(req, timeout, attempts, should_stop, body_factory) as resp:
             return resp.read(), resp.headers
     except urllib.error.HTTPError as exc:
         try:
@@ -114,9 +149,10 @@ def _read_response(req, timeout=120, attempts=3, should_stop=None):
 
 
 def _request(url, data, headers, timeout=120, attempts=3, should_stop=None,
-             method="POST"):
+             method="POST", body_factory=None):
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    body, _headers = _read_response(req, timeout, attempts, should_stop)
+    body, _headers = _read_response(req, timeout, attempts, should_stop,
+                                    body_factory)
     try:
         return json.loads(body.decode("utf-8"))
     except json.JSONDecodeError as exc:
@@ -167,20 +203,26 @@ def _upload_file(path, api_key, mime_type, should_stop=None):
     if not upload_url:
         raise ApiError(t("Gemini did not provide a file upload URL."))
     _cancelled(should_stop)
-    with open(path, "rb") as fh:
-        content = fh.read()
-    data = _request(
-        upload_url,
-        content,
-        {
-            "Content-Type": mime_type,
-            "X-Goog-Upload-Offset": "0",
-            "X-Goog-Upload-Command": "upload, finalize",
-        },
-        timeout=300,
-        attempts=3,
-        should_stop=should_stop,
-    )
+    # Streamed rather than read whole: a long meeting is hundreds of megabytes.
+    # The explicit length keeps urllib from falling back to chunked transfer.
+    body = _FileBody(path)
+    try:
+        data = _request(
+            upload_url,
+            body.open(),
+            {
+                "Content-Type": mime_type,
+                "Content-Length": str(body.size),
+                "X-Goog-Upload-Offset": "0",
+                "X-Goog-Upload-Command": "upload, finalize",
+            },
+            timeout=300,
+            attempts=3,
+            should_stop=should_stop,
+            body_factory=body.open,
+        )
+    finally:
+        body.close()
     file_row = data.get("file") or {}
     name = file_row.get("name", "")
     uri = file_row.get("uri", "")

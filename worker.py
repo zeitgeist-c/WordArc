@@ -165,6 +165,7 @@ class Pipeline(QObject):
             self._discard(wav_path)
 
     def _discard(self, wav_path):
+        """Delete the temporary recording, or file it away when keep_audio is on."""
         if not os.path.exists(wav_path):
             return
         if self.conf["keep_audio"]:
@@ -172,8 +173,12 @@ class Pipeline(QObject):
                 cfg.RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
                 shutil.move(wav_path, cfg.RECORDINGS_DIR / (time.strftime("%Y%m%d-%H%M%S") + ".wav"))
                 return
-            except OSError:
-                pass
+            except OSError as exc:
+                # Deleting it instead would throw away the recording the user
+                # asked to keep, so leave it where it is and log the path.
+                _log.warning("could not file the recording away (%s); kept %s",
+                             exc, wav_path)
+                return
         try:
             os.unlink(wav_path)
         except OSError:

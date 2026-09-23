@@ -123,11 +123,6 @@ def copy_bytes(data):
         user32.CloseClipboard()
 
 
-def ydotool_ready():
-    """Kept for parity with the Linux signature; always True on Windows."""
-    return True
-
-
 def press(shortcut="ctrl+v", delay=0.12):
     """Send a key combination via SendInput. Raises PasteError on bad key."""
     codes = []
