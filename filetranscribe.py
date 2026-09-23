@@ -205,10 +205,12 @@ def _to_wav(path, workdir):
         res = subprocess.run(
             [ffmpeg_path.ffmpeg(), "-nostdin", "-y", "-i", path, "-vn",
              "-ac", "1", "-ar", str(RATE), "-c:a", "pcm_s16le", out],
-            capture_output=True, text=True,
+            capture_output=True, text=True, timeout=900,
         )
     except FileNotFoundError:
         raise api.ApiError(t("ffmpeg not found. Install it to transcribe files."))
+    except subprocess.TimeoutExpired:
+        raise api.ApiError(t("Could not read the file: {error}", error="ffmpeg timeout (900 s)"))
     if res.returncode != 0 or not os.path.exists(out):
         tail = (res.stderr or "").strip().splitlines()
         raise api.ApiError(t("Could not read the file: {error}",
