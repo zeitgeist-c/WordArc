@@ -245,7 +245,7 @@ TR = {
         "Genel klavye kısayollarını seçin.",
     "Control local plaintext transcript retention.":
         "Yerel açık metin döküm saklamayı yönetin.",
-    "Saved successfully.": "Başarıyla kaydedildi.",
+    "Settings saved": "Ayarlar kaydedildi",
     "Interface language": "Arayüz dili",
     "Automatic (system)": "Otomatik (sistem)",
     "Turkish": "Türkçe",
