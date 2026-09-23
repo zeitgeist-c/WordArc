@@ -517,48 +517,56 @@ class SettingsWindow(QDialog):
         outer = QVBoxLayout(page)
         outer.setSpacing(14)
 
-        # API keys first, then model selection.
+        # API keys first, then model selection. Two rows: the list with its two
+        # main actions on top, the row actions underneath.
         keys, keys_body = self._section_card(
             "Keys", "Your Gemini API keys, tried from top to bottom.")
-        key_help = QLabel(t(
-            "Keys are tried from top to bottom and stored only in Windows Credential Manager."
-        ))
+        key_help = QLabel(t("Stored only in Windows Credential Manager."))
         key_help.setWordWrap(True)
         key_help.setObjectName("muted")
         keys_body.addWidget(key_help)
+
         self.gemini_keys_list = QListWidget()
-        self.gemini_keys_list.setMinimumHeight(116)
+        self.gemini_keys_list.setMinimumHeight(150)
         self.gemini_keys_list.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection
         )
-        keys_body.addWidget(self.gemini_keys_list)
-        self.gemini_add_button = QPushButton(t("Add API"))
-        self.gemini_edit_button = QPushButton(t("Edit"))
-        self.gemini_remove_button = QPushButton(t("Remove"))
-        self.gemini_up_button = QPushButton(t("Move up"))
-        self.gemini_down_button = QPushButton(t("Move down"))
-        self.gemini_test_button = QPushButton(t("Test"))
-        self.gemini_add_button.clicked.connect(self._add_gemini_key)
-        self.gemini_edit_button.clicked.connect(self._edit_gemini_key)
-        self.gemini_remove_button.clicked.connect(self._remove_gemini_key)
-        self.gemini_up_button.clicked.connect(lambda: self._move_gemini_key(-1))
-        self.gemini_down_button.clicked.connect(lambda: self._move_gemini_key(1))
-        self.gemini_test_button.clicked.connect(self._test_gemini)
         self.gemini_keys_list.currentRowChanged.connect(
             self._refresh_gemini_key_buttons
         )
-        key_buttons = QHBoxLayout()
-        for button in (
-            self.gemini_add_button, self.gemini_edit_button,
-            self.gemini_remove_button, self.gemini_up_button,
-            self.gemini_down_button, self.gemini_test_button,
-        ):
-            key_buttons.addWidget(button)
-        key_buttons.addStretch(1)
-        keys_body.addLayout(key_buttons)
+        keys_body.addWidget(self.gemini_keys_list)
+
+        self.gemini_add_button = QPushButton(t("Add API"))
+        self.gemini_add_button.setObjectName("accentButton")
+        self.gemini_add_button.clicked.connect(self._add_gemini_key)
+        self.gemini_test_button = QPushButton(t("Test"))
+        self.gemini_test_button.clicked.connect(self._test_gemini)
+        top_row = QHBoxLayout()
+        top_row.addWidget(self.gemini_add_button)
+        top_row.addWidget(self.gemini_test_button)
+        top_row.addStretch(1)
+        keys_body.addLayout(top_row)
+
         self.gemini_test_label = QLabel("")
+        self.gemini_test_label.setObjectName("muted")
         self.gemini_test_label.setWordWrap(True)
         keys_body.addWidget(self.gemini_test_label)
+
+        self.gemini_edit_button = QPushButton(t("Edit"))
+        self.gemini_edit_button.clicked.connect(self._edit_gemini_key)
+        self.gemini_remove_button = QPushButton(t("Remove"))
+        self.gemini_remove_button.setObjectName("dangerButton")
+        self.gemini_remove_button.clicked.connect(self._remove_gemini_key)
+        self.gemini_up_button = QPushButton(t("Move up"))
+        self.gemini_up_button.clicked.connect(lambda: self._move_gemini_key(-1))
+        self.gemini_down_button = QPushButton(t("Move down"))
+        self.gemini_down_button.clicked.connect(lambda: self._move_gemini_key(1))
+        item_row = QHBoxLayout()
+        for button in (self.gemini_edit_button, self.gemini_remove_button,
+                       self.gemini_up_button, self.gemini_down_button):
+            item_row.addWidget(button)
+        item_row.addStretch(1)
+        keys_body.addLayout(item_row)
         outer.addWidget(keys)
 
         stt, stt_body = self._section_card(
@@ -816,6 +824,7 @@ class SettingsWindow(QDialog):
             )
         )
         delete = QPushButton(t("Delete selected"))
+        delete.setObjectName("dangerButton")
         delete.clicked.connect(self._delete_minutes)
         reload_ = QPushButton(t("Reload"))
         reload_.clicked.connect(self._load_minutes)
@@ -961,8 +970,10 @@ class SettingsWindow(QDialog):
         copy = QPushButton(t("Copy selected to clipboard"))
         copy.clicked.connect(self._copy_history)
         delete = QPushButton(t("Delete selected"))
+        delete.setObjectName("dangerButton")
         delete.clicked.connect(self._delete_history)
         clear = QPushButton(t("Clear history"))
+        clear.setObjectName("dangerButton")
         clear.clicked.connect(self._clear_history)
         reload_ = QPushButton(t("Reload"))
         reload_.clicked.connect(self._load_history)
