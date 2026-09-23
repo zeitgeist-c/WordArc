@@ -31,3 +31,15 @@ def test_theme_normalization_and_all_modes_apply():
     resolved = theme.ThemeManager.apply("system", app)
     assert resolved in (theme.ThemeMode.DARK, theme.ThemeMode.LIGHT)
     assert app.styleSheet()
+
+
+def test_scrollbar_cards_and_button_variants_are_styled():
+    css = theme.stylesheet(theme.palette("dark"))
+    assert "QScrollBar::handle:vertical:hover" in css
+    assert "width: 12px" in css
+    assert "min-height: 36px" in css
+    assert "QScrollBar::add-page, QScrollBar::sub-page" in css
+    assert "QPushButton#accentButton" in css
+    assert "QPushButton#dangerButton" in css
+    assert "border-radius: 14px" in css
+    assert "QLabel#pageTitle" not in css

@@ -71,30 +71,50 @@ def stylesheet(colors: Palette) -> str:
         color: {colors.text};
     }}
     QDialog, QMainWindow, QWidget#settingsRoot {{ background: {colors.window}; }}
+    QLabel#brandName {{ font-size: 18pt; font-weight: 700; }}
+    QFrame#headerRule {{ background: {colors.border}; border: 0; }}
+    QLabel#muted, QLabel#pageDescription, QLabel#cardDescription {{
+        color: {colors.muted};
+    }}
     QWidget#tabCard, QWidget#pageCard {{
         background: {colors.surface};
         border: 1px solid {colors.border};
-        border-radius: 12px;
+        border-radius: 14px;
     }}
     QWidget#page, QScrollArea, QScrollArea > QWidget > QWidget {{
         background: transparent;
     }}
-    QLabel#brandName {{ font-size: 18pt; font-weight: 700; }}
-    QLabel#pageTitle {{ font-size: 15pt; font-weight: 650; }}
-    QLabel#pageDescription, QLabel#muted {{ color: {colors.muted}; }}
-    QTabWidget#settingsTabs::pane {{
-        background: transparent;
-        border: 0;
+    QGroupBox {{
+        background: {colors.surface};
+        border: 1px solid {colors.border};
+        border-radius: 14px;
+        margin-top: 18px;
+        padding: 20px 16px 16px 16px;
+        font-weight: 600;
+    }}
+    QGroupBox::title {{
+        subcontrol-origin: margin;
+        left: 14px;
+        padding: 0 8px;
+        color: {colors.violet};
+        background: {colors.surface};
+        font-size: 11pt;
+        font-weight: 700;
+    }}
+    QTabWidget#settingsTabs::pane {{ background: transparent; border: 0; }}
+    QWidget#sharedAiNote {{
+        background: {colors.surface_alt};
+        border: 1px solid {colors.border};
+        border-radius: 10px;
     }}
     QTabWidget#settingsTabs QTabBar::tab {{
         background: transparent;
         border: 0;
-        border-bottom: 0;
-        border-radius: 10px;
-        padding: 10px 18px;
-        margin: 0 4px 6px 0;
+        border-radius: 9px;
+        padding: 10px 16px;
+        margin: 0 6px 10px 0;
         color: {colors.muted};
-        font-weight: 400;
+        font-weight: 500;
     }}
     QTabWidget#settingsTabs QTabBar::tab:hover {{
         background: {colors.hover}; color: {colors.text};
@@ -104,65 +124,35 @@ def stylesheet(colors: Palette) -> str:
         color: {colors.text};
         font-weight: 600;
     }}
-    QWidget#sharedAiNote {{
+    QLineEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox, QListWidget {{
         background: {colors.surface_alt};
         border: 1px solid {colors.border};
-        border-radius: 10px;
-    }}
-    QGroupBox {{
-        background: {colors.surface};
-        border: 1px solid {colors.border};
-        border-radius: 12px;
-        margin-top: 15px;
-        padding: 18px 16px 14px 16px;
-        font-weight: 600;
-    }}
-    QGroupBox::title {{
-        subcontrol-origin: margin;
-        left: 14px;
-        padding: 0 7px;
-        color: {colors.text};
-        background: {colors.surface};
-    }}
-    QLineEdit, QPlainTextEdit {{
-        background: {colors.surface};
-        border: 1px solid {colors.border};
-        border-radius: 6px;
-        padding: 6px 10px;
+        border-radius: 8px;
+        padding: 7px 10px;
         selection-background-color: {colors.violet};
         selection-color: white;
     }}
-    QLineEdit:hover, QPlainTextEdit:hover {{
-        background: {colors.hover}; border-color: {colors.violet};
+    QLineEdit:hover, QPlainTextEdit:hover, QComboBox:hover,
+    QSpinBox:hover, QDoubleSpinBox:hover, QListWidget:hover {{
+        background: {colors.selected}; border-color: {colors.violet};
     }}
-    QLineEdit:focus, QPlainTextEdit:focus {{
-        border: 2px solid {colors.violet}; padding: 5px 9px;
+    QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus,
+    QSpinBox:focus, QDoubleSpinBox:focus {{
+        border: 2px solid {colors.violet}; padding: 6px 9px;
     }}
-    QComboBox {{
-        background: {colors.surface};
-        border: 1px solid {colors.border};
-        border-radius: 6px;
-        padding: 6px 10px;
-        min-height: 22px;
-        selection-background-color: {colors.violet};
-        selection-color: white;
-    }}
-    QComboBox:hover {{ background: {colors.hover}; border-color: {colors.violet}; }}
-    QComboBox:focus {{ border: 2px solid {colors.violet}; padding: 5px 9px; }}
+    QComboBox, QSpinBox, QDoubleSpinBox {{ min-height: 22px; }}
     QComboBox::drop-down {{ border: 0; width: 24px; }}
     QComboBox QAbstractItemView {{
-        background: {colors.surface};
+        background: {colors.surface_alt};
         border: 1px solid {colors.border};
-        border-radius: 6px;
+        border-radius: 8px;
         outline: 0;
         padding: 4px;
         selection-background-color: {colors.selected};
         selection-color: {colors.text};
     }}
     QComboBox QAbstractItemView::item {{
-        padding: 6px 8px;
-        margin: 2px 0;
-        border-radius: 4px;
+        padding: 6px 8px; margin: 2px 0; border-radius: 6px;
     }}
     QComboBox QAbstractItemView::item:selected {{
         background: {colors.selected}; color: {colors.text};
@@ -170,111 +160,112 @@ def stylesheet(colors: Palette) -> str:
     QComboBox QAbstractItemView::item:hover {{
         background: {colors.hover}; color: {colors.text};
     }}
-    QSpinBox, QDoubleSpinBox {{
-        background: {colors.surface};
-        border: 1px solid {colors.border};
-        border-radius: 6px;
-        padding: 6px 10px;
-        min-height: 22px;
-    }}
-    QSpinBox:hover, QDoubleSpinBox:hover {{
-        background: {colors.hover}; border-color: {colors.violet};
-    }}
-    QSpinBox:focus, QDoubleSpinBox:focus {{
-        border: 2px solid {colors.violet}; padding: 5px 9px;
-    }}
     QSpinBox::up-button, QSpinBox::down-button,
     QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
-        background: transparent;
-        border: 0;
-        width: 22px;
+        background: transparent; border: 0; width: 22px;
     }}
     QSpinBox::up-button:hover, QSpinBox::down-button:hover,
     QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{
-        background: {colors.hover};
-        border-radius: 4px;
+        background: {colors.hover}; border-radius: 4px;
     }}
-    QListWidget {{
-        background: {colors.surface};
-        border: 1px solid {colors.border};
-        border-radius: 6px;
-        padding: 4px;
-    }}
-    QListWidget::item {{
-        padding: 6px 8px;
-        margin: 2px 0;
-        border-radius: 4px;
-    }}
+    QListWidget {{ padding: 4px; }}
+    QListWidget::item {{ padding: 7px 9px; margin: 2px 0; border-radius: 6px; }}
     QListWidget::item:selected {{ background: {colors.selected}; color: {colors.text}; }}
     QListWidget::item:hover {{ background: {colors.hover}; }}
     QPushButton {{
         min-height: 24px;
-        background: {colors.surface};
-        border: none;
-        border-radius: 6px;
-        padding: 6px 12px;
+        background: {colors.surface_alt};
+        border: 1px solid {colors.border};
+        border-radius: 8px;
+        padding: 7px 12px;
         font-weight: 600;
         color: {colors.text};
     }}
-    QPushButton:hover {{ background: {colors.hover}; border-color: {colors.violet}; }}
-    QPushButton:pressed {{ background: {colors.selected}; }}
-    QPushButton:disabled {{ color: {colors.muted}; background: {colors.window}; }}
+    QPushButton:hover {{ background: {colors.selected}; border-color: {colors.violet}; }}
+    QPushButton:pressed {{
+        background: {colors.violet}; border-color: {colors.violet}; color: white;
+    }}
+    QPushButton:disabled {{
+        color: {colors.muted}; background: {colors.window}; border-color: {colors.border};
+    }}
     QPushButton#primaryButton {{
         color: white;
-        border: 0;
         background: {colors.violet};
-        padding: 8px 20px;
+        border: 1px solid {colors.violet};
+        padding: 9px 22px;
+        font-weight: 700;
     }}
-    QPushButton#primaryButton:hover {{ background: {colors.cyan}; }}
-    QTabWidget::pane {{ border: 0; background: transparent; top: -1px; }}
-    QTabBar {{ qproperty-drawBase: 0; }}
-    QTabBar::tab {{
-        background: transparent;
-        color: {colors.muted};
-        border: 0;
-        border-bottom: 2px solid transparent;
-        padding: 11px 14px;
-        margin-right: 2px;
-        font-weight: 600;
+    QPushButton#primaryButton:hover {{
+        background: {colors.cyan}; border-color: {colors.cyan};
     }}
-    QTabBar::tab:hover {{ color: {colors.text}; background: {colors.hover}; }}
-    QTabBar::tab:selected {{ color: {colors.text}; border-bottom-color: {colors.violet}; }}
-    QCheckBox {{ spacing: 9px; }}
+    QPushButton#accentButton {{
+        background: transparent; border: 1px solid {colors.violet}; color: {colors.text};
+    }}
+    QPushButton#accentButton:hover {{
+        background: {colors.violet}; border-color: {colors.violet}; color: white;
+    }}
+    QPushButton#dangerButton {{
+        background: transparent; border: 1px solid {colors.border}; color: {colors.danger};
+    }}
+    QPushButton#dangerButton:hover {{
+        background: {colors.danger}; border-color: {colors.danger}; color: white;
+    }}
+    QCheckBox {{ spacing: 10px; padding: 2px 0; }}
     QCheckBox::indicator {{ width: 18px; height: 18px; }}
     QCheckBox::indicator:unchecked {{
         background: {colors.surface_alt}; border: 1px solid {colors.border};
         border-radius: 5px;
     }}
+    QCheckBox::indicator:unchecked:hover {{ border-color: {colors.violet}; }}
     QCheckBox::indicator:checked {{
         background: {colors.violet}; border: 1px solid {colors.violet};
         border-radius: 5px;
     }}
-    QScrollBar:vertical {{ background: transparent; width: 10px; margin: 3px; }}
-    QScrollBar::handle:vertical {{ background: {colors.border}; border-radius: 4px; min-height: 30px; }}
-    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+    QScrollBar:vertical {{
+        background: transparent; width: 12px; margin: 2px 2px 2px 2px;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {colors.border}; border-radius: 4px; min-height: 36px;
+    }}
+    QScrollBar::handle:vertical:hover {{ background: {colors.violet}; }}
+    QScrollBar::handle:vertical:pressed {{ background: {colors.cyan}; }}
+    QScrollBar:horizontal {{
+        background: transparent; height: 12px; margin: 2px 2px 2px 2px;
+    }}
+    QScrollBar::handle:horizontal {{
+        background: {colors.border}; border-radius: 4px; min-width: 36px;
+    }}
+    QScrollBar::handle:horizontal:hover {{ background: {colors.violet}; }}
+    QScrollBar::add-line, QScrollBar::sub-line {{
+        background: none; border: 0; width: 0; height: 0;
+    }}
+    QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
     QToolTip {{
         background: {colors.surface}; color: {colors.text};
         border: 1px solid {colors.border}; padding: 6px;
     }}
     QMenu {{
-        background: {colors.surface};
-        color: {colors.text};
-        border: 1px solid {colors.border};
-        padding: 6px;
+        background: {colors.surface}; color: {colors.text};
+        border: 1px solid {colors.border}; border-radius: 10px; padding: 6px;
     }}
     QMenu::item {{
-        background: transparent;
-        color: {colors.text};
-        border-radius: 6px;
-        padding: 7px 26px 7px 10px;
+        background: transparent; color: {colors.text};
+        border-radius: 6px; padding: 7px 26px 7px 10px;
     }}
     QMenu::item:selected {{ background: {colors.selected}; color: {colors.text}; }}
     QMenu::item:disabled {{ color: {colors.muted}; }}
-    QMenu::separator {{
-        background: {colors.border}; height: 1px; margin: 5px 8px;
+    QMenu::separator {{ background: {colors.border}; height: 1px; margin: 5px 8px; }}
+    QTabWidget::pane {{ border: 0; background: transparent; top: -1px; }}
+    QTabBar {{ qproperty-drawBase: 0; }}
+    QTabBar::tab {{
+        background: transparent; color: {colors.muted}; border: 0;
+        border-bottom: 2px solid transparent; padding: 11px 14px;
+        margin-right: 2px; font-weight: 600;
     }}
+    QTabBar::tab:hover {{ color: {colors.text}; background: {colors.hover}; }}
+    QTabBar::tab:selected {{ color: {colors.text}; border-bottom-color: {colors.violet}; }}
+    QMessageBox {{ background: {colors.surface}; }}
     """
-
 
 def qt_palette(colors: Palette) -> QPalette:
     result = QPalette()
