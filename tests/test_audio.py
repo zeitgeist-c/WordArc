@@ -152,6 +152,47 @@ class TestAudioDeviceEnumeration(unittest.TestCase):
             self.assertEqual(audio._match_input_device("USB Mic"), 0)
 
 
+class TestDeviceRescan(unittest.TestCase):
+    """PortAudio caches its device list; a rescan has to restart it."""
+
+    def test_refresh_restarts_portaudio_so_new_devices_appear(self):
+        with mock.patch.object(audio.sd, "_terminate") as terminate, \
+             mock.patch.object(audio.sd, "_initialize") as initialize:
+            self.assertTrue(audio.refresh_devices())
+        terminate.assert_called_once_with()
+        initialize.assert_called_once_with()
+
+    def test_refresh_never_runs_while_a_stream_is_open(self):
+        """Re-initialising PortAudio would end the recording in progress."""
+        stream = mock.Mock(active=True)
+        audio._streams.add(stream)
+        try:
+            with mock.patch.object(audio.sd, "_terminate") as terminate:
+                self.assertFalse(audio.refresh_devices())
+            terminate.assert_not_called()
+        finally:
+            audio._streams.discard(stream)
+
+    def test_a_stopped_stream_does_not_block_the_rescan(self):
+        stream = mock.Mock(active=False)
+        audio._streams.add(stream)
+        try:
+            with mock.patch.object(audio.sd, "_terminate"):
+                self.assertTrue(audio.refresh_devices())
+        finally:
+            audio._streams.discard(stream)
+
+    def test_streams_are_tracked_for_the_guard(self):
+        fake = mock.Mock(active=True)
+        with mock.patch.object(audio.sd, "InputStream", return_value=fake):
+            stream = audio._open_portaudio_stream(device=None)
+        try:
+            self.assertIs(stream, fake)
+            self.assertTrue(audio.has_active_capture())
+        finally:
+            audio._streams.discard(fake)
+
+
 class TestRecorderDeviceFallback(unittest.TestCase):
     """A saved device can go away; the take must survive it."""
 

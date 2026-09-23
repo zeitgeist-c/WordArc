@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import wave
+import weakref
 
 try:
     import sounddevice as sd
@@ -65,6 +66,41 @@ MME_NAME_LIMIT = 31
 # Windows) resamples to the app's rate, while forcing the WASAPI copies — the
 # obvious-looking `sd.default.hostapi` is read-only anyway — hands back "Invalid
 # sample rate" for the 16 kHz this app records at.
+
+# Every running PortAudio stream, so a device rescan can tell whether
+# re-initialising the library is safe (it would end an open recording).
+_streams = weakref.WeakSet()
+
+
+def _open_portaudio_stream(**kwargs):
+    """Create and start an input stream, tracked for the device rescan."""
+    stream = sd.InputStream(**kwargs)
+    stream.start()
+    _streams.add(stream)
+    return stream
+
+
+def has_active_capture():
+    """Whether a PortAudio stream is running right now."""
+    return any(getattr(stream, "active", False) for stream in _streams)
+
+
+def refresh_devices():
+    """Make the device list live again; True when the library was restarted.
+
+    PortAudio caches what it saw when it started, so a headset reconnected
+    after the app opened never shows up in a plain re-query — terminating and
+    re-initialising the library is what makes it appear. Nothing happens while
+    a stream is open: that would end the recording.
+    """
+    if has_active_capture():
+        return False
+    try:
+        sd._terminate()
+        sd._initialize()
+    except Exception:
+        return False
+    return True
 
 
 def _peak_rms(chunk):
@@ -149,11 +185,10 @@ class Recorder(QObject, _CaptureBase):
                 self.failed.emit(t("Could not open the microphone."))
 
     def _open_stream(self):
-        self._stream = sd.InputStream(
+        self._stream = _open_portaudio_stream(
             samplerate=RATE, channels=CHANNELS, dtype="int16",
             blocksize=CHUNK_FRAMES, device=self._device,
             callback=self._callback)
-        self._stream.start()
 
     def _callback(self, indata, frames, time_info, status):
         if status and not self._error_reported:
@@ -253,11 +288,10 @@ class MeetingRecorder(QObject, _CaptureBase):
         mic_dev = _match_input_device(mic_target)
         sys_dev = _match_loopback_device(system_target) if system_target else None
         try:
-            self._mic_stream = sd.InputStream(
+            self._mic_stream = _open_portaudio_stream(
                 samplerate=RATE, channels=1, dtype="int16",
                 blocksize=CHUNK_FRAMES, device=mic_dev,
                 callback=lambda d, f, ti, s: self._mic_cb(d, f, ti, s))
-            self._mic_stream.start()
         except Exception:
             self._mic_stream = None
             if mic_target:
@@ -267,11 +301,10 @@ class MeetingRecorder(QObject, _CaptureBase):
                 _log.warning("saved meeting microphone %r did not open; "
                              "falling back to the default input", mic_target)
                 try:
-                    self._mic_stream = sd.InputStream(
+                    self._mic_stream = _open_portaudio_stream(
                         samplerate=RATE, channels=1, dtype="int16",
                         blocksize=CHUNK_FRAMES, device=None,
                         callback=lambda d, f, ti, s: self._mic_cb(d, f, ti, s))
-                    self._mic_stream.start()
                 except Exception:
                     self._mic_stream = None
             if self._mic_stream is None:
@@ -287,11 +320,10 @@ class MeetingRecorder(QObject, _CaptureBase):
                 pass
         else:
             try:
-                self._sys_stream = sd.InputStream(
+                self._sys_stream = _open_portaudio_stream(
                     samplerate=RATE, channels=1, dtype="int16",
                     blocksize=CHUNK_FRAMES, device=sys_dev,
                     callback=lambda d, f, ti, s: self._sys_cb(d, f, ti, s))
-                self._sys_stream.start()
             except Exception:
                 self._sys_stream = None
                 # No system capture is not fatal — record a silent right channel.

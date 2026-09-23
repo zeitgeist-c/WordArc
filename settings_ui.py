@@ -1395,6 +1395,9 @@ class SettingsWindow(QDialog):
 
     def _refresh_audio_devices(self, *_):
         """Rescan hot-plugged devices while preserving current selections."""
+        # PortAudio only reports what it saw when it started; restarting the
+        # library is what makes a device connected later show up here.
+        audio.refresh_devices()
         sources = audio.list_sources()
         for combo, default_label in (
                 (getattr(self, "mic", None), t("Default microphone")),
