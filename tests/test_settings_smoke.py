@@ -34,6 +34,7 @@ class TestSettingsSmoke(unittest.TestCase):
             mock.patch.object(cfg.credential_store, "read_all", return_value=[]),
             mock.patch.object(cfg.credential_store, "write_all"),
             mock.patch.object(settings_ui.audio, "list_sources", return_value=[]),
+            mock.patch.object(settings_ui.audio, "refresh_devices"),
             mock.patch.object(settings_ui.audio, "list_monitors", return_value=[]),
             mock.patch.object(settings_ui.startup, "is_enabled", return_value=False),
         ]
