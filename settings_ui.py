@@ -5,13 +5,14 @@ import logging
 import sys
 import threading
 
-from PyQt6.QtCore import QLibraryInfo, QSize, Qt, QTranslator, QUrl, pyqtSignal
-from PyQt6.QtGui import (QDesktopServices, QFont, QGuiApplication, QIcon,
-                         QKeySequence, QShortcut)
+from PyQt6.QtCore import (QEasingCurve, QLibraryInfo, QPoint, QPropertyAnimation,
+                          QSize, Qt, QTimer, QTranslator, QUrl, pyqtSignal)
+from PyQt6.QtGui import (QDesktopServices, QFont, QFontMetrics, QGuiApplication,
+                         QIcon, QKeySequence, QShortcut)
 from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-    QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout, QInputDialog,
-    QLabel, QLineEdit,
+    QFileDialog, QFormLayout, QFrame, QGraphicsOpacityEffect, QGroupBox,
+    QHBoxLayout, QInputDialog, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
     QPushButton, QScrollArea, QSizePolicy, QSpinBox, QStyle,
     QTabWidget, QVBoxLayout, QWidget,
@@ -23,6 +24,7 @@ import config as cfg
 import filetranscribe
 import i18n
 import meeting
+import sounds
 import startup
 import theme
 from brand import BRAND, brand_asset
@@ -142,6 +144,86 @@ def install_qt_translator(app, code):
     return False
 
 
+class SaveBanner(QFrame):
+    """The strip a save shows under the header rule, then takes away itself.
+
+    A save does not need an answer from anyone: the settings are already on
+    disk, so the window keeps working and the confirmation leaves on its own.
+    Nothing here accepts a click, and nothing has to be dismissed.
+    """
+
+    HEIGHT = 46
+    HOLD_MS = 2400
+    FADE_IN_MS = 150
+    FADE_OUT_MS = 320
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setObjectName("saveBanner")
+        self.setFixedHeight(self.HEIGHT)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(13, 0, 13, 0)
+        row.setSpacing(10)
+        self.mark = QLabel("✓")
+        self.mark.setObjectName("saveBannerMark")
+        self.mark.setFixedSize(26, 26)
+        self.mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        row.addWidget(self.mark)
+        self.label = QLabel("")
+        self.label.setObjectName("saveBannerText")
+        row.addWidget(self.label)
+        row.addStretch(1)
+        self._opacity = QGraphicsOpacityEffect(self)
+        self._opacity.setOpacity(0.0)
+        self.setGraphicsEffect(self._opacity)
+        self._animation = QPropertyAnimation(self._opacity, b"opacity", self)
+        self._animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        self._animation.finished.connect(self._after_animation)
+        self._hold = QTimer(self)
+        self._hold.setSingleShot(True)
+        self._hold.timeout.connect(self.fade_out)
+        self.hide()
+
+    def show_saved(self, text):
+        self.label.setText(text)
+        self.place()
+        self.show()
+        self.raise_()
+        self._hold.stop()
+        self._animate(1.0, self.FADE_IN_MS)
+        self._hold.start(self.FADE_IN_MS + self.HOLD_MS)
+
+    def fade_out(self):
+        self._animate(0.0, self.FADE_OUT_MS)
+
+    def place(self):
+        """Sit under the header rule, as wide as the window's own margins."""
+        window = self.parentWidget()
+        if window is None:
+            return
+        margin = window.layout().contentsMargins().left()
+        rule = getattr(window, "_header_rule", None)
+        top = 8
+        if rule is not None:
+            top = rule.mapTo(window, QPoint(0, 0)).y() + 5
+        self.setGeometry(margin, top,
+                         max(160, window.width() - 2 * margin), self.HEIGHT)
+
+    # ---- internals -----------------------------------------------------
+
+    def _animate(self, target, msec):
+        self._animation.stop()
+        self._animation.setDuration(msec)
+        self._animation.setStartValue(self._opacity.opacity())
+        self._animation.setEndValue(target)
+        self._animation.start()
+
+    def _after_animation(self):
+        if self._opacity.opacity() <= 0.01:
+            self.hide()
+
+
 class SettingsWindow(QDialog):
     applied = pyqtSignal()
     language_changed = pyqtSignal()
@@ -209,6 +291,7 @@ class SettingsWindow(QDialog):
         rule = QFrame()
         rule.setObjectName("headerRule")
         rule.setFixedHeight(1)
+        self._header_rule = rule
 
         content = self._build_navigation()
 
@@ -227,6 +310,10 @@ class SettingsWindow(QDialog):
         layout.addWidget(rule)
         layout.addWidget(content, 1)
         layout.addWidget(buttons)
+
+        # Floats over the tab strip rather than taking a row of its own: a
+        # confirmation that shoves the window around costs more than it says.
+        self.save_banner = SaveBanner(self)
 
         self._models_loaded.connect(self._on_models_loaded)
         self._transcribe_models_loaded.connect(self._on_transcribe_models_loaded)
@@ -1219,7 +1306,21 @@ class SettingsWindow(QDialog):
             print(f"wordarc: could not trim the history ({exc})")
         self._load_history()  # the trim may just have dropped rows from the list
         self.applied.emit()
-        info_box(self, t("WordArc Settings"), t("Saved successfully."))
+        self._confirm_saved()
+
+    def _confirm_saved(self):
+        """Say the settings are in without taking the window over."""
+        self.save_banner.show_saved(t("Settings saved"))
+        sounds.play(sounds.SAVED)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # The banner is not in the layout, so it has to be told where the
+        # window's new edges are. The window is resized once before the banner
+        # exists.
+        banner = getattr(self, "save_banner", None)
+        if banner is not None and banner.isVisible():
+            banner.place()
 
     @staticmethod
     def _select_data(combo, value):
@@ -1234,18 +1335,49 @@ class SettingsWindow(QDialog):
                     break
         combo.setCurrentIndex(index if index >= 0 else 0)
 
+    # What the drop-down needs beside the text itself: the item padding, the
+    # list's own padding, its frame and the scroll bar.
+    DEVICE_POPUP_PADDING = 46
+
     @staticmethod
-    def _fill_device_combo(combo, items, default_label, selected):
-        """Refill a device box: short visible text, full name as tooltip."""
+    def _device_label(label):
+        """One readable line: driver-supplied names can carry line breaks."""
+        return " ".join(str(label).split())
+
+    @classmethod
+    def _widen_device_popup(cls, combo):
+        """Let the drop-down show device names whole instead of clipped.
+
+        The list opens as wide as its longest entry, so no name needs the
+        ellipsis a fixed-width list ends them all with. It stays capped to the
+        screen: a Bluetooth hands-free entry can run twice the window wide,
+        and a list that runs off the screen helps nobody.
+        """
+        metrics = QFontMetrics(combo.font())
+        widest = max((metrics.horizontalAdvance(combo.itemText(index))
+                      for index in range(combo.count())), default=0)
+        if not widest:
+            return
+        screen = combo.screen() or QGuiApplication.primaryScreen()
+        limit = 900
+        if screen is not None:
+            limit = max(320, screen.availableGeometry().width() - 80)
+        combo.view().setMinimumWidth(
+            min(widest + cls.DEVICE_POPUP_PADDING, limit))
+
+    @classmethod
+    def _fill_device_combo(cls, combo, items, default_label, selected):
+        """Refill a device box with the names as they are, not cut short."""
         combo.blockSignals(True)
         combo.clear()
         combo.addItem(default_label, "")
         for target, label in items:
-            display = label if len(label) <= 30 else label[:27] + "…"
+            display = cls._device_label(label)
             combo.addItem(display, target)
-            combo.setItemData(combo.count() - 1, label,
+            combo.setItemData(combo.count() - 1, display,
                               Qt.ItemDataRole.ToolTipRole)
-        SettingsWindow._select_data(combo, selected)
+        cls._select_data(combo, selected)
+        cls._widen_device_popup(combo)
         combo.blockSignals(False)
 
     def _refresh_audio_devices(self, *_):

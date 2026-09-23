@@ -8,6 +8,7 @@ import PyQt6
 _QT_TRANSLATIONS = os.path.join(os.path.dirname(PyQt6.__file__),
                                 "Qt6", "translations")
 datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand'),
+         ('assets/sounds', 'assets/sounds'),
          (os.path.join(_QT_TRANSLATIONS, 'qtbase_tr.qm'),
           'PyQt6/Qt6/translations')]
 binaries = []

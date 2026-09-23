@@ -63,6 +63,20 @@ def palette(mode=None) -> Palette:
     return DARK if selected == ThemeMode.DARK else LIGHT
 
 
+def _mix(base: str, accent: str, ratio: float) -> str:
+    """A solid colour part way between two palette entries.
+
+    Qt's stylesheets read an ``rgba()`` alpha as a 0-255 integer, so a tint is
+    pre-blended onto whatever actually sits behind it instead.
+    """
+    first, second = QColor(base), QColor(accent)
+    return QColor(
+        round(first.red() + (second.red() - first.red()) * ratio),
+        round(first.green() + (second.green() - first.green()) * ratio),
+        round(first.blue() + (second.blue() - first.blue()) * ratio),
+    ).name()
+
+
 def stylesheet(colors: Palette) -> str:
     return f"""
     * {{
@@ -265,6 +279,20 @@ def stylesheet(colors: Palette) -> str:
     QTabBar::tab:hover {{ color: {colors.text}; background: {colors.hover}; }}
     QTabBar::tab:selected {{ color: {colors.text}; border-bottom-color: {colors.violet}; }}
     QMessageBox {{ background: {colors.surface}; }}
+    QFrame#saveBanner {{
+        background: {_mix(colors.window, colors.success, 0.10)};
+        border: 1px solid {_mix(colors.window, colors.success, 0.45)};
+        border-radius: 10px;
+    }}
+    QLabel#saveBannerMark {{
+        color: {colors.success};
+        background: {_mix(colors.window, colors.success, 0.18)};
+        border: 1px solid {_mix(colors.window, colors.success, 0.42)};
+        border-radius: 13px;
+        font-size: 11pt;
+        font-weight: 700;
+    }}
+    QLabel#saveBannerText {{ color: {colors.text}; font-weight: 600; }}
     """
 
 def qt_palette(colors: Palette) -> QPalette:

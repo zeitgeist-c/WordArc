@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+from PyQt6.QtCore import QPoint
+from PyQt6.QtGui import QFontMetrics
 from PyQt6.QtWidgets import QApplication
 
 import config as cfg
@@ -219,6 +221,70 @@ class TestSettingsSmoke(unittest.TestCase):
         for expected in ("Sound", "Who is talking", "Minutes", "Recording",
                          "Minutes instruction", "Minutes"):
             self.assertIn(t(expected), titles)
+
+    def test_device_names_are_listed_whole(self):
+        """A long device name is shown as it is; the list opens wide for it."""
+        window = self.window
+        long_name = "Mikrofon (3- USBGH8-Plus-7.1-ENC) (Windows DirectSound)"
+        # Bluetooth hands-free entries really do carry a line break inside.
+        broken = ("Kulaklık (@System32\\drivers\\bthhfenum.sys,#2;%1 "
+                  "Hands-Free%0\r\n;(REDMI Buds 8 Lite))")
+        window._fill_device_combo(
+            window.mic, [("sd:one", long_name), ("sd:two", broken)],
+            t("Default microphone"), "")
+        texts = [window.mic.itemText(index)
+                 for index in range(window.mic.count())]
+        self.assertEqual(texts[0], t("Default microphone"))
+        self.assertEqual(texts[1], long_name)
+        self.assertNotIn("\n", texts[2])
+        self.assertNotIn("\r", texts[2])
+        self.assertTrue(texts[2].endswith("(REDMI Buds 8 Lite))"))
+        metrics = QFontMetrics(window.mic.font())
+        widest = max(metrics.horizontalAdvance(text) for text in texts)
+        limit = window.mic.screen().availableGeometry().width() - 80
+        wanted = widest + settings_ui.SettingsWindow.DEVICE_POPUP_PADDING
+        self.assertEqual(window.mic.view().minimumWidth(),
+                         wanted if wanted <= limit else limit)
+
+    def test_save_confirms_with_the_banner_and_a_chime(self):
+        """A save says so in the window itself; no modal box comes back."""
+        window = self.window
+        applied = mock.Mock()
+        window.applied.connect(applied)
+        with mock.patch.object(settings_ui.startup, "set_enabled"), \
+             mock.patch.object(settings_ui.sounds, "play") as chime, \
+             mock.patch.object(settings_ui, "info_box") as box:
+            window._save()
+        box.assert_not_called()
+        chime.assert_called_once_with(settings_ui.sounds.SAVED)
+        self.assertEqual(window.save_banner.label.text(), t("Settings saved"))
+        applied.assert_called_once_with()
+
+    def test_save_banner_rides_under_the_header_rule(self):
+        window = self.window
+        window.resize(920, 700)
+        window.show()
+        self.app.processEvents()
+        banner = window.save_banner
+        banner.show_saved(t("Settings saved"))
+        self.app.processEvents()
+        rule = window._header_rule
+        self.assertTrue(banner.isVisible())
+        self.assertGreater(banner.y(), rule.mapTo(window, QPoint(0, 0)).y())
+        self.assertEqual(banner.x(), 22)
+        self.assertEqual(banner.width(), window.width() - 44)
+        # Nothing to click, and it leaves on its own.
+        self.assertTrue(banner.testAttribute(
+            settings_ui.Qt.WidgetAttribute.WA_TransparentForMouseEvents))
+        self.assertTrue(banner._hold.isActive())
+        # A resize while it is up keeps it under the rule.
+        window.resize(760, 600)
+        self.app.processEvents()
+        self.assertEqual(banner.width(), 760 - 44)
+        self.assertEqual(banner.y(),
+                         rule.mapTo(window, QPoint(0, 0)).y() + 5)
+        banner.fade_out()
+        self.assertEqual(banner._animation.endValue(), 0.0)
 
     def test_header_has_no_tagline_and_pages_have_no_duplicate_title(self):
         window = self.window
