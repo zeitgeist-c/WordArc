@@ -1284,12 +1284,22 @@ class SettingsWindow(QDialog):
         )
         self.gemini_test_button.setEnabled(selected or bool(self.conf.gemini_keys()))
 
+    def _key_dialog(self, title, value=""):
+        """The password prompt for one API key, in the interface language."""
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle(t(title))
+        dialog.setLabelText(t("Gemini API key"))
+        dialog.setTextEchoMode(QLineEdit.EchoMode.Password)
+        dialog.setTextValue(value)
+        dialog.setOkButtonText(t("OK"))
+        dialog.setCancelButtonText(t("Cancel"))
+        return dialog
+
     def _prompt_gemini_key(self, title, value=""):
-        key, ok = QInputDialog.getText(
-            self, t(title), t("Gemini API key"),
-            QLineEdit.EchoMode.Password, value,
-        )
-        return key.strip() if ok else ""
+        dialog = self._key_dialog(title, value)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return ""
+        return dialog.textValue().strip()
 
     def _add_gemini_key(self):
         if len(self._gemini_keys) >= 5:
