@@ -246,3 +246,15 @@ class TestSettingsSmoke(unittest.TestCase):
         for control in (window.ui_language, window.corner,
                         window.start_with_windows, window.close_to_tray):
             self.assertTrue(control.isVisibleTo(window), control)
+
+    def test_api_keys_card_layout_and_button_styles(self):
+        window = self.window
+        self.assertEqual(window.gemini_keys_list.minimumHeight(), 150)
+        self.assertEqual(window.gemini_add_button.objectName(), "accentButton")
+        self.assertEqual(window.gemini_remove_button.objectName(), "dangerButton")
+        card = window.gemini_keys_list.parentWidget()
+        self.assertEqual(len(card.findChildren(settings_ui.QPushButton)), 6)
+        names = [b.objectName() for b in window.findChildren(settings_ui.QPushButton)]
+        self.assertGreaterEqual(names.count("dangerButton"), 4)
+        src = pathlib.Path(settings_ui.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("Keys are tried from top to bottom and stored only", src)
