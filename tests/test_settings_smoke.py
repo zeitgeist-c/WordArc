@@ -274,3 +274,12 @@ class TestSettingsSmoke(unittest.TestCase):
             dialog.close()
         finally:
             i18n.set_language(previous)
+
+    def test_qt_translator_follows_the_ui_language(self):
+        from PyQt6.QtCore import QCoreApplication
+        self.assertTrue(settings_ui.install_qt_translator(self.app, "tr"))
+        self.assertNotEqual(QCoreApplication.translate("QLineEdit", "&Paste"),
+                            "&Paste")
+        self.assertFalse(settings_ui.install_qt_translator(self.app, "en"))
+        self.assertEqual(QCoreApplication.translate("QLineEdit", "&Paste"),
+                         "&Paste")

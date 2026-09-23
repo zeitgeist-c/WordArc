@@ -2,9 +2,10 @@
 
 import os
 import logging
+import sys
 import threading
 
-from PyQt6.QtCore import QSize, Qt, QUrl, pyqtSignal
+from PyQt6.QtCore import QLibraryInfo, QSize, Qt, QTranslator, QUrl, pyqtSignal
 from PyQt6.QtGui import (QDesktopServices, QFont, QGuiApplication, QIcon,
                          QKeySequence, QShortcut)
 from PyQt6.QtWidgets import (
@@ -112,6 +113,33 @@ def confirm_box(parent, title, text):
     box.setDefaultButton(QMessageBox.StandardButton.No)
     _box_button_texts(box)
     return box.exec() == QMessageBox.StandardButton.Yes
+
+
+_qt_translator = None
+
+
+def install_qt_translator(app, code):
+    """Qt's own strings (context menus, dialog buttons) in the UI language.
+
+    Qt ships the Turkish catalogue next to the PyQt6 package; a frozen build
+    carries the same file under its own bundle directory.
+    """
+    global _qt_translator
+    if _qt_translator is not None:
+        app.removeTranslator(_qt_translator)
+        _qt_translator = None
+    if code != "tr":
+        return False
+    translator = QTranslator(app)
+    for folder in (
+        os.path.join(getattr(sys, "_MEIPASS", ""), "PyQt6", "Qt6", "translations"),
+        QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath),
+    ):
+        if folder and translator.load("qtbase_tr", folder):
+            app.installTranslator(translator)
+            _qt_translator = translator
+            return True
+    return False
 
 
 class SettingsWindow(QDialog):
@@ -351,6 +379,7 @@ class SettingsWindow(QDialog):
             logging.getLogger("wordarc.ui").warning(
                 "language changed but could not be persisted")
         i18n.set_language(code)
+        install_qt_translator(QGuiApplication.instance(), code)
         self._refresh_header_lang()
         self.language_changed.emit()
 
