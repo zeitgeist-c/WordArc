@@ -39,10 +39,11 @@ import brand_migration  # noqa: E402
 import theme  # noqa: E402
 import startup  # noqa: E402
 from brand import brand_asset  # noqa: E402
+import i18n  # noqa: E402
 from i18n import t  # noqa: E402
 from meeting import MeetingPipeline  # noqa: E402
 from overlay import Overlay  # noqa: E402
-from settings_ui import SettingsWindow  # noqa: E402
+from settings_ui import SettingsWindow, install_qt_translator  # noqa: E402
 from worker import Pipeline  # noqa: E402
 
 SERVER_NAME = BRAND.ipc_name(getpass.getuser())
@@ -689,6 +690,7 @@ def main():
         print("wordarc: no system tray found, running anyway")
 
     conf = cfg.Config()
+    install_qt_translator(app, i18n.language())
     theme.ThemeManager.apply(conf["theme_mode"], app)
     wordarc = WordArc(app, conf)
 

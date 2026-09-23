@@ -1,5 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
-datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand')]
+import os
+
+import PyQt6
+
+# Qt's own strings (context menus, dialog buttons) come from this catalogue;
+# without it a Turkish interface still shows English in those places.
+_QT_TRANSLATIONS = os.path.join(os.path.dirname(PyQt6.__file__),
+                                "Qt6", "translations")
+datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand'),
+         (os.path.join(_QT_TRANSLATIONS, 'qtbase_tr.qm'),
+          'PyQt6/Qt6/translations')]
 binaries = []
 hiddenimports = ['soundcard']
 
