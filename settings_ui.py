@@ -1337,7 +1337,7 @@ class SettingsWindow(QDialog):
         if not key:
             return
         if key in self._gemini_keys:
-            warn_box(self, t("Error"), t("Bu API anahtarı zaten listede."))
+            warn_box(self, t("Error"), t("This API key is already listed."))
             return
         self._gemini_keys.append(key)
         self._refresh_gemini_keys(len(self._gemini_keys) - 1)
@@ -1350,7 +1350,7 @@ class SettingsWindow(QDialog):
         if not key:
             return
         if key in self._gemini_keys and key != self._gemini_keys[row]:
-            warn_box(self, t("Error"), t("Bu API anahtarı zaten listede."))
+            warn_box(self, t("Error"), t("This API key is already listed."))
             return
         self._gemini_keys[row] = key
         self._refresh_gemini_keys(row)
