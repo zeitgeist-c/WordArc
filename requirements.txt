@@ -2,3 +2,7 @@ PyQt6>=6.11,<6.12
 sounddevice>=0.5.5,<0.6
 SoundCard>=0.4.6,<0.5
 numpy>=1.26,<3
+# Local speech to text (Settings → Speech to text → Local). Everything else in
+# the app runs without it; this is what a machine that transcribes on its own
+# needs installed.
+faster-whisper>=1.0,<2

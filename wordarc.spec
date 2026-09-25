@@ -12,7 +12,12 @@ datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand'),
          (os.path.join(_QT_TRANSLATIONS, 'qtbase_tr.qm'),
           'PyQt6/Qt6/translations')]
 binaries = []
-hiddenimports = ['soundcard']
+# The local speech engine. faster_whisper pulls in ctranslate2, onnxruntime,
+# tokenizers, av and huggingface_hub, and PyInstaller's hooks miss most of them
+# because they reach for binaries at runtime rather than importing them.
+hiddenimports = ['soundcard', 'faster_whisper', 'ctranslate2',
+                  'onnxruntime', 'tokenizers', 'huggingface_hub',
+                  'av', 'av.audio.resampler']
 
 
 a = Analysis(

@@ -598,6 +598,37 @@ def _host_rank(hostapi_name):
     return len(_HOST_PRIORITY)
 
 
+CONNECTION_HINTS = (
+    # Bluetooth first: a headset name can carry a USB-ish word too, and the
+    # bth* ids are the one thing that is never wrong about a Bluetooth device.
+    ("bluetooth", "bluetooth", "bth", "bt_", "bthenum", "bthhfenum",
+     "hands-free", "handsfree", "a2dp", "wireless", "redmi buds"),
+    ("usb", "usb", "usbgh"),
+    # The onboard controller shows up under whatever the sound card is called,
+    # so this list is the card vendors rather than the word "internal".
+    ("built-in", "dahili", "internal", "built in", "integrated", "onboard",
+     "realtek", "hda intel", "apple", "mic array", "ses eşleştiricisi",
+     "birincil ses", "thx", "amd"),
+)
+
+
+def _connection_kind(name, host_name=""):
+    """How a device is plugged in, from what Windows calls it.
+
+    Windows has no field for this, so it has to be read out of the names — which
+    is also why a guess is made only when something actually matches: a
+    wrong "USB" on a Bluetooth headset is worse than saying nothing. The host
+    API is the tie-breaker, because a Bluetooth endpoint is always carried by a
+    Bluetooth service and never by MME or DirectSound. The three labels are
+    translated where the box is drawn, not here.
+    """
+    hay = f"{name or ''} {host_name or ''}".casefold()
+    for kind, *hints in CONNECTION_HINTS:
+        if any(hint in hay for hint in hints):
+            return kind
+    return ""
+
+
 def _recordable(index, host_name):
     """Whether a device copy can record at the settings this app uses.
 
@@ -670,6 +701,32 @@ def list_sources():
     return [(target, f"{label} ({host_name})"
              if host_name and counts[label.casefold()] > 1 else label)
             for target, label, host_name, _ in out]
+
+
+def describe_sources():
+    """[(target, label, connection)] for the device boxes, with the kind.
+
+    list_sources() answers "which device is this" and stays a flat pair list,
+    because the recording code and the tests both read it that way. This adds
+    the one extra thing the settings list shows under the name — how the device
+    is connected — by asking audio.list_sources() rather than re-walking
+    PortAudio, so the two can never disagree about which devices exist.
+    """
+    out = []
+    for target, label in list_sources():
+        out.append((target, label, _connection_kind(label)))
+    return out
+
+
+def describe_monitors():
+    """[(target, label, connection)] for the system-sound boxes.
+
+    Same shape as describe_sources(), and for the same reason: the card row
+    wants one extra line of text, and re-walking PortAudio here would risk
+    the two lists naming different outputs.
+    """
+    return [(target, label, _connection_kind(label))
+            for target, label in list_monitors()]
 
 
 def list_monitors():

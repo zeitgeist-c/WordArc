@@ -6,16 +6,16 @@ import sys
 import threading
 
 from PyQt6.QtCore import (QEasingCurve, QLibraryInfo, QPoint, QPropertyAnimation,
-                          QSize, Qt, QTimer, QTranslator, QUrl, pyqtSignal)
-from PyQt6.QtGui import (QDesktopServices, QFont, QFontMetrics, QGuiApplication,
-                         QIcon, QKeySequence, QShortcut)
+                          QRect, QSize, Qt, QTimer, QTranslator, QUrl, pyqtSignal)
+from PyQt6.QtGui import (QColor, QDesktopServices, QFont, QFontMetrics,
+                         QGuiApplication, QIcon, QKeySequence, QShortcut)
 from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QFormLayout, QFrame, QGraphicsOpacityEffect, QGroupBox,
     QHBoxLayout, QInputDialog, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
     QPushButton, QScrollArea, QSizePolicy, QSpinBox, QStyle,
-    QTabWidget, QVBoxLayout, QWidget,
+    QStyledItemDelegate, QStyleOptionViewItem, QTabWidget, QVBoxLayout, QWidget,
 )
 
 import api
@@ -23,6 +23,7 @@ import audio
 import config as cfg
 import filetranscribe
 import i18n
+import localspeech
 import meeting
 import sounds
 import startup
@@ -224,12 +225,295 @@ class SaveBanner(QFrame):
             self.hide()
 
 
+# What a device card says under the name. The keys are what audio.py guesses
+# and the values are the text handed to t(), so the guess itself stays out of
+# the translation table and only the one word that changes is in it.
+CONNECTION_LABELS = {
+    "bluetooth": "Bluetooth",
+    "usb": "USB",
+    "built-in": "Built-in",
+}
+
+
+class DeviceCardDelegate(QStyledItemDelegate):
+    """Draws a device row as a card: the name, and under it how it is connected.
+
+    One line per device was not enough to tell two rows apart — a machine with a
+    headset, a USB interface and a laptop array shows three near-identical
+    names, and the user has to open each one to find out. The second line says
+    what the first one leaves out.
+
+    The card only appears when there are enough rows to need it. A two-item
+    box (Cloud/Local, a language) would spend twice the height saying less.
+    """
+
+    # Below this, the plain single-line row is the better look: there is no
+    # scrolling to do and nothing to disambiguate.
+    MIN_ROWS_FOR_CARDS = 5
+
+    # The air around a card's two lines. sizeHint() and paint() both use these,
+    # so the height promised and the height drawn can never drift apart.
+    PAINT_PADDING_TOP = 5
+    PAINT_PADDING_BOTTOM = 6
+    PAINT_PADDING_X = 10
+    BAR_WIDTH = 3
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._connection_text = {}
+
+    def set_connection_text(self, index, text):
+        """The second line for one row, or "" for none."""
+        self._connection_text[index] = text or ""
+        view = self.parent()
+        if isinstance(view, QAbstractItemView):
+            view.viewport().update()
+
+    def set_connection_text_map(self, mapping):
+        """Replace every row's second line at once."""
+        self._connection_text = {int(i): (text or "")
+                                 for i, text in mapping.items()}
+
+    def connection_text(self, index):
+        return self._connection_text.get(index, "")
+
+    def sizeHint(self, option, index):
+        hint = super().sizeHint(option, index)
+        sub = self.connection_text(index.row())
+        if not sub:
+            return hint
+        metrics = option.fontMetrics
+        small = QFont(option.font)
+        small.setPointSizeF(max(8.0, option.font.pointSizeF() - 1.5))
+        small_metrics = QFontMetrics(small)
+        # Both lines at their own leading, plus the padding paint() draws
+        # around them, plus a few pixels so the last row is never the one that
+        # gets clipped: metrics.lineSpacing() alone measured 5px short per card
+        # and every second line sat on the row below it.
+        height = (metrics.lineSpacing() + small_metrics.lineSpacing()
+                  + self.PAINT_PADDING_TOP + self.PAINT_PADDING_BOTTOM + 2)
+        return QSize(hint.width(), max(hint.height(), height))
+
+    def paint(self, painter, option, index):
+        sub = self.connection_text(index.row())
+        if not sub:
+            super().paint(painter, option, index)
+            return
+
+        painter.save()
+        # The theme can be switched with the window open, so the palette is
+        # read here rather than captured when the delegate was built.
+        colors = theme.palette()
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        if selected:
+            painter.fillRect(option.rect, QColor(colors.selected))
+            # The bar is what makes the chosen row findable at a glance in a
+            # list this tall; without it the card is just another dark row.
+            painter.fillRect(QRect(option.rect.left(), option.rect.top(),
+                                   self.BAR_WIDTH, option.rect.height()),
+                             QColor(colors.violet))
+        elif hovered:
+            painter.fillRect(option.rect, QColor(colors.hover))
+
+        rect = option.rect.adjusted(
+            self.PAINT_PADDING_X + self.BAR_WIDTH, self.PAINT_PADDING_TOP,
+            -self.PAINT_PADDING_X, -self.PAINT_PADDING_BOTTOM)
+        # Measured with the font that is about to be used, not the option's:
+        # the name is drawn bold, and eliding against the unbolded metrics
+        # leaves a name a few pixels too wide to fit (measured: a 233px name
+        # elided for 240px and then drawn 246px wide, so it ran off the row).
+        font = QFont(option.font)
+        font.setBold(True)
+        metrics = QFontMetrics(font)
+        name_color = QColor(colors.text if (selected or hovered)
+                            else colors.muted)
+        sub_color = QColor(colors.violet if selected else colors.muted)
+        painter.setFont(font)
+        painter.setPen(name_color)
+        name = metrics.elidedText(
+            index.data(Qt.ItemDataRole.DisplayRole) or "",
+            Qt.TextElideMode.ElideMiddle, rect.width())
+        flags = (Qt.AlignmentFlag.AlignLeft
+                 | Qt.AlignmentFlag.AlignVCenter)
+        # The two lines share the row, split at the midpoint of the text area
+        # rather than at metrics.lineSpacing(), so the card looks the same
+        # whatever font is in use and the second line can never land on the
+        # row below it.
+        half = rect.height() // 2
+        painter.drawText(QRect(rect.left(), rect.top(), rect.width(), half),
+                         int(flags), name)
+        small = QFont(option.font)
+        small.setPointSizeF(max(8.0, option.font.pointSizeF() - 1.5))
+        painter.setFont(small)
+        painter.setPen(sub_color)
+        painter.drawText(
+            QRect(rect.left(), rect.top() + half, rect.width(), half),
+            int(flags), sub)
+        painter.restore()
+
+
+class FitsOnScreenCombo(QComboBox):
+    """A combo whose popup stays on the screen, whichever way that takes.
+
+    Qt opens a dropdown below its box and, when there is not enough room, clips
+    the overflow off the bottom of the screen instead of opening upward or
+    scrolling. On a short screen — or a window whose last row sits near the
+    bottom edge — that reads as a list whose final item is sliced in half, and
+    there is no Qt setting that changes it. The popup is a plain window, so
+    this places it itself, after Qt has chosen a size, and opens it upward when
+    downward does not fit.
+
+    Used for every combo rather than only the ones that broke in a screenshot:
+    which one breaks depends on where the window is and how tall the screen is,
+    and neither is knowable until the click.
+    """
+
+    def _cards_if_long(self, subs):
+        """Turn on card rows when the list is long enough to need them.
+
+        The threshold is the row count, because that is what the card is for:
+        telling similar devices apart. A two-item box has nothing to
+        disambiguate, and doubling its height to say the same thing less is
+        worse than the plain row it replaces.
+        """
+        view = self.view()
+        delegate = view.itemDelegate()
+        if self.count() < DeviceCardDelegate.MIN_ROWS_FOR_CARDS:
+            if isinstance(delegate, DeviceCardDelegate):
+                view.setItemDelegate(None)
+            return
+        if not isinstance(delegate, DeviceCardDelegate):
+            # Parented to the combo, not to the view. A view is itself parented
+            # inside the combo's container, so a delegate parented there is
+            # thrown away the moment setItemDelegate() returns (measured: the
+            # view reporting None straight after). Parented to the combo it
+            # lives exactly as long as the list does.
+            delegate = DeviceCardDelegate(self)
+            view.setItemDelegate(delegate)
+        # subs is already (row, text) pairs, straight from the caller. Taking
+        # them apart with enumerate() stored the whole pair as the text, and
+        # the card then drew "(3, 'USB')" where a USB label belonged.
+        for row, text in subs:
+            delegate.set_connection_text(row, text)
+
+    def _row_height(self):
+        """The height of one row as it will actually be drawn.
+
+        Read from the delegate rather than from the view: sizeHintForRow()
+        reports the single-line height whatever delegate is installed, so a
+        card list measured with it opens at half the height its rows need and
+        the last card is exactly the one that gets cut. sizeHintForIndex() is
+        no use either — it returns a whole QSize, not a height.
+
+        Row 0 is the "default" entry, which carries no second line and so stays
+        a plain row; measuring that one reports the plain height and halves
+        the whole popup. The tallest row is asked for instead, because the
+        popup has to fit the cards.
+        """
+        view = self.view()
+        delegate = view.itemDelegate()
+        opt = QStyleOptionViewItem()
+        opt.font = view.font()
+        opt.fontMetrics = view.fontMetrics()
+        opt.palette = view.palette()
+        opt.rect = QRect(0, 0, 100, 100)
+        tallest = 0
+        for row in range(self.count()):
+            index = view.model().index(row, 0)
+            if not index.isValid():
+                continue
+            hint = delegate.sizeHint(opt, index)
+            if hint.isValid():
+                tallest = max(tallest, hint.height())
+        return tallest or view.sizeHintForRow(0) or 24
+
+    def showPopup(self):
+        super().showPopup()
+        self._open_where_it_fits()
+
+    def _open_where_it_fits(self):
+        """Move the popup so the whole list is on the screen, and shrink it
+        to what fits if the screen is short even that way.
+
+        The view is not resized directly. A combo's view is wrapped in a QFrame
+        that Qt lays out itself — measured: a correctly-sized 320px container
+        with the view sitting at y=69, two pixels high — so anything set on
+        the view or the popup is undone on the next event, and the list comes
+        out blank. Only the popup window is placed here, and the height is
+        capped to the screen so a long list scrolls rather than hanging off
+        the bottom.
+        """
+        popup = self.view().window()
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        avail = screen.availableGeometry()
+        box = self.mapToGlobal(self.rect().topLeft())
+        box_bottom = box.y() + self.height()
+        box_top = box.y()
+        rows = max(1, self.count())
+        row_h = self._row_height()
+        # The rows plus the popup's own frame: the view is styled with a 1px
+        # border, and a popup sized to the rows alone leaves the first and last
+        # row pressed against the edge with the border drawn over them.
+        want = rows * row_h + self.view().frameWidth() * 2 + 8
+        want = min(want, avail.height() - 24)
+
+        below = avail.bottom() - box_bottom
+        above = box_top - avail.top()
+        if below >= want:
+            return                              # it fits below; leave it alone
+        if below >= above:
+            # Neither side fits, but below is roomier: keep it there rather
+            # than pushing a short list off the top instead.
+            top = avail.bottom() - want + 1
+        else:
+            # Downward does not fit and upward is roomier: open above the box,
+            # the way menus behave everywhere else on the machine.
+            top = box_top - want
+        popup.setGeometry(box.x(), top, self.width(), want)
+
+    def keyPressEvent(self, event):
+        # Qt decides this one for itself and does not consult the screen, so a
+        # keyboard-opened list lands in the same clipped place the mouse-opened
+        # one did. Routed through the same placement for the same reason.
+        super().keyPressEvent(event)
+        if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down,
+                           Qt.Key.Key_Return, Qt.Key.Key_Enter,
+                           Qt.Key.Key_Space):
+            self._reposition_popup()
+
+    def _reposition_popup(self):
+        """Slide an already-open popup back onto the screen.
+
+        Separate from _open_where_it_fits because by the time a key arrives the
+        list has scrolled, so the height is Qt's to decide and only the
+        position is ours to fix.
+        """
+        popup = self.view().window()
+        if not popup.isVisible():
+            return
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        avail = screen.availableGeometry()
+        rect = popup.geometry()
+        if rect.bottom() <= avail.bottom() and rect.top() >= avail.top():
+            return
+        if rect.height() <= avail.height():
+            y = min(max(rect.y(), avail.top()),
+                    avail.bottom() - rect.height() + 1)
+            popup.setGeometry(rect.x(), y, rect.width(), rect.height())
+
+
 class SettingsWindow(QDialog):
     applied = pyqtSignal()
     language_changed = pyqtSignal()
 
     _models_loaded = pyqtSignal(list, str)
     _transcribe_models_loaded = pyqtSignal(list, str)
+    _local_download_done = pyqtSignal(str, str)
     _test_done = pyqtSignal(bool, str)
 
     def __init__(self, conf, launch_command, meeting_command=None,
@@ -259,6 +543,13 @@ class SettingsWindow(QDialog):
                 avail = screen.availableGeometry()
                 self.resize(min(920, max(520, avail.width() - 40)),
                             min(700, max(400, avail.height() - 80)))
+                # Size is not position. A window sized to fit can still sit
+                # where it was restored to — partly off the bottom of the
+                # screen — and a dropdown near its last row then opens past
+                # the screen edge with its final item cut in half, because Qt
+                # places the popup inside the combo's own rectangle. Put the
+                # window on the screen it opened on, fully inside it.
+                self._fit_on_screen(avail)
 
         header = QWidget()
         header_layout = QHBoxLayout(header)
@@ -317,6 +608,7 @@ class SettingsWindow(QDialog):
 
         self._models_loaded.connect(self._on_models_loaded)
         self._transcribe_models_loaded.connect(self._on_transcribe_models_loaded)
+        self._local_download_done.connect(self._on_local_download_done)
         self._test_done.connect(self._on_test_done)
         self.transcriber.progress.connect(self._on_file_progress)
         self.transcriber.finished.connect(self._on_file_finished)
@@ -327,6 +619,8 @@ class SettingsWindow(QDialog):
             self.meetings.failed.connect(self._on_minutes_failed)
         self._load()
         self._refresh_shared_ai_summaries()
+        self.transcribe_engine.currentIndexChanged.connect(self._refresh_local_controls)
+        self.local_stt_model.currentIndexChanged.connect(self._refresh_local_controls)
         self.transcribe_model.currentTextChanged.connect(self._refresh_shared_ai_summaries)
         self.cleanup_model.currentTextChanged.connect(self._refresh_shared_ai_summaries)
         self.navigate_to("dictation")
@@ -405,6 +699,44 @@ class SettingsWindow(QDialog):
         if index is None:
             return
         self.tabs.setCurrentIndex(index)
+        # A tab is a different amount of content: the one that was open may
+        # have left the window where it fit, and the one now open may be the
+        # one whose last dropdown has no room. Re-fitting on every switch costs
+        # nothing and keeps a later click from opening a list off the screen.
+        self._fit_on_screen()
+
+    def _fit_on_screen(self, avail=None):
+        """Slide the window fully onto the screen it is on, and shrink the
+        window to that screen if it is taller.
+
+        A dropdown opens inside the rectangle its combo occupies, so a combo in
+        the last row of a window whose bottom hangs below the screen edge opens
+        a popup whose bottom is that far below the screen too — and the last
+        item is cut in half rather than scrolled, which is what a user sees as
+        a list they cannot finish reading. The window is the cheapest place to
+        fix it: nothing else has to know whether a given screen is short.
+        """
+        if avail is None:
+            screen = self.screen() or QGuiApplication.primaryScreen()
+            if screen is None:
+                return
+            avail = screen.availableGeometry()
+        frame = self.frameGeometry()
+        # Only the height is capped. The width is the user's: narrowing it to
+        # the screen would fight the minimum width the window already sets,
+        # and a window that is too wide just gets a horizontal scrollbar.
+        width = frame.width()
+        # Tall content: let the window use the whole screen height. Every tab
+        # scrolls, so this costs nothing and saves a clipped popup.
+        height = min(frame.height(), avail.height())
+        x = min(max(frame.x(), avail.left()),
+                max(avail.left(), avail.right() - width + 1))
+        y = min(max(frame.y(), avail.top()),
+                max(avail.top(), avail.bottom() - height + 1))
+        if (width, height, x, y) == (self.width(), self.height(),
+                                     self.x(), self.y()):
+            return
+        self.setGeometry(x, y, width, height)
 
     def navigate_to(self, page_id):
         """Open the tab holding one logical page."""
@@ -434,11 +766,91 @@ class SettingsWindow(QDialog):
             return
         summary = t(
             "Transcription: {transcribe} · Cleanup: {cleanup}",
-            transcribe=self.transcribe_model.currentText(),
+            transcribe=self._engine_summary(),
             cleanup=self.cleanup_model.currentText(),
         )
         for label in self._shared_ai_labels:
             label.setText(summary)
+
+    def _engine_summary(self):
+        """One short phrase naming the engine that would answer now."""
+        if self.transcribe_engine.currentData() == "local":
+            return f"Whisper {self.local_stt_model.currentData()}"
+        return self.transcribe_model.currentText()
+
+    def _refresh_local_controls(self, *_):
+        """Show the rows that belong to the chosen engine, and the state of the
+        model it names. Called on every engine or model change: this is the one
+        place the user can tell a model they have from one they don't."""
+        if not hasattr(self, "transcribe_engine"):
+            return
+        local = self.transcribe_engine.currentData() == "local"
+        self.cloud_row.setVisible(not local)
+        self.transcribe_status.setVisible(not local)
+        self.local_row.setVisible(local)
+        self.local_status.setVisible(local)
+        if not local:
+            self.local_download_button.setEnabled(False)
+            self.local_remove_button.setEnabled(False)
+            return
+        name = self.local_stt_model.currentData()
+        current = localspeech.state(name)
+        if current.installed:
+            self.local_status.setText(t(
+                "{name} is installed ({size}) and ready.",
+                name=name, size=localspeech.human_size(current.size)))
+            self.local_download_button.setEnabled(False)
+            self.local_remove_button.setEnabled(True)
+            return
+        self.local_status.setText(t(
+            "{name} is not downloaded yet — {size}. Downloaded once, it "
+            "works offline after that.", name=name,
+            size=localspeech.human_size(current.expected)))
+        self.local_download_button.setEnabled(True)
+        self.local_remove_button.setEnabled(False)
+
+    def _download_local_model(self):
+        """Fetch the chosen model. A 1.6 GB download takes minutes, so it runs
+        on a thread and the window stays responsive; the button comes back when
+        the files are in place."""
+        name = self.local_stt_model.currentData()
+        if not name or localspeech.state(name).installed:
+            return
+        self.local_download_button.setEnabled(False)
+        self.local_remove_button.setEnabled(False)
+        self.local_status.setText(t("Downloading {name}…", name=name))
+
+        def work():
+            try:
+                localspeech.download(name)
+                self._local_download_done.emit(name, "")
+            except localspeech.LocalSpeechError as exc:
+                self._local_download_done.emit(name, str(exc))
+            except Exception as exc:  # never leave the button stuck
+                self._local_download_done.emit(name, str(exc))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_local_download_done(self, name, error):
+        if error:
+            self.local_download_button.setEnabled(True)
+            self.local_status.setText(t("Could not download {name}: {error}",
+                                        name=name, error=error))
+        self._refresh_local_controls()
+        if not error:
+            self.save_banner.show_now()
+
+    def _remove_local_model(self):
+        name = self.local_stt_model.currentData()
+        if not name:
+            return
+        if not confirm_box(self, t("Remove"), t(
+                "Delete the downloaded {name} model? {size} goes back to the "
+                "disk. Nothing else is touched.", name=name,
+                size=localspeech.human_size(localspeech.state(name).size))):
+            return
+        localspeech.remove(name)
+        self._refresh_local_controls()
 
     THEME_ORDER = ("dark", "light")
     THEME_LABELS = {"dark": "Dark", "light": "Light"}
@@ -507,12 +919,12 @@ class SettingsWindow(QDialog):
 
         sound, body = self._section_card(
             "Sound", "Where your voice comes in.")
-        self.mic = QComboBox()
+        self.mic = FitsOnScreenCombo()
         self.refresh_audio_devices = QPushButton(t("Reload"))
         self.refresh_audio_devices.clicked.connect(self._refresh_audio_devices)
         body.addWidget(self._label_row(
             "Microphone", self._row(self.mic, self.refresh_audio_devices)))
-        self.language = QComboBox()
+        self.language = FitsOnScreenCombo()
         for label, code in LANGUAGES:
             self.language.addItem(t(label), code)
         body.addWidget(self._label_row("Speech language", self.language))
@@ -522,7 +934,7 @@ class SettingsWindow(QDialog):
             "Output", "Where the finished text goes.")
         self.auto_paste = QCheckBox(t("Paste the text into the focused window"))
         body.addWidget(self.auto_paste)
-        self.paste_shortcut = QComboBox()
+        self.paste_shortcut = FitsOnScreenCombo()
         self.paste_shortcut.addItems(PASTE_SHORTCUTS)
         self.paste_shortcut.setToolTip(
             t("Terminals usually want ctrl+shift+v. Change this if pasting does nothing.")
@@ -583,7 +995,7 @@ class SettingsWindow(QDialog):
         layout.setSpacing(14)
         interface, body = self._section_card(
             "Interface", "Language and appearance.")
-        self.ui_language = QComboBox()
+        self.ui_language = FitsOnScreenCombo()
         for label, code in UI_LANGUAGES:
             self.ui_language.addItem(t(label), code)
         self.ui_language.setToolTip(
@@ -591,7 +1003,7 @@ class SettingsWindow(QDialog):
         )
         body.addWidget(self._label_row("Interface language", self.ui_language))
 
-        self.corner = QComboBox()
+        self.corner = FitsOnScreenCombo()
         for value in CORNERS:
             self.corner.addItem(t(value), value)
         body.addWidget(self._label_row("Indicator corner", self.corner))
@@ -688,22 +1100,62 @@ class SettingsWindow(QDialog):
         stt, stt_body = self._section_card(
             "Speech to text", "The model that turns speech into text.")
 
-        self.transcribe_model = QComboBox()
+        self.transcribe_engine = FitsOnScreenCombo()
+        for label, value in localspeech.ENGINES:
+            self.transcribe_engine.addItem(t(label), value)
+        self.transcribe_engine.setToolTip(t(
+            "Local transcribes on this computer and sends no audio anywhere. "
+            "Cloud uses Gemini and needs an API key."))
+        self.local_stt_model = FitsOnScreenCombo()
+        for name in localspeech.model_names():
+            label, note = localspeech.model_label(name)
+            # The model name is the same in both languages; the note beside it
+            # is what the user is choosing between, so that one is translated.
+            self.local_stt_model.addItem(f"{label} — {t(note)}", name)
+        self.local_stt_model.setToolTip(t(
+            "Measured on Turkish dictation. base is quick and the smallest "
+            "download; small is in between; large-v3-turbo reads hardest audio "
+            "most reliably and never invents a closing sentence."))
+        self.local_download_button = QPushButton(t("Download"))
+        self.local_download_button.clicked.connect(self._download_local_model)
+        self.local_remove_button = QPushButton(t("Remove"))
+        self.local_remove_button.clicked.connect(self._remove_local_model)
+        self.local_status = QLabel("")
+        self.local_status.setObjectName("muted")
+        self.local_status.setWordWrap(True)
+        self.transcribe_model = FitsOnScreenCombo()
         self.transcribe_model.setEditable(True)
         self.transcribe_model.addItems(TRANSCRIBE_MODELS)
         self.refresh_transcribe_models = QPushButton(t("Fetch model list"))
         self.refresh_transcribe_models.clicked.connect(self._load_transcribe_models)
+
         stt_body.addWidget(self._label_row(
-            "Model", self._row(self.transcribe_model, self.refresh_transcribe_models)))
+            "Where it runs", self.transcribe_engine))
+        # Both model rows go away in the other mode, not just their buttons: a
+        # model box the chosen engine ignores is a control that does nothing.
+        self.local_row = self._label_row(
+            "Local model", self._row(self.local_stt_model,
+                                     self.local_download_button,
+                                     self.local_remove_button))
+        stt_body.addWidget(self.local_row)
+        self.local_status = QLabel("")
+        self.local_status.setObjectName("muted")
+        self.local_status.setWordWrap(True)
+        stt_body.addWidget(self.local_status)
+        self.cloud_row = self._label_row(
+            "Cloud model", self._row(self.transcribe_model,
+                                     self.refresh_transcribe_models))
+        stt_body.addWidget(self.cloud_row)
         self.transcribe_status = QLabel("")
         self.transcribe_status.setObjectName("muted")
         self.transcribe_status.setWordWrap(True)
         stt_body.addWidget(self.transcribe_status)
+        self._refresh_local_controls()
         outer.addWidget(stt)
 
         orr, orr_body = self._section_card(
             "Transcript cleanup", "The model that tidies transcripts.")
-        self.cleanup_model = QComboBox()
+        self.cleanup_model = FitsOnScreenCombo()
         self.cleanup_model.setEditable(True)
         self.cleanup_model.addItems(CLEANUP_MODELS)
         self.refresh_models = QPushButton(t("Fetch model list"))
@@ -711,7 +1163,7 @@ class SettingsWindow(QDialog):
         orr_body.addWidget(self._label_row(
             "Model", self._row(self.cleanup_model, self.refresh_models)))
 
-        self.cleanup_reasoning = QComboBox()
+        self.cleanup_reasoning = FitsOnScreenCombo()
         for label, value in REASONING_LEVELS:
             self.cleanup_reasoning.addItem(t(label), value)
         self.cleanup_reasoning.setToolTip(
@@ -770,10 +1222,10 @@ class SettingsWindow(QDialog):
 
         sound, body = self._section_card(
             "Sound", "Your microphone plus whatever comes out of your speakers.")
-        self.meeting_mic = QComboBox()
+        self.meeting_mic = FitsOnScreenCombo()
         body.addWidget(self._label_row("Microphone", self.meeting_mic))
 
-        self.meeting_system = QComboBox()
+        self.meeting_system = FitsOnScreenCombo()
         self.meeting_system.addItem(t("Current output"), "")
         for name, desc in audio.list_monitors():
             self.meeting_system.addItem(desc, name)
@@ -817,11 +1269,11 @@ class SettingsWindow(QDialog):
 
         models, body = self._section_card(
             "Minutes", "The model that turns the transcript into minutes.")
-        self.meeting_model = QComboBox()
+        self.meeting_model = FitsOnScreenCombo()
         self.meeting_model.setEditable(True)
         self.meeting_model.addItems(MEETING_MODELS)
         body.addWidget(self._label_row("Model", self.meeting_model))
-        self.meeting_reasoning = QComboBox()
+        self.meeting_reasoning = FitsOnScreenCombo()
         for label, value in REASONING_LEVELS:
             self.meeting_reasoning.addItem(t(label), value)
         self.meeting_reasoning.setToolTip(t(
@@ -829,7 +1281,7 @@ class SettingsWindow(QDialog):
             "whole meeting in its head and work out what was actually decided."
         ))
         body.addWidget(self._label_row("Thinking", self.meeting_reasoning))
-        self.meeting_language = QComboBox()
+        self.meeting_language = FitsOnScreenCombo()
         self.meeting_language.addItem(t("Same as dictation"), "")
         for label, code in LANGUAGES:
             self.meeting_language.addItem(t(label), code)
@@ -1105,7 +1557,7 @@ class SettingsWindow(QDialog):
     @staticmethod
     def _shortcut_box(placeholder=""):
         """The field a global shortcut is typed or picked in."""
-        box = QComboBox()
+        box = FitsOnScreenCombo()
         box.setEditable(True)
         box.addItems(SHORTCUTS)
         box.setCurrentText("")
@@ -1180,6 +1632,10 @@ class SettingsWindow(QDialog):
         self._gemini_keys = conf.stored_gemini_keys()
         self._refresh_gemini_keys()
         self.transcribe_model.setCurrentText(conf["gemini_transcribe_model"])
+        self._select_data(self.transcribe_engine, conf["transcribe_engine"])
+        self._select_data(self.local_stt_model,
+                          conf.get("local_stt_model") or localspeech.default_model())
+        self._refresh_local_controls()
         self.cleanup_enabled.setChecked(conf["cleanup_enabled"])
         self.cleanup_model.setCurrentText(conf["cleanup_model"])
         self._select_data(self.cleanup_reasoning, conf["cleanup_reasoning"])
@@ -1240,6 +1696,9 @@ class SettingsWindow(QDialog):
         conf["keep_audio"] = self.keep_audio.isChecked()
 
         conf["gemini_api_key"] = ""
+        conf["transcribe_engine"] = self.transcribe_engine.currentData() or "cloud"
+        conf["local_stt_model"] = (self.local_stt_model.currentData()
+                                   or localspeech.default_model())
         conf["gemini_transcribe_model"] = (self.transcribe_model.currentText().strip()
                                            or cfg.DEFAULTS["gemini_transcribe_model"])
 
@@ -1380,15 +1839,28 @@ class SettingsWindow(QDialog):
 
     @classmethod
     def _fill_device_combo(cls, combo, items, default_label, selected):
-        """Refill a device box with the names as they are, not cut short."""
+        """Refill a device box with the names as they are, not cut short.
+
+        Items are (target, label) or (target, label, connection). The third
+        field, when there is one, is what the card row draws under the name —
+        without it a device list says the same thing twice and takes twice the
+        room.
+        """
         combo.blockSignals(True)
         combo.clear()
         combo.addItem(default_label, "")
-        for target, label in items:
+        subs = [(0, "")]
+        for item in items:
+            target, label = item[0], item[1]
+            connection = item[2] if len(item) > 2 else ""
             display = cls._device_label(label)
             combo.addItem(display, target)
             combo.setItemData(combo.count() - 1, display,
                               Qt.ItemDataRole.ToolTipRole)
+            subs.append((combo.count() - 1,
+                         t(CONNECTION_LABELS[connection]) if connection
+                         else ""))
+        combo._cards_if_long(subs)
         cls._select_data(combo, selected)
         cls._widen_device_popup(combo)
         combo.blockSignals(False)
@@ -1398,7 +1870,7 @@ class SettingsWindow(QDialog):
         # PortAudio only reports what it saw when it started; restarting the
         # library is what makes a device connected later show up here.
         audio.refresh_devices()
-        sources = audio.list_sources()
+        sources = audio.describe_sources()
         for combo, default_label in (
                 (getattr(self, "mic", None), t("Default microphone")),
                 (getattr(self, "meeting_mic", None), t("Same as dictation"))):
@@ -1411,7 +1883,7 @@ class SettingsWindow(QDialog):
             mic_status.setText(
                 t("{count} inputs found", count=len(sources))
                 if sources else t("No inputs seen — press Reload"))
-        monitors = audio.list_monitors()
+        monitors = audio.describe_monitors()
         combo = getattr(self, "meeting_system", None)
         if combo is not None:
             selected = combo.currentData() if combo.count() else ""

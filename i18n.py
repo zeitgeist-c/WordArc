@@ -254,6 +254,7 @@ TR = {
         "Dil değişikliğinin her pencereye işlemesi için WordArc'ı yeniden başlat.",
     "Microphone": "Mikrofon",
     "Default microphone": "Varsayılan mikrofon",
+    "Built-in": "Dahili",
     "Speech language": "Konuşma dili",
     "Detect automatically": "Otomatik algıla",
     "German": "Almanca",
@@ -378,8 +379,53 @@ TR = {
     "The finished text.": "Bitmiş metin.",
     "Your Gemini API keys, tried from top to bottom.":
         "Gemini API anahtarların, yukarıdan aşağıya denenir.",
+    "The local model {name} is not installed yet. Download it in Settings.":
+        "{name} modeli henüz kurulu değil. Ayarlar'dan indir.",
+    "The local speech engine is missing. Reinstall WordArc to get it back.":
+        "Yerel ses motoru eksik. Geri gelmesi için WordArc'ı yeniden kur.",
+    "The download helper is missing. Reinstall WordArc to get it back.":
+        "İndirme yardımcısı eksik. Geri gelmesi için WordArc'ı yeniden kur.",
+    "Could not load the local model: {error}":
+        "Yerel model yüklenemedi: {error}",
+    "Unknown local model: {name}": "Bilinmeyen yerel model: {name}",
+    "Local transcription failed: {error}":
+        "Yerel yazıya çevirme başarısız: {error}",
+    "The recording was empty.": "Kayıt boştu.",
+    "The local model reads {rate} kHz audio, but this recording is {actual} kHz.":
+        "Yerel model {rate} kHz ses okur, ama bu kayıt {actual} kHz.",
+    "The local model reads 16-bit audio.": "Yerel model 16 bit ses okur.",
     "The model that turns speech into text.":
         "Konuşmayı yazıya çeviren model.",
+    "Local model": "Yerel model",
+    "Cloud model": "Bulut modeli",
+    "Cloud (Gemini)": "Bulut (Gemini)",
+    "Local (this computer)": "Yerel (bu bilgisayar)",
+    "Download": "İndir",
+    "quick, 141 MB": "hızlı, 141 MB",
+    "middle, 464 MB": "orta, 464 MB",
+    "hardest audio, 1,5 GB": "en zor ses, 1,5 GB",
+    "Local transcribes on this computer and sends no audio anywhere. Cloud uses "
+    "Gemini and needs an API key.":
+        "Yerel bu bilgisayarda yazıya çevirir ve hiçbir yere ses göndermez. "
+        "Bulut Gemini'yi kullanır, API anahtarı ister.",
+    "Measured on Turkish dictation. base is quick and the smallest download; "
+    "small is in between; large-v3-turbo reads hardest audio most reliably and "
+    "never invents a closing sentence.":
+        "Türkçe dikte üzerinde ölçüldü. base hızlı ve indirmesi en küçük; small "
+        "arasında; large-v3-turbo en zor sesi en güvenilir okur ve kapanış "
+        "cümlesi uydurmaz.",
+    "{name} is installed ({size}) and ready.":
+        "{name} kurulu ({size}) ve hazır.",
+    "{name} is not downloaded yet — {size}. Downloaded once, it works "
+    "offline after that.":
+        "{name} henüz indirilmedi — {size}. Bir kez indirildikten sonra "
+        "internetsiz de çalışır.",
+    "Downloading {name}…": "{name} indiriliyor…",
+    "Could not download {name}: {error}": "{name} indirilemedi: {error}",
+    "Delete the downloaded {name} model? {size} goes back to the disk. "
+    "Nothing else is touched.":
+        "İndirilen {name} modeli silinsin mi? {size} diskte yerine geri "
+        "gelir. Başka hiçbir şeye dokunulmaz.",
     "The model that tidies transcripts.": "Transkripti toparlayan model.",
     "Words the models should spell right.":
         "Modellerin doğru yazması gereken kelimeler.",
@@ -509,6 +555,7 @@ TR = {
         "hesabınla.",
     "How it runs": "Nasıl çalışıyor",
     "Runs on": "Şunun üstünde çalışır",
+    "Where it runs": "Nerede çalışsın",
     "More thinking is slower, and you are standing in front of the screen while "
     "it happens. Worth it for a job that has to be worked out rather than "
     "looked up.":

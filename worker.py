@@ -13,6 +13,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 import api
 import audio
 import config as cfg
+import localspeech
 import paste
 import vad
 from i18n import t
@@ -86,11 +87,12 @@ class Pipeline(QObject):
                     t("Default API did not respond; trying API {number}...",
                       number=slot), operation_id),
             )
-            target = conf.transcribe_target()
-            raw = client.transcribe(
-                target.model, wav_path,
+            raw = localspeech.transcribe_for(
+                conf, wav_path,
                 language=conf["language"],
                 prompt=conf["transcribe_prompt"],
+                should_stop=self._stop.is_set,
+                client=client,
             )
 
             if conf["filter_hallucinations"] and vad.looks_like_hallucination(raw, duration):
@@ -137,7 +139,7 @@ class Pipeline(QObject):
                 "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "duration": round(duration, 1),
                 "elapsed": round(time.monotonic() - started, 1),
-                "model": target.model,
+                "model": conf.transcribe_name(),
                 "cleanup_model": conf["cleanup_model"] if conf["cleanup_enabled"] else "",
                 "cleanup_error": warning,
                 "raw": raw,
@@ -153,7 +155,10 @@ class Pipeline(QObject):
 
         except api.Cancelled:
             self.cancelled.emit(operation_id)
-        except (api.ApiError, paste.PasteError) as exc:
+        except localspeech.Cancelled:
+            self.cancelled.emit(operation_id)
+        except (api.ApiError, localspeech.LocalSpeechError,
+                paste.PasteError) as exc:
             _log.warning("pipeline failed (%s)", type(exc).__name__)
             print(f"wordarc: {exc}", file=sys.stderr)
             self.failed.emit(str(exc), operation_id)

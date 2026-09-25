@@ -28,6 +28,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 import api
 import config as cfg
 import filetranscribe
+import localspeech
 import vad
 from filetranscribe import Cancelled, format_timestamp
 from i18n import t
@@ -143,10 +144,11 @@ class MeetingPipeline(QObject):
             self._discard_audio(wav_path)
             self.finished.emit(base, title)
 
-        except (Cancelled, api.Cancelled):
+        except (Cancelled, api.Cancelled, localspeech.Cancelled):
             cfg.update_meeting(base, error=t("Stopped."))
             self._say(t("Stopped."))
-        except (api.ApiError, OSError, subprocess.SubprocessError, wave.Error) as exc:
+        except (api.ApiError, localspeech.LocalSpeechError, OSError,
+                subprocess.SubprocessError, wave.Error) as exc:
             _log.warning("meeting pipeline failed (%s)", type(exc).__name__)
             # The audio stays put no matter what the keep setting says: it is the
             # only copy of the meeting, and the run can be tried again from it.
@@ -168,7 +170,6 @@ class MeetingPipeline(QObject):
     def _transcribe(self, client, wav_path, workdir):
         conf = self.conf
         mine, theirs = split_channels(wav_path, workdir)
-        model = conf["gemini_transcribe_model"]
         language = conf["meeting_language"] or conf["language"]
         hint = conf.meeting_hint()
 
@@ -193,13 +194,32 @@ class MeetingPipeline(QObject):
                 if self._silent(chunk_path):
                     stats[speaker]["silent"] += 1
                     continue
-                text = client.transcribe(
-                    model, chunk_path, language=language, prompt=hint,
-                ).strip()
-                if text:
-                    end = offset + wav_duration(chunk_path)
-                    segments.append((offset, end, text, speaker))
-                else:
+                # A ten-minute chunk of one side is read with whatever engine
+                # the settings name. Attribution never depended on the model —
+                # the two channels were split before anything transcribed them —
+                # so the local engine is safe here, and an hour of meeting
+                # audio stops leaving the computer.
+                found = localspeech.transcribe_for(
+                    conf, chunk_path, language=language, prompt=hint,
+                    should_stop=self._check,
+                    with_segments=True,
+                    client=client,
+                )
+                length = wav_duration(chunk_path)
+                heard = 0
+                for start, end, body in found:
+                    body = body.strip()
+                    if not body:
+                        continue
+                    heard += 1
+                    # Segments inside a chunk start at zero; the chunk's own
+                    # offset puts them on the meeting's timeline. An entry the
+                    # engine gave no end time for runs to the end of the chunk,
+                    # which is what the cloud one needs.
+                    at = offset + start
+                    stop = offset + end if end > start else offset + length
+                    segments.append((at, stop, body, speaker))
+                if not heard:
                     stats[speaker]["empty"] += 1
         if not segments:
             raise api.ApiError(self._empty_reason(stats))
