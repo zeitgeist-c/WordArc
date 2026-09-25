@@ -54,10 +54,13 @@ class TestI18n(unittest.TestCase):
 UNTRANSLATED = {
     "Gemini", "Model", "Google Gemini", "Claude Code", "Codex",
     "{action}: {preview}", "{name}: {preview}",
+    # Model names, the same in both languages.
+    "Whisper base", "Whisper small", "Whisper large-v3-turbo",
 }
 
 SOURCE_FILES = ("settings_ui.py", "wordarc.py", "meeting.py", "worker.py",
-                "audio.py", "filetranscribe.py", "paste.py", "api.py")
+                "audio.py", "filetranscribe.py", "paste.py", "api.py",
+                "localspeech.py")
 
 # Helpers that run their string arguments through t() themselves, so the
 # literal at the call site IS the translation key: {name: argument indexes}

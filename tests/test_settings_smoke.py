@@ -6,11 +6,13 @@ import tempfile
 import unittest
 from unittest import mock
 
-from PyQt6.QtCore import QPoint
-from PyQt6.QtGui import QFontMetrics
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QPoint, QRect
+from PyQt6.QtGui import QFont, QFontMetrics
+from PyQt6.QtWidgets import QApplication, QComboBox
 
+import audio
 import config as cfg
+import localspeech
 import settings_ui
 from i18n import t
 
@@ -382,3 +384,300 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertFalse(settings_ui.install_qt_translator(self.app, "en"))
         self.assertEqual(QCoreApplication.translate("QLineEdit", "&Paste"),
                          "&Paste")
+
+    def test_the_engine_box_starts_on_the_cloud_and_says_what_is_installed(self):
+        """Cloud is the default, and the local row only exists when it is chosen."""
+        window = self.window
+        window.navigate_to("settings")
+        self.app.processEvents()
+        self.assertEqual(window.transcribe_engine.currentData(), "cloud")
+        # A model box the chosen engine ignores is a control that does nothing.
+        self.assertFalse(window.local_row.isVisibleTo(window))
+        self.assertFalse(window.local_status.isVisibleTo(window))
+        self.assertTrue(window.cloud_row.isVisibleTo(window))
+        self.assertTrue(window.transcribe_model.isVisibleTo(window))
+
+        window.transcribe_engine.setCurrentIndex(
+            window.transcribe_engine.findData("local"))
+        self.app.processEvents()
+        self.assertTrue(window.local_row.isVisibleTo(window))
+        self.assertTrue(window.local_status.isVisibleTo(window))
+        self.assertFalse(window.cloud_row.isVisibleTo(window))
+        self.assertFalse(window.transcribe_model.isVisibleTo(window))
+        # Nothing is downloaded in a test run, so the button is offered.
+        self.assertTrue(window.local_download_button.isEnabled())
+        self.assertFalse(window.local_remove_button.isEnabled())
+
+    def test_the_box_and_the_status_line_agree_on_the_download_size(self):
+        """One number for one file: a user who reads both must not see two."""
+        window = self.window
+        window.navigate_to("settings")
+        window.transcribe_engine.setCurrentIndex(
+            window.transcribe_engine.findData("local"))
+        for index in range(window.local_stt_model.count()):
+            name = window.local_stt_model.itemData(index)
+            shown = localspeech.human_size(localspeech.state(name).expected)
+            window.local_stt_model.setCurrentIndex(index)
+            self.app.processEvents()
+            self.assertIn(shown, window.local_stt_model.itemText(index), name)
+            # The line under the box is about the model that is selected, so it
+            # has to quote the same figure that model carries in the list.
+            self.assertIn(shown, window.local_status.text(), name)
+
+    def test_switching_engine_survives_a_save_and_reload(self):
+        window = self.window
+        window.transcribe_engine.setCurrentIndex(
+            window.transcribe_engine.findData("local"))
+        window.local_stt_model.setCurrentIndex(
+            window.local_stt_model.findData("small"))
+        with mock.patch.object(settings_ui.startup, "set_enabled"):
+            window._save()
+        self.assertEqual(window.conf["transcribe_engine"], "local")
+        self.assertEqual(window.conf["local_stt_model"], "small")
+        window._load()
+        self.assertEqual(window.transcribe_engine.currentData(), "local")
+        self.assertEqual(window.local_stt_model.currentData(), "small")
+
+    def test_the_local_box_names_every_model_and_its_cost(self):
+        window = self.window
+        self.assertEqual(window.local_stt_model.count(), 3)
+        # Each row carries the model's name and what that size costs, so the
+        # box answers "which one should I take" without a second look.
+        for index, name in enumerate(localspeech.model_names()):
+            text = window.local_stt_model.itemText(index)
+            note = t(localspeech.MODEL_NOTES[name])
+            self.assertIn(f"Whisper {name}", text)
+            self.assertIn(note, text)
+            self.assertEqual(window.local_stt_model.itemData(index), name)
+
+
+class TestDeviceCards(unittest.TestCase):
+    """Long device lists draw as cards: the name, and under it how the device is
+    connected. A short list stays a plain row.
+
+    The split exists because a machine with a headset, a USB interface and a
+    laptop array shows three near-identical names, and one line each left the
+    user opening every row to find out which was which. Two lines say it once.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    @staticmethod
+    def _devices(count, kinds=None):
+        kinds = kinds or ["usb", "built-in", "bluetooth"]
+        return [(f"t{i}", f"Mikrofon ({i})", kinds[i % len(kinds)])
+                for i in range(count)]
+
+    def _filled(self, items, default="Varsayılan mikrofon", selected="t1"):
+        box = settings_ui.FitsOnScreenCombo()
+        settings_ui.SettingsWindow._fill_device_combo(
+            box, items, default, selected)
+        return box
+
+    def test_a_long_device_list_draws_as_cards(self):
+        box = self._filled(self._devices(6))
+        delegate = box.view().itemDelegate()
+        self.assertIsInstance(delegate, settings_ui.DeviceCardDelegate,
+                              "a 7-row device list stayed a plain list")
+
+    def test_a_short_list_is_left_plain(self):
+        """Two rows have nothing to tell apart, and a card would double the
+        height of every such box in the app to say less."""
+        box = self._filled([("t0", "Bulut (Gemini)", ""),
+                            ("t1", "Yerel (bu bilgisayar)", "")])
+        self.assertNotIsInstance(box.view().itemDelegate(),
+                                 settings_ui.DeviceCardDelegate)
+
+    def test_the_card_keeps_its_delegate_across_a_rescan(self):
+        """Devices are rescanned on every hot-plug. If the delegate did not
+        survive the refill, the list would silently fall back to one line and
+        the second line would vanish with no error."""
+        box = self._filled(self._devices(6))
+        settings_ui.SettingsWindow._fill_device_combo(
+            box, self._devices(7, ["bluetooth"]), "Varsayılan mikrofon", "t2")
+        self.app.processEvents()
+        self.assertIsInstance(box.view().itemDelegate(),
+                              settings_ui.DeviceCardDelegate)
+
+    def test_the_second_line_is_the_connection_not_the_row_number(self):
+        box = self._filled(self._devices(6))
+        delegate = box.view().itemDelegate()
+        # Row 0 is the "default" entry and carries no connection; row 1 is the
+        # first device, and its sub-line is that device's kind.
+        self.assertEqual(delegate.connection_text(0), "")
+        self.assertEqual(delegate.connection_text(1), "USB")
+        self.assertNotIn(",", delegate.connection_text(1),
+                         "the (row, text) pair leaked through as the text")
+
+    def test_a_card_row_is_taller_than_a_plain_one(self):
+        long_box = self._filled(self._devices(6))
+        short_box = self._filled([("t0", "Bulut (Gemini)", ""),
+                                  ("t1", "Yerel (bu bilgisayar)", "")])
+        self.app.processEvents()
+        self.assertGreater(long_box._row_height(), short_box._row_height() + 5,
+                           "a card row is the same height as a plain one")
+
+    def test_a_card_row_is_tall_enough_for_both_of_its_lines(self):
+        """The height has to fit the name and the label under it. Measuring
+        with one font's line spacing left every second line sitting on the
+        row below it."""
+        from PyQt6.QtWidgets import QStyleOptionViewItem
+        box = self._filled(self._devices(6))
+        self.app.processEvents()
+        delegate = box.view().itemDelegate()
+        view = box.view()
+        opt = QStyleOptionViewItem()
+        opt.font = view.font()
+        opt.fontMetrics = view.fontMetrics()
+        opt.rect = QRect(0, 0, 300, 100)
+        index = view.model().index(1, 0)
+        hint = delegate.sizeHint(opt, index)
+        small = QFont(view.font())
+        small.setPointSizeF(max(8.0, view.font().pointSizeF() - 1.5))
+        needed = (QFontMetrics(view.font()).lineSpacing()
+                  + QFontMetrics(small).lineSpacing()
+                  + settings_ui.DeviceCardDelegate.PAINT_PADDING_TOP
+                  + settings_ui.DeviceCardDelegate.PAINT_PADDING_BOTTOM)
+        self.assertGreaterEqual(hint.height(), needed,
+                                f"card is {hint.height()}px, needs {needed}px")
+
+
+class TestConnectionGuess(unittest.TestCase):
+    """What the card says under a device name, and what it refuses to guess.
+
+    Windows has no field for this, so it is read out of the names PortAudio
+    reports. A wrong "USB" on a Bluetooth headset is worse than no second
+    line at all, so the guess is only made when something actually matches.
+    """
+
+    def test_the_kinds_a_device_can_be(self):
+        self.assertEqual(audio._connection_kind("Kulaklık (REDMI Buds 8 Lite) "
+                                                "- Hands-Free"),
+                         "bluetooth")
+        self.assertEqual(audio._connection_kind(
+            "Mikrofon (3- USBGH8-Plus-7.1-ENC)"), "usb")
+        self.assertEqual(audio._connection_kind(
+            "Mikrofon (Realtek HD Audio Mic input)"), "built-in")
+        self.assertEqual(audio._connection_kind(
+            "Microsoft Ses Eşleştiricisi - Input"), "built-in")
+
+    def test_a_name_that_says_nothing_gets_no_second_line(self):
+        self.assertEqual(audio._connection_kind("Karaoke mikrofonu"), "")
+
+    def test_bluetooth_wins_over_a_usb_word_in_the_name(self):
+        """A Bluetooth headset can be plugged into a USB port and say so in
+        its name; the transport is what matters when choosing where it is."""
+        self.assertEqual(
+            audio._connection_kind("Kulaklık (USB Kulaklık) Hands-Free"),
+            "bluetooth")
+
+    def test_describe_sources_agrees_with_list_sources(self):
+        """The card's second line must come from the same device list the
+        recording code uses, or the two can name different devices."""
+        with mock.patch.object(audio, "list_sources",
+                               return_value=[("a", "Mikrofon (USBGH8)"),
+                                             ("b", "Kulaklık Hands-Free"),
+                                             ("c", "Karaoke")]):
+            described = audio.describe_sources()
+        self.assertEqual([row[0] for row in described], ["a", "b", "c"])
+        self.assertEqual([row[2] for row in described],
+                         ["usb", "bluetooth", ""])
+
+    def test_describe_monitors_agrees_with_list_monitors(self):
+        with mock.patch.object(audio, "list_monitors",
+                               return_value=[("a", "Stereo Karışımı (Realtek)"),
+                                             ("b", "Kulaklık Hands-Free")]):
+            described = audio.describe_monitors()
+        self.assertEqual([row[2] for row in described],
+                         ["built-in", "bluetooth"])
+
+
+class TestDropdownsStayOnScreen(unittest.TestCase):
+    """A combo's popup opens where its box is, and Qt clips whatever hangs off
+    the screen rather than opening upward. A dropdown in the last row of the
+    settings window on a short screen therefore showed its final item sliced in
+    half — the report that started this."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def _open(self, box, avail_bottom):
+        """Open the popup and report how far it hangs off the screen."""
+        box.showPopup()
+        self.app.processEvents()
+        rect = box.view().window().geometry()
+        box.hidePopup()
+        self.app.processEvents()
+        return rect.bottom() - avail_bottom, -rect.top()
+
+    def test_a_box_with_no_room_below_opens_upward(self):
+        box = settings_ui.FitsOnScreenCombo()
+        for i in range(6):
+            box.addItem(f"item {i}", i)
+        box.setFixedSize(160, 24)
+        self.app.processEvents()
+        avail = box.screen().availableGeometry()
+        # Right at the bottom edge, where the screenshot was taken: six rows
+        # cannot fit below, and the only honest options are upward or clipped.
+        top = avail.bottom() - box.height() - 40
+        box.move(40, top)
+        self.app.processEvents()
+        if top > avail.top():
+            self.skipTest("this screen is too tall to reproduce the clipping")
+        over_bottom, over_top = self._open(box, avail.bottom())
+        self.assertLessEqual(over_bottom, 0,
+                             "the popup ran past the bottom of the screen")
+        self.assertLessEqual(over_top, 0,
+                             "the popup ran past the top of the screen")
+
+    def test_a_box_that_fits_is_left_where_qt_put_it(self):
+        box = settings_ui.FitsOnScreenCombo()
+        for i in range(4):
+            box.addItem(f"item {i}", i)
+        box.setFixedSize(160, 24)
+        box.move(40, 40)
+        self.app.processEvents()
+        box.showPopup()
+        self.app.processEvents()
+        before = box.view().window().geometry()
+        box.hidePopup()
+        self.app.processEvents()
+        avail = box.screen().availableGeometry()
+        # Room below, so Qt's own placement stands: the class does not move a
+        # list that already fits.
+        self.assertGreater(avail.bottom() - 64, 4 * 30,
+                           "no room below on this screen; nothing to check")
+        self._open(box, avail.bottom())
+        self.assertEqual(before.y(), box.view().window().geometry().y())
+
+    def test_every_settings_combo_is_protected(self):
+        """Applied everywhere rather than patched per screenshot: which
+        dropdown breaks depends on where the window sits and how tall the
+        screen is, and neither is knowable until the click."""
+        tmp = tempfile.TemporaryDirectory()
+        root = pathlib.Path(tmp.name)
+        with mock.patch.object(cfg, "CONFIG_DIR", root / "cfg"), \
+             mock.patch.object(cfg, "CONFIG_FILE", root / "cfg" / "config.json"), \
+             mock.patch.object(cfg, "DATA_DIR", root / "data"), \
+             mock.patch.object(cfg, "HISTORY_FILE", root / "data" / "h.jsonl"), \
+             mock.patch.object(cfg, "MEETINGS_DIR", root / "data" / "m"), \
+             mock.patch.object(cfg, "MEETINGS_FILE", root / "data" / "m.jsonl"), \
+             mock.patch.object(cfg.credential_store, "read", return_value=""), \
+             mock.patch.object(cfg.credential_store, "read_all", return_value=[]), \
+             mock.patch.object(cfg.credential_store, "write_all"), \
+             mock.patch.object(settings_ui.audio, "list_sources", return_value=[]), \
+             mock.patch.object(settings_ui.audio, "refresh_devices"), \
+             mock.patch.object(settings_ui.audio, "list_monitors", return_value=[]), \
+             mock.patch.object(settings_ui.startup, "is_enabled", return_value=False):
+            window = settings_ui.SettingsWindow(cfg.Config(), "wordarc toggle")
+        try:
+            protected = window.findChildren(settings_ui.FitsOnScreenCombo)
+            plain = [b for b in window.findChildren(QComboBox)
+                     if not isinstance(b, settings_ui.FitsOnScreenCombo)]
+            self.assertGreater(len(protected), 10, "expected the settings combos")
+            self.assertEqual(plain, [], "a plain QComboBox is left unprotected")
+        finally:
+            window.deleteLater()

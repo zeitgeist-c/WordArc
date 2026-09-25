@@ -18,6 +18,7 @@ import wave
 from PyQt6.QtCore import QObject, pyqtSignal
 
 import api
+import localspeech
 from i18n import t
 
 CHUNK_SECONDS = 600          # 10 min ≈ 19 MB at 16 kHz mono s16
@@ -85,7 +86,6 @@ class FileTranscriber(QObject):
                     number=slot,
                 )),
             )
-            model = conf["gemini_transcribe_model"]
             pieces = []
             segments = []
             for index, (chunk_path, offset) in enumerate(chunks, start=1):
@@ -93,18 +93,33 @@ class FileTranscriber(QObject):
                 self.progress.emit(
                     t("Transcribing chunk {index}/{count}…", index=index, count=len(chunks))
                 )
-                text = client.transcribe(
-                    model, chunk_path,
+                found = localspeech.transcribe_for(
+                    conf, chunk_path,
                     language=conf["language"],
                     prompt=conf["transcribe_prompt"],
+                    should_stop=self._stop.is_set,
+                    with_segments=True,
+                    client=client,
                 )
-                end = offset + wav_duration(chunk_path)
-                segments.append((offset, end, text.strip()))
-                if timestamps:
-                    stamp = format_timestamp(offset)
-                    pieces.append(f"[{stamp}] {text.strip()}")
-                else:
-                    pieces.append(text)
+                # The local engine reports when each line was said; the cloud
+                # one does not, and hands back the whole chunk as one entry
+                # starting at zero. Both are placed on this chunk's own
+                # timeline here, so the two engines produce the same shape and
+                # the timestamp option works with either.
+                length = wav_duration(chunk_path)
+                for start, end, body in found:
+                    body = body.strip()
+                    if not body:
+                        continue
+                    at = offset + start
+                    # An entry the engine gave no end time for runs to the end
+                    # of the chunk, which is what the cloud one needs.
+                    stop = offset + end if end > start else offset + length
+                    segments.append((at, stop, body))
+                    if timestamps:
+                        pieces.append(f"[{format_timestamp(at)}] {body}")
+                    else:
+                        pieces.append(body)
 
             text = "\n".join(pieces) if timestamps else " ".join(pieces)
 
@@ -115,9 +130,10 @@ class FileTranscriber(QObject):
 
             self.finished.emit(text, segments)
 
-        except (Cancelled, api.Cancelled):
+        except (Cancelled, api.Cancelled, localspeech.Cancelled):
             self.progress.emit(t("Stopped."))
-        except (api.ApiError, OSError, subprocess.SubprocessError, wave.Error) as exc:
+        except (api.ApiError, localspeech.LocalSpeechError, OSError,
+                subprocess.SubprocessError, wave.Error) as exc:
             self.failed.emit(str(exc))
         except Exception as exc:  # noqa: BLE001 — any surprise must unlock the UI
             self.failed.emit(f"{type(exc).__name__}: {exc}")

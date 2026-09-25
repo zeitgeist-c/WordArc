@@ -377,6 +377,9 @@ DEFAULTS = {
     "close_to_tray": True,
     "gemini_api_key": "",
     "gemini_transcribe_model": "gemini-3.5-flash-lite",
+    # cloud | local — where dictation, audio files and meetings are transcribed.
+    "transcribe_engine": "cloud",
+    "local_stt_model": "large-v3-turbo",
     "gemini_cleanup_model": "gemini-3.5-flash-lite",
     "gemini_meeting_model": "gemini-3.6-flash",
     "gemini_assistant_model": "gemini-3.5-flash-lite",
@@ -602,6 +605,16 @@ class Config:
         """Key, endpoint and model for Gemini speech to text."""
         return api.Target("gemini", "Gemini", self.gemini_key(),
                           "", self["gemini_transcribe_model"])
+
+    def transcribe_name(self):
+        """What the history row records as the model that answered.
+
+        The local engine is not a Gemini model, so the row has to name the one
+        that really ran or the history is a lie about every local dictation.
+        """
+        if self.get("transcribe_engine") == "local":
+            return f"local:{self.get('local_stt_model') or 'large-v3-turbo'}"
+        return self["gemini_transcribe_model"]
 
     def cleanup_prompt(self, with_timestamps=False, with_speakers=False,
                        subtitles=False):
