@@ -765,3 +765,29 @@ TR = {
     "{count} outputs found": "{count} çıkış bulundu",
     "No outputs seen — press Reload": "Çıkış görülmedi — Yenile'ye bas",
 }
+
+TR.update({
+    "Latest dictation": "Son dikte", "Your next dictation appears here.": "Bir sonraki dikten burada görünecek.",
+    "Ready": "Hazır", "Recording…": "Kaydediliyor…", "Discard recording": "Kaydı iptal et",
+    "Artificial intelligence": "Yapay zekâ", "API keys": "API anahtarları", "Application": "Uygulama",
+    "Search…": "Ara…", "Select": "Seç", "No matches": "Eşleşme bulunamadı",
+})
+
+TR["Copied raw, cleanup failed: {error}"] = "Ham metin kopyalandı, temizleme başarısız: {error}"
+
+TR.update({
+    "No dictation history yet.": "Henüz dikte geçmişi yok.",
+    "No meetings yet.": "Henüz toplantı yok.",
+    "Add an API key to use cloud models.": "Bulut modellerini kullanmak için API anahtarı ekle.",
+})
+
+TR.update({
+    "Not enough disk space for the local model.": "Yerel model için yeterli disk alanı yok.",
+    "Audio stays on this computer. Cleanup sends the text to Gemini when enabled.": "Ses bu bilgisayarda kalır. Temizleme açıkken metin Gemini’ye gönderilir.",
+    "Audio stays on this computer. Cleanup is off; the raw transcript is used.": "Ses bu bilgisayarda kalır. Temizleme kapalı; ham metin kullanılır.",
+    "Connecting…": "Bağlanıyor…", "Calculating…": "Hesaplanıyor…", "{seconds} s": "{seconds} sn",
+    "{done} / {total} · {speed}/s · Remaining: {eta}": "{done} / {total} · {speed}/sn · Kalan: {eta}",
+    "Verifying files…": "Dosyalar doğrulanıyor…", "Retrying connection…": "Bağlantı yeniden deneniyor…",
+    "Download stopped. Press Download to resume.": "İndirme durduruldu. Devam etmek için İndir'e bas.",
+    "Model ready: {name}": "Model hazır: {name}",
+})

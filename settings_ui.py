@@ -6,16 +6,16 @@ import sys
 import threading
 
 from PyQt6.QtCore import (QEasingCurve, QLibraryInfo, QPoint, QPropertyAnimation,
-                          QRect, QSize, Qt, QTimer, QTranslator, QUrl, pyqtSignal)
+                          QRect, QSize, Qt, QTimer, QEvent, QTranslator, QUrl, pyqtSignal)
 from PyQt6.QtGui import (QColor, QDesktopServices, QFont, QFontMetrics,
-                         QGuiApplication, QIcon, QKeySequence, QShortcut)
+                         QGuiApplication, QIcon, QKeySequence, QShortcut, QPainter)
 from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QFormLayout, QFrame, QGraphicsOpacityEffect, QGroupBox,
     QHBoxLayout, QInputDialog, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
-    QPushButton, QScrollArea, QSizePolicy, QSpinBox, QStyle,
-    QStyledItemDelegate, QStyleOptionViewItem, QTabWidget, QVBoxLayout, QWidget,
+    QPushButton, QScrollArea, QSizePolicy, QSpinBox, QStyle, QProgressBar,
+    QStyledItemDelegate, QStyleOptionViewItem, QTabWidget, QVBoxLayout, QWidget, QBoxLayout, QStackedWidget,
 )
 
 import api
@@ -143,6 +143,99 @@ def install_qt_translator(app, code):
             _qt_translator = translator
             return True
     return False
+
+
+class EmptyListWidget(QListWidget):
+    """An empty hint without a fake selectable record."""
+    def __init__(self, hint):
+        super().__init__()
+        self.hint = hint
+        self.setAccessibleName(hint)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if not self.count():
+            painter = QPainter(self.viewport())
+            painter.setPen(QColor(theme.palette().muted))
+            painter.drawText(self.viewport().rect().adjusted(12, 8, -12, -8),
+                             Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap,
+                             self.hint)
+
+
+class Disclosure(QWidget):
+    """A compact section that does not occupy space until requested."""
+    def __init__(self, title, widgets, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.toggle = QPushButton(t(title))
+        self.toggle.setObjectName("disclosure")
+        self.toggle.setCheckable(True)
+        self.body = QWidget()
+        body = QVBoxLayout(self.body)
+        body.setContentsMargins(0, 8, 0, 8)
+        for widget in widgets:
+            body.addWidget(widget)
+        self.body.hide()
+        self.toggle.toggled.connect(self._expand)
+        layout.addWidget(self.toggle)
+        layout.addWidget(self.body)
+
+    def _expand(self, expanded):
+        self.body.setVisible(expanded)
+        self.body.setMinimumHeight(self.body.layout().minimumSize().height() if expanded else 0)
+        self.body.updateGeometry()
+        self.updateGeometry()
+        QTimer.singleShot(0, self._refresh_scroll_extent)
+
+    def _refresh_scroll_extent(self):
+        parent = self.parentWidget()
+        while parent is not None:
+            if parent.layout() is not None:
+                parent.layout().invalidate()
+                parent.layout().activate()
+            parent.updateGeometry()
+            if isinstance(parent, QScrollArea):
+                content = parent.widget()
+                content.setMinimumHeight(content.layout().minimumSize().height())
+                if self.toggle.isChecked():
+                    parent.ensureWidgetVisible(self.toggle, 0, 16)
+                break
+            parent = parent.parentWidget()
+
+
+class ActionRow(QWidget):
+    def __init__(self, source):
+        super().__init__()
+        self.actions = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
+        self.actions.setContentsMargins(0, 0, 0, 0)
+        while source.count():
+            item = source.takeAt(0)
+            if item.widget():
+                self.actions.addWidget(item.widget())
+    def resizeEvent(self, event):
+        needed = sum(self.actions.itemAt(i).widget().sizeHint().width()
+                     for i in range(self.actions.count())) + max(0, self.actions.count()-1) * 8
+        self.actions.setDirection(QBoxLayout.Direction.TopToBottom if self.width() < needed
+                                  else QBoxLayout.Direction.LeftToRight)
+        super().resizeEvent(event)
+
+
+class Workspace(QWidget):
+    """Reflow columns using the available width, never the monitor width."""
+    def __init__(self, left, right):
+        super().__init__()
+        self.columns = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
+        self.columns.setContentsMargins(0, 0, 0, 0)
+        self.columns.setSpacing(16)
+        self.columns.addWidget(left, 2)
+        self.columns.addWidget(right, 3)
+
+    def resizeEvent(self, event):
+        self.columns.setDirection(QBoxLayout.Direction.LeftToRight
+                                  if self.width() >= 780
+                                  else QBoxLayout.Direction.TopToBottom)
+        super().resizeEvent(event)
 
 
 class SaveBanner(QFrame):
@@ -428,9 +521,75 @@ class FitsOnScreenCombo(QComboBox):
                 tallest = max(tallest, hint.height())
         return tallest or view.sizeHintForRow(0) or 24
 
+    def setEditable(self, editable):
+        super().setEditable(editable)
+        if editable:
+            # Custom values are entered in the picker. The entire closed field
+            # is a selection target, including the embedded line edit.
+            self.lineEdit().setReadOnly(True)
+            self.lineEdit().installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        if watched is self.lineEdit() and event.type() == QEvent.Type.MouseButtonPress:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.showPopup()
+                return True
+        return super().eventFilter(watched, event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.showPopup()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
     def showPopup(self):
-        super().showPopup()
-        self._open_where_it_fits()
+        self._search_picker()
+
+    def _search_picker(self):
+        dialog = QDialog(self.window())
+        dialog.setWindowTitle(t("Select"))
+        dialog.resize(560, 420)
+        screen = self.screen().availableGeometry()
+        dialog.resize(min(560, screen.width() - 40), min(420, screen.height() - 80))
+        layout = QVBoxLayout(dialog)
+        search = QLineEdit()
+        search.setPlaceholderText(t("Search…"))
+        search.setClearButtonEnabled(True)
+        rows = QListWidget()
+        rows.setWordWrap(True)
+        for index in range(self.count()):
+            item = QListWidgetItem(self.itemText(index))
+            item.setData(Qt.ItemDataRole.UserRole, index)
+            item.setToolTip(self.itemText(index))
+            rows.addItem(item)
+        rows.setCurrentRow(self.currentIndex())
+        def filter_rows(query):
+            for index in range(rows.count()):
+                rows.item(index).setHidden(query.casefold() not in rows.item(index).text().casefold())
+            visible = [rows.item(i) for i in range(rows.count()) if not rows.item(i).isHidden()]
+            if visible:
+                rows.setCurrentItem(visible[0])
+        search.textChanged.connect(filter_rows)
+        def choose():
+            item = rows.currentItem()
+            if item is not None and not item.isHidden():
+                self.setCurrentIndex(item.data(Qt.ItemDataRole.UserRole))
+                dialog.accept()
+            elif self.isEditable() and search.text().strip():
+                self.setEditText(search.text().strip())
+                dialog.accept()
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok |
+                                   QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(choose)
+        buttons.rejected.connect(dialog.reject)
+        rows.itemDoubleClicked.connect(lambda _: choose())
+        search.returnPressed.connect(choose)
+        layout.addWidget(search)
+        layout.addWidget(rows, 1)
+        layout.addWidget(buttons)
+        search.setFocus()
+        dialog.exec()
 
     def _open_where_it_fits(self):
         """Move the popup so the whole list is on the screen, shrinking it to
@@ -528,18 +687,23 @@ class FitsOnScreenCombo(QComboBox):
 
 
 class SettingsWindow(QDialog):
+    recording_requested = pyqtSignal(str)
+    cancel_requested = pyqtSignal(str)
     applied = pyqtSignal()
     language_changed = pyqtSignal()
 
     _models_loaded = pyqtSignal(list, str)
     _transcribe_models_loaded = pyqtSignal(list, str)
     _local_download_done = pyqtSignal(str, str)
+    _local_download_progress = pyqtSignal(object)
     _test_done = pyqtSignal(bool, str)
 
     def __init__(self, conf, launch_command, meeting_command=None,
                  meetings=None, ask_command=None, parent=None):
         super().__init__(parent)
         self.conf = conf
+        self._download_stop = threading.Event()
+        self._download_name = None
         self.launch_command = launch_command
         self.meeting_command = meeting_command or launch_command
         self.meetings = meetings
@@ -553,7 +717,7 @@ class SettingsWindow(QDialog):
         self.setObjectName("settingsRoot")
         self.setWindowTitle(t("WordArc Settings"))
         self.setWindowIcon(QIcon(str(brand_asset("wordarc.ico"))))
-        self.resize(920, 700)
+        self.resize(1040, 760)
         # Small screens must be able to shrink the window: the floor sits
         # well below the opening size and every tab scrolls vertically.
         self.setMinimumSize(520, 400)
@@ -561,8 +725,8 @@ class SettingsWindow(QDialog):
             screen = QGuiApplication.primaryScreen()
             if screen is not None:
                 avail = screen.availableGeometry()
-                self.resize(min(920, max(520, avail.width() - 40)),
-                            min(700, max(400, avail.height() - 80)))
+                self.resize(min(1040, max(520, avail.width() - 40)),
+                            min(760, max(400, avail.height() - 80)))
                 # Size is not position. A window sized to fit can still sit
                 # where it was restored to — partly off the bottom of the
                 # screen — and a dropdown near its last row then opens past
@@ -572,7 +736,8 @@ class SettingsWindow(QDialog):
                 self._fit_on_screen(avail)
 
         header = QWidget()
-        header_layout = QHBoxLayout(header)
+        header_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight, header)
+        self.header_layout = header_layout
         header_layout.setContentsMargins(2, 0, 2, 4)
         logo = QLabel()
         logo.setPixmap(QIcon(str(brand_asset("wordarc-app.svg"))).pixmap(44, 44))
@@ -582,6 +747,8 @@ class SettingsWindow(QDialog):
         identity.setSpacing(0)
         name = QLabel(f"{BRAND.name} v{BRAND.version}")
         name.setObjectName("brandName")
+        name.setWordWrap(True)
+        self.brand_name_label = name
         identity.addWidget(name)
         header_layout.addLayout(identity)
         header_layout.addStretch()
@@ -629,6 +796,7 @@ class SettingsWindow(QDialog):
         self._models_loaded.connect(self._on_models_loaded)
         self._transcribe_models_loaded.connect(self._on_transcribe_models_loaded)
         self._local_download_done.connect(self._on_local_download_done)
+        self._local_download_progress.connect(self._on_local_download_progress)
         self._test_done.connect(self._on_test_done)
         self.transcriber.progress.connect(self._on_file_progress)
         self.transcriber.finished.connect(self._on_file_finished)
@@ -643,6 +811,7 @@ class SettingsWindow(QDialog):
         self.local_stt_model.currentIndexChanged.connect(self._refresh_local_controls)
         self.transcribe_model.currentTextChanged.connect(self._refresh_shared_ai_summaries)
         self.cleanup_model.currentTextChanged.connect(self._refresh_shared_ai_summaries)
+        self.cleanup_enabled.toggled.connect(self._refresh_local_controls)
         self.navigate_to("dictation")
 
     def _build_navigation(self):
@@ -673,11 +842,12 @@ class SettingsWindow(QDialog):
             ("settings", ("shared_ai", "application"), "Settings",
              "Models, language, startup and appearance.",
              style.standardIcon(QStyle.StandardPixmap.SP_ComputerIcon),
-             self._settings_tab(), True),
+             self._settings_tab(), False),
         ]
         for main_id, aliases, title, description, icon, body, scroll in specs:
+            body = self._workspace_page(main_id, body)
             wrapped, _scroller = self._wrap_page(body, description, scroll)
-            index = self.tabs.addTab(wrapped, icon, t(title))
+            index = self.tabs.addTab(wrapped, t(title))
             self._tab_index[main_id] = index
             for alias in aliases:
                 self._tab_index[alias] = index
@@ -686,6 +856,202 @@ class SettingsWindow(QDialog):
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.addWidget(self.tabs)
         return content
+
+    @staticmethod
+    def _column(widgets):
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+        for widget in widgets:
+            layout.addWidget(widget)
+        layout.addStretch()
+        return panel
+
+    def _record_controls(self, kind):
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        button = QPushButton(t("Start recording"))
+        button.setObjectName("primaryButton")
+        cancel = QPushButton(t("Discard recording"))
+        cancel.hide()
+        status = QLabel(t("Ready"))
+        status.setObjectName("muted")
+        status.setWordWrap(True)
+        button.clicked.connect(lambda: self._request_recording(kind))
+        cancel.clicked.connect(lambda: self.cancel_requested.emit(kind))
+        layout.addWidget(status)
+        layout.addWidget(button)
+        layout.addWidget(cancel)
+        setattr(self, kind + "_record_button", button)
+        setattr(self, kind + "_cancel_button", cancel)
+        setattr(self, kind + "_record_status", status)
+        setattr(self, kind + "_runtime_state", "idle")
+        return panel
+
+    def _request_recording(self, kind):
+        state = getattr(self, kind + "_runtime_state")
+        if state in ("busy", "working"):
+            return
+        if state == "idle" and not self._save():
+            return
+        self.recording_requested.emit(kind)
+
+    def set_recording_state(self, kind, state, message=""):
+        setattr(self, kind + "_runtime_state", state)
+        busy = state in ("busy", "working")
+        recording = state == "recording"
+        button = getattr(self, kind + "_record_button")
+        button.setText(t("Working…") if busy else
+                       t("Stop and transcribe") if recording else t("Start recording"))
+        button.setEnabled(not busy)
+        getattr(self, kind + "_cancel_button").setVisible(recording)
+        getattr(self, kind + "_record_status").setText(
+            message or t("Recording…" if recording else "Working…" if busy else "Ready"))
+
+    def set_dictation_result(self, text):
+        self.dictation_output.setPlainText(text)
+        self._load_history()
+
+    def _workspace_page(self, kind, original):
+        old = original.layout()
+        widgets = []
+        while old.count():
+            item = old.takeAt(0)
+            if item.widget():
+                widget = item.widget()
+                widget.setParent(None)
+                widgets.append(widget)
+        for widget in widgets:
+            for layout in widget.findChildren(QHBoxLayout):
+                children = [layout.itemAt(i).widget() for i in range(layout.count())
+                            if layout.itemAt(i).widget()]
+                if len(children) > 1 and all(isinstance(child, QPushButton) for child in children):
+                    parent_layout = layout.parent()
+                    if isinstance(parent_layout, QVBoxLayout):
+                        index = parent_layout.indexOf(layout)
+                        parent_layout.removeItem(layout)
+                        parent_layout.insertWidget(max(0, index), ActionRow(layout))
+            for label in widget.findChildren(QLabel):
+                if len(label.text()) > 150:
+                    widget.setToolTip(widget.toolTip() + "\n" + label.text())
+                    label.hide()
+        if kind == "settings":
+            cleanup_card = widgets[2]
+            editor = self.cleanup_prompt
+            layout = cleanup_card.layout().itemAt(0).layout()
+            if layout is None:
+                layout = cleanup_card.layout().itemAt(cleanup_card.layout().count() - 1).layout()
+            if layout:
+                layout.removeWidget(editor)
+                reset_item = layout.takeAt(layout.count() - 1)
+                reset_holder = QWidget()
+                if reset_item.layout():
+                    reset_holder.setLayout(reset_item.layout())
+                layout.addWidget(Disclosure("Cleanup rules", [editor, reset_holder]))
+            # Keep section ownership intact so asynchronous model callbacks stay valid.
+            widgets[4].deleteLater()
+            page = QWidget()
+            row = QBoxLayout(QBoxLayout.Direction.LeftToRight, page)
+            row.setContentsMargins(0, 0, 0, 0)
+            menu = QListWidget()
+            menu.setObjectName("sectionMenu")
+            menu.setFixedWidth(160)
+            stack = QStackedWidget()
+            selector = FitsOnScreenCombo()
+            selector.hide()
+            groups = [("Speech to text", widgets[1:2]),
+                      ("Transcript cleanup", widgets[2:3]),
+                      ("Names and terms", widgets[3:4]),
+                      ("API keys", widgets[:1]),
+                      ("Application", widgets[5:])]
+            for title, items in groups:
+                menu.addItem(t(title))
+                selector.addItem(t(title))
+                scroll = QScrollArea()
+                scroll.setWidgetResizable(True)
+                scroll.setFrameShape(QFrame.Shape.NoFrame)
+                scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+                column = self._column(items)
+                column.setMinimumWidth(0)
+                column.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+                scroll.setWidget(column)
+                stack.addWidget(scroll)
+            menu.currentRowChanged.connect(stack.setCurrentIndex)
+            menu.currentRowChanged.connect(selector.setCurrentIndex)
+            selector.currentIndexChanged.connect(menu.setCurrentRow)
+            menu.setCurrentRow(0)
+            self.settings_section_selector = selector
+            self.settings_section_menu = menu
+            self.settings_section_stack = stack
+            row.addWidget(menu)
+            row.addWidget(selector)
+            row.addWidget(stack, 1)
+            page.setMinimumWidth(0)
+            self.settings_sections_page = page
+            return page
+        if kind == "dictation":
+            # Start, sound, output, recording, cleanup, history.
+            self.dictation_output = QPlainTextEdit()
+            self.dictation_output.setReadOnly(True)
+            self.dictation_output.setFixedHeight(130)
+            self.dictation_output.setPlaceholderText(t("Your next dictation appears here."))
+            result, body = self._section_card("Latest dictation", "The finished text.")
+            body.addWidget(self.dictation_output)
+            copy = QPushButton(t("Copy"))
+            copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(
+                self.dictation_output.toPlainText()))
+            body.addWidget(copy)
+            self.history.setFixedHeight(120)
+            controls, controls_body = self._section_card("Dictation", "Record, transcribe and paste spoken text.")
+            for widget in (self.mic.parentWidget().parentWidget(), self.language.parentWidget(),
+                           self.shortcut.parentWidget(), self.shortcut_status, self.cleanup_enabled):
+                controls_body.addWidget(widget)
+            # Keep descriptions available through a small help affordance.
+            left = [self._record_controls(kind), controls]
+            # Frequent paste toggle belongs on the main surface.
+            self.auto_paste.setParent(None)
+            left.append(self.auto_paste)
+            history_options = QWidget()
+            options_layout = QVBoxLayout(history_options)
+            options_layout.addWidget(self.history_enabled)
+            # The retention row contains a label, spinbox and spacer.
+            history_layout = widgets[5].layout()
+            limit_item = history_layout.takeAt(1)
+            limit_holder = QWidget()
+            limit_holder.setLayout(limit_item.layout())
+            options_layout.addWidget(limit_holder)
+            left.append(Disclosure("Advanced", [widgets[2], widgets[3], widgets[4], history_options]))
+            widgets[0].deleteLater()
+            widgets[1].deleteLater()
+            right = [result, widgets[5]]
+        elif kind == "meeting":
+            left = [self._record_controls(kind), widgets[0], widgets[1],
+                    Disclosure("Advanced", widgets[2:-1])]
+            right = [widgets[-1]]
+            self.minutes_list.setFixedHeight(100)
+            self.minutes_view.setMinimumHeight(200)
+            self.minutes_view.setMaximumHeight(260)
+        else:
+            widgets[0].hide()
+            left = widgets[1:4]
+            # Prompt editor and reset live behind a disclosure.
+            options = widgets[3]
+            prompt_row = self.file_cleanup_prompt.parentWidget()
+            option_layout = options.layout().itemAt(options.layout().count() - 1).layout()
+            if option_layout:
+                option_layout.removeWidget(prompt_row)
+                reset_layout = option_layout.takeAt(option_layout.count() - 1)
+                reset_holder = QWidget()
+                if reset_layout.layout():
+                    reset_holder.setLayout(reset_layout.layout())
+                option_layout.addWidget(Disclosure("Cleanup rules", [prompt_row, reset_holder]))
+            right = widgets[4:]
+            self.file_output.setMinimumHeight(260)
+            self.file_output.setMaximumHeight(360)
+        original.deleteLater()
+        return Workspace(self._column(left), self._column(right))
 
     def _wrap_page(self, page, description, scroll=True):
         page.setObjectName("pageCard")
@@ -763,6 +1129,8 @@ class SettingsWindow(QDialog):
         if page_id not in self._tab_index:
             return False
         self._show_page(page_id)
+        if page_id in ("shared_ai", "application"):
+            self.settings_section_menu.setCurrentRow(4 if page_id == "application" else 0)
         return True
 
     def _shared_ai_note(self):
@@ -809,6 +1177,14 @@ class SettingsWindow(QDialog):
         self.transcribe_status.setVisible(not local)
         self.local_row.setVisible(local)
         self.local_status.setVisible(local)
+        if hasattr(self, "local_privacy_note"):
+            self.local_privacy_note.setVisible(local)
+            enabled = hasattr(self, "cleanup_enabled") and self.cleanup_enabled.isChecked()
+            self.local_privacy_note.setText(t("Audio stays on this computer. Cleanup sends the text to Gemini when enabled." if enabled else "Audio stays on this computer. Cleanup is off; the raw transcript is used."))
+        if self._download_name:
+            self.local_download_button.setEnabled(False)
+            self.local_remove_button.setEnabled(False)
+            return
         if not local:
             self.local_download_button.setEnabled(False)
             self.local_remove_button.setEnabled(False)
@@ -830,35 +1206,65 @@ class SettingsWindow(QDialog):
         self.local_remove_button.setEnabled(False)
 
     def _download_local_model(self):
-        """Fetch the chosen model. A 1.6 GB download takes minutes, so it runs
-        on a thread and the window stays responsive; the button comes back when
-        the files are in place."""
         name = self.local_stt_model.currentData()
-        if not name or localspeech.state(name).installed:
+        if self._download_name or not name or localspeech.state(name).installed:
             return
+        self._download_name = name
+        self._download_stop.clear()
+        self.local_stt_model.setEnabled(False)
         self.local_download_button.setEnabled(False)
         self.local_remove_button.setEnabled(False)
+        self.download_cancel.setEnabled(True)
+        self.download_panel.show()
+        self.download_title.setText(t("Downloading {name}…", name=name))
+        self.download_details.setText(t("Connecting…"))
+        self.download_bar.setRange(0, 0)
         self.local_status.setText(t("Downloading {name}…", name=name))
-
         def work():
             try:
-                localspeech.download(name)
+                localspeech.download(name, should_stop=self._download_stop.is_set,
+                                     on_progress=self._local_download_progress.emit)
                 self._local_download_done.emit(name, "")
-            except localspeech.LocalSpeechError as exc:
+            except Exception as exc:
                 self._local_download_done.emit(name, str(exc))
-            except Exception as exc:  # never leave the button stuck
-                self._local_download_done.emit(name, str(exc))
-
         threading.Thread(target=work, daemon=True).start()
 
+    def _on_local_download_progress(self, progress):
+        if progress.name != self._download_name:
+            return
+        self.download_title.setText(t("Downloading {name}…", name=progress.name))
+        if progress.total:
+            self.download_bar.setRange(0, 1000)
+            self.download_bar.setValue(min(1000, int(progress.completed * 1000 / progress.total)))
+            eta = t("Calculating…") if progress.remaining is None else t("{seconds} s", seconds=round(progress.remaining))
+            self.download_details.setText(t(
+                "{done} / {total} · {speed}/s · Remaining: {eta}",
+                done=localspeech.human_size(progress.completed) or "0 MB",
+                total=localspeech.human_size(progress.total),
+                speed=localspeech.human_size(progress.speed) or "0 KB", eta=eta))
+        self.download_file.setText(t("Verifying files…") if progress.phase == "verifying" else
+                                   t("Retrying connection…") if progress.phase == "retrying" else progress.filename)
+
     def _on_local_download_done(self, name, error):
-        if error:
-            self.local_download_button.setEnabled(True)
-            self.local_status.setText(t("Could not download {name}: {error}",
-                                        name=name, error=error))
+        if name != self._download_name:
+            return
+        cancelled = self._download_stop.is_set()
+        self._download_name = None
+        self.local_stt_model.setEnabled(True)
+        self.download_cancel.setEnabled(False)
         self._refresh_local_controls()
-        if not error:
-            self.save_banner.show_now()
+        if error:
+            message = t("Download stopped. Press Download to resume.") if cancelled else t("Could not download {name}: {error}", name=name, error=error)
+            self.local_status.setText(message)
+            self.download_title.setText(message)
+            self.download_title.setToolTip(message)
+            self.download_bar.setRange(0, 1000)
+        else:
+            self.download_bar.setRange(0, 1000)
+            self.download_bar.setValue(1000)
+            self.download_title.setText(t("Model ready: {name}", name=name))
+            self.download_file.setText("")
+            self.save_banner.show_saved(t("Model ready: {name}", name=name))
 
     def _remove_local_model(self):
         name = self.local_stt_model.currentData()
@@ -940,6 +1346,7 @@ class SettingsWindow(QDialog):
         sound, body = self._section_card(
             "Sound", "Where your voice comes in.")
         self.mic = FitsOnScreenCombo()
+        self.mic.setProperty("searchable", True)
         self.refresh_audio_devices = QPushButton(t("Reload"))
         self.refresh_audio_devices.clicked.connect(self._refresh_audio_devices)
         body.addWidget(self._label_row(
@@ -1074,7 +1481,7 @@ class SettingsWindow(QDialog):
         key_help.setObjectName("muted")
         keys_body.addWidget(key_help)
 
-        self.gemini_keys_list = QListWidget()
+        self.gemini_keys_list = EmptyListWidget(t("Add an API key to use cloud models."))
         self.gemini_keys_list.setMinimumHeight(150)
         self.gemini_keys_list.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection
@@ -1127,6 +1534,7 @@ class SettingsWindow(QDialog):
             "Local transcribes on this computer and sends no audio anywhere. "
             "Cloud uses Gemini and needs an API key."))
         self.local_stt_model = FitsOnScreenCombo()
+        self.local_stt_model.setProperty("searchable", True)
         for name in localspeech.model_names():
             label, note = localspeech.model_label(name)
             # The model name is the same in both languages; the note beside it
@@ -1162,6 +1570,30 @@ class SettingsWindow(QDialog):
         self.local_status.setObjectName("muted")
         self.local_status.setWordWrap(True)
         stt_body.addWidget(self.local_status)
+        self.local_privacy_note = QLabel()
+        self.local_privacy_note.setObjectName("muted")
+        self.local_privacy_note.setWordWrap(True)
+        stt_body.addWidget(self.local_privacy_note)
+        self.download_panel = QWidget()
+        self.download_panel.setObjectName("sharedAiNote")
+        download_layout = QVBoxLayout(self.download_panel)
+        self.download_title = QLabel()
+        self.download_title.setWordWrap(True)
+        self.download_bar = QProgressBar()
+        self.download_bar.setTextVisible(True)
+        self.download_details = QLabel()
+        self.download_details.setObjectName("muted")
+        self.download_details.setWordWrap(True)
+        self.download_file = QLabel()
+        self.download_file.setObjectName("muted")
+        self.download_file.setWordWrap(True)
+        self.download_cancel = QPushButton(t("Stop"))
+        self.download_cancel.clicked.connect(self._download_stop.set)
+        for widget in (self.download_title, self.download_bar, self.download_details,
+                       self.download_file, self.download_cancel):
+            download_layout.addWidget(widget)
+        self.download_panel.hide()
+        stt_body.addWidget(self.download_panel)
         self.cloud_row = self._label_row(
             "Cloud model", self._row(self.transcribe_model,
                                      self.refresh_transcribe_models))
@@ -1243,9 +1675,11 @@ class SettingsWindow(QDialog):
         sound, body = self._section_card(
             "Sound", "Your microphone plus whatever comes out of your speakers.")
         self.meeting_mic = FitsOnScreenCombo()
+        self.meeting_mic.setProperty("searchable", True)
         body.addWidget(self._label_row("Microphone", self.meeting_mic))
 
         self.meeting_system = FitsOnScreenCombo()
+        self.meeting_system.setProperty("searchable", True)
         self.meeting_system.addItem(t("Current output"), "")
         for name, desc in audio.list_monitors():
             self.meeting_system.addItem(desc, name)
@@ -1261,6 +1695,8 @@ class SettingsWindow(QDialog):
         ))
         note.setObjectName("muted")
         note.setWordWrap(True)
+        sound.setToolTip(note.text())
+        note.hide()
         body.addWidget(note)
         layout.addWidget(sound)
 
@@ -1382,7 +1818,7 @@ class SettingsWindow(QDialog):
         box = QGroupBox(t("Minutes"))
         layout = QVBoxLayout(box)
 
-        self.minutes_list = QListWidget()
+        self.minutes_list = EmptyListWidget(t("No meetings yet."))
         self.minutes_list.setWordWrap(True)
         self.minutes_list.setMaximumHeight(170)
         self.minutes_list.currentItemChanged.connect(self._show_minutes)
@@ -1420,10 +1856,12 @@ class SettingsWindow(QDialog):
         row.addWidget(copy)
         row.addWidget(self.minutes_retry)
         row.addStretch(1)
-        row.addWidget(folder)
-        row.addWidget(delete)
-        row.addWidget(reload_)
         layout.addLayout(row)
+        more = QHBoxLayout()
+        more.addWidget(folder)
+        more.addWidget(delete)
+        more.addWidget(reload_)
+        layout.addLayout(more)
         return box
 
     def _file_tab(self):
@@ -1480,6 +1918,7 @@ class SettingsWindow(QDialog):
         transcript, body = self._section_card(
             "Transcript", "The finished text.")
         self.file_run = QPushButton(t("Transcribe"))
+        self.file_run.setObjectName("primaryButton")
         self.file_run.clicked.connect(self._run_file)
         self.file_stop = QPushButton(t("Stop"))
         self.file_stop.clicked.connect(self.transcriber.stop)
@@ -1527,7 +1966,7 @@ class SettingsWindow(QDialog):
             t("Store dictation history on this computer")
         )
         layout.addWidget(self.history_enabled)
-        self.history = QListWidget()
+        self.history = EmptyListWidget(t("No dictation history yet."))
         self.history.setWordWrap(True)
         self.history.setMinimumHeight(220)
         self.history.setSelectionMode(
@@ -1555,7 +1994,7 @@ class SettingsWindow(QDialog):
         limit_row.addStretch(1)
         layout.addLayout(limit_row)
 
-        copy = QPushButton(t("Copy selected to clipboard"))
+        copy = QPushButton(t("Copy"))
         copy.clicked.connect(self._copy_history)
         delete = QPushButton(t("Delete selected"))
         delete.setObjectName("dangerButton")
@@ -1603,8 +2042,10 @@ class SettingsWindow(QDialog):
         layout = QVBoxLayout(holder)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         caption = QLabel(t(label))
         caption.setObjectName("muted")
+        caption.setWordWrap(True)
         layout.addWidget(caption)
         layout.addWidget(widget)
         return holder
@@ -1613,13 +2054,16 @@ class SettingsWindow(QDialog):
     def _section_card(title, description):
         """A roomy card: bold title, one muted description line, content."""
         box = QGroupBox(t(title))
+        box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         outer = QVBoxLayout(box)
         detail = QLabel(t(description))
         detail.setObjectName("muted")
         detail.setWordWrap(True)
-        outer.addWidget(detail)
+        box.setToolTip(t(description))
+        detail.deleteLater()
         inner = QVBoxLayout()
-        inner.setSpacing(10)
+        inner.setSpacing(8)
+        inner.setAlignment(Qt.AlignmentFlag.AlignTop)
         outer.addLayout(inner)
         return box, inner
 
@@ -1786,6 +2230,7 @@ class SettingsWindow(QDialog):
         self._load_history()  # the trim may just have dropped rows from the list
         self.applied.emit()
         self._confirm_saved()
+        return True
 
     def _confirm_saved(self):
         """Say the settings are in without taking the window over."""
@@ -1793,6 +2238,17 @@ class SettingsWindow(QDialog):
         sounds.play(sounds.SAVED)
 
     def resizeEvent(self, event):
+        if hasattr(self, "brand_name_label"):
+            narrow = self.width() < 800
+            self.brand_name_label.setText(BRAND.name if narrow else f"{BRAND.name} v{BRAND.version}")
+            self.header_lang.setMinimumWidth(70 if narrow else 96)
+            self.header_theme.setMinimumWidth(70 if narrow else 96)
+        if hasattr(self, "settings_sections_page"):
+            narrow = self.width() < 800
+            self.settings_sections_page.layout().setDirection(
+                QBoxLayout.Direction.TopToBottom if narrow else QBoxLayout.Direction.LeftToRight)
+            self.settings_section_menu.setVisible(not narrow)
+            self.settings_section_selector.setVisible(narrow)
         super().resizeEvent(event)
         # The banner is not in the layout, so it has to be told where the
         # window's new edges are. The window is resized once before the banner
@@ -2150,6 +2606,7 @@ class SettingsWindow(QDialog):
         )
 
     def closeEvent(self, event):
+        self._download_stop.set()
         # Closing mid-transcription used to kill the whole app: the worker
         # thread kept emitting on the deleted transcriber child. Ask it to
         # stop; the daemon thread dies on its own, the window closes now.

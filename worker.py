@@ -42,13 +42,13 @@ class Pipeline(QObject):
     def busy(self):
         return self._thread is not None and self._thread.is_alive()
 
-    def run(self, wav_path, duration, rms_values=(), operation_id=""):
+    def run(self, wav_path, duration, rms_values=(), operation_id="", auto_paste=None):
         if self.busy:
             return
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._work,
-            args=(wav_path, duration, list(rms_values), operation_id),
+            args=(wav_path, duration, list(rms_values), operation_id, auto_paste),
             daemon=True,
         )
         self._thread.start()
@@ -62,8 +62,9 @@ class Pipeline(QObject):
         """
         self._stop.set()
 
-    def _work(self, wav_path, duration, rms_values, operation_id):
+    def _work(self, wav_path, duration, rms_values, operation_id, auto_paste=None):
         conf = self.conf
+        should_paste = conf["auto_paste"] if auto_paste is None else auto_paste
         started = time.monotonic()
         raw = ""
 
@@ -125,10 +126,10 @@ class Pipeline(QObject):
                     print(f"wordarc: cleanup failed: {exc}", file=sys.stderr)
 
             with _paste_lock:
-                previous = paste.read_clipboard() if conf["restore_clipboard"] else None
+                previous = paste.read_clipboard() if should_paste and conf["restore_clipboard"] else None
                 paste.copy(text)
 
-                if conf["auto_paste"]:
+                if should_paste:
                     self.stage.emit(t("Pasting…"), operation_id)
                     paste.press(conf["paste_shortcut"])
                     if previous is not None:

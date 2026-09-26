@@ -115,6 +115,8 @@ class WordArc:
         self.meeting_base = ""
         self.meeting_message = ""
         self.settings_window = None
+        self._window_dictation = False
+        self._last_dictation = ""
         self._quitting = False
 
         self.overlay = Overlay(self.conf["overlay_corner"])
@@ -218,6 +220,7 @@ class WordArc:
 
     def _set_state(self, state):
         self.state = state
+        self._sync_workspace()
         self._refresh_cancel_hotkey()
         self._refresh_tray()
 
@@ -239,6 +242,7 @@ class WordArc:
         self.meeting_state = state
         if state != M_WORKING:
             self.meeting_message = ""
+        self._sync_workspace()
         self._refresh_cancel_hotkey()
         self._refresh_tray()
 
@@ -310,9 +314,10 @@ class WordArc:
         self.last_toggle.restart()
         return False
 
-    def start(self):
+    def start(self, from_window=False):
         if self.state != IDLE:
             return
+        self._window_dictation = from_window
         self.dictation_operation.begin()
         self.overlay.show_recording()
         if not self._begin_recording():
@@ -452,6 +457,7 @@ class WordArc:
                 and _base != self.meeting_base):
             return
         self.meeting_message = message
+        self._sync_workspace()
         if self.state == IDLE and self.meeting_state == M_WORKING:
             self.tray.setToolTip(message)
 
@@ -480,6 +486,8 @@ class WordArc:
             self.meeting_operation.transition(operation.State.FAILED)
             self.meeting_operation.transition(operation.State.IDLE)
         self._set_meeting_state(M_IDLE)
+        if self.settings_window is not None:
+            self.settings_window.set_recording_state("meeting", M_IDLE, error)
         first_line = error.strip().splitlines()[0]
         self.overlay.show_error(t("Meeting failed: {error}", error=first_line))
         self.tray.showMessage(
@@ -515,30 +523,35 @@ class WordArc:
     def _on_recorded(self, wav_path, duration, rms_values):
         self.pipeline.run(
             wav_path, duration, rms_values,
-            operation_id=self.dictation_operation.operation_id)
+            operation_id=self.dictation_operation.operation_id,
+            auto_paste=False if self._window_dictation else None)
 
     def _on_dictation_stage(self, message, operation_id):
         if self.dictation_operation.accepts(operation_id):
             self.overlay.show_busy(message)
+            if self.settings_window is not None:
+                self.settings_window.set_recording_state("dictation", self.state, message)
 
     def _on_finished(self, _raw, text, warning, operation_id):
         if (self.dictation_operation.state != operation.State.PROCESSING
                 or not self.dictation_operation.accepts(operation_id)):
             return
+        self._last_dictation = text
+        if self.settings_window is not None:
+            self.settings_window.set_dictation_result(text)
         self.dictation_operation.transition(operation.State.COMPLETED)
         self.dictation_operation.transition(operation.State.IDLE)
         if warning:
             # The text was still pasted, but cleanup did not run. Say so loudly:
             # a rejected key otherwise looks exactly like working dictation.
-            self.overlay.show_warning(
-                t("Pasted raw, cleanup failed: {error}", error=warning.splitlines()[0])
-            )
+            message = t("Copied raw, cleanup failed: {error}", error=warning.splitlines()[0]) if self._window_dictation else t("Pasted raw, cleanup failed: {error}", error=warning.splitlines()[0])
+            self.overlay.show_warning(message)
             self.tray.showMessage(
                 t("WordArc: cleanup failed"), warning,
                 QSystemTrayIcon.MessageIcon.Warning, 10000,
             )
         else:
-            action = t("Pasted") if self.conf["auto_paste"] else t("Copied")
+            action = t("Pasted") if self.conf["auto_paste"] and not self._window_dictation else t("Copied")
             self.overlay.show_done(
                 t("{action}: {preview}", action=action, preview=_preview(text))
             )
@@ -559,6 +572,8 @@ class WordArc:
             self.dictation_operation.transition(operation.State.IDLE)
         self._report(message, self.overlay)
         self._set_state(IDLE)
+        if self.settings_window is not None:
+            self.settings_window.set_recording_state("dictation", IDLE, message)
 
     def _report(self, message, overlay):
         logging.getLogger("wordarc.ui").warning("operation reported an error")
@@ -569,11 +584,37 @@ class WordArc:
 
     # ---- settings ---------------------------------------------------------
 
+    def _sync_workspace(self):
+        window = getattr(self, "settings_window", None)
+        if window is not None:
+            window.set_recording_state("dictation", self.state)
+            window.set_recording_state("meeting", self.meeting_state,
+                                       getattr(self, "meeting_message", ""))
+
+    def _window_record(self, kind):
+        if kind == "dictation":
+            if self.state == IDLE:
+                self.start(from_window=True)
+            elif self.state == RECORDING:
+                self.stop()
+        else:
+            self._toggle_meeting()
+
+    def _window_cancel(self, kind):
+        if kind == "dictation":
+            self.cancel()
+        else:
+            self.cancel_meeting()
+
     def open_settings(self):
         if self.settings_window is None:
             self.settings_window = SettingsWindow(
                 self.conf, launch_command(), meeting_command(), self.meetings,
             )
+            self.settings_window.recording_requested.connect(self._window_record)
+            self.settings_window.cancel_requested.connect(self._window_cancel)
+            self.settings_window.set_dictation_result(self._last_dictation)
+            self._sync_workspace()
             self.settings_window.applied.connect(self._apply_settings)
             self.settings_window.language_changed.connect(self._reopen_settings)
             self.settings_window.finished.connect(self._settings_closed)

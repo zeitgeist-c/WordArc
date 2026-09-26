@@ -32,8 +32,8 @@ class Palette:
 
 
 DARK = Palette(
-    "dark", "#0B0E14", "#141925", "#262E3E", "#2B3447", "#F3F6FC",
-    "#94A0B5", "#8B5CF6", "#22D3EE", "#20283A", "#292448",
+    "dark", "#141416", "#1C1C20", "#26262C", "#34343C", "#F3F3F5",
+    "#A1A1AD", "#9475EC", "#AD93F2", "#2C2C33", "#343044",
     "#FF6B7A", "#F5B84B", "#48D597",
 )
 LIGHT = Palette(
@@ -84,8 +84,9 @@ def stylesheet(colors: Palette) -> str:
         font-size: 10pt;
         color: {colors.text};
     }}
+    QGroupBox {{ background: transparent; }}
     QDialog, QMainWindow, QWidget#settingsRoot {{ background: {colors.window}; }}
-    QLabel#brandName {{ font-size: 18pt; font-weight: 700; }}
+    QLabel#brandName {{ font-size: 15pt; font-weight: 700; }}
     QFrame#headerRule {{ background: {colors.border}; border: 0; }}
     QLabel#muted, QLabel#pageDescription, QLabel#cardDescription {{
         color: {colors.muted};
@@ -99,19 +100,20 @@ def stylesheet(colors: Palette) -> str:
         background: transparent;
     }}
     QGroupBox {{
-        background: {colors.surface};
-        border: 1px solid {colors.border};
-        border-radius: 14px;
-        margin-top: 18px;
-        padding: 20px 16px 16px 16px;
+        background: transparent;
+        border: 0;
+        border-bottom: 1px solid {colors.border};
+        border-radius: 0;
+        margin-top: 12px;
+        padding: 8px 4px 12px 4px;
         font-weight: 600;
     }}
     QGroupBox::title {{
         subcontrol-origin: margin;
         left: 14px;
         padding: 0 8px;
-        color: {colors.violet};
-        background: {colors.surface};
+        color: {colors.text};
+        background: transparent;
         font-size: 11pt;
         font-weight: 700;
     }}
@@ -216,7 +218,7 @@ def stylesheet(colors: Palette) -> str:
         color: white;
         background: {colors.violet};
         border: 1px solid {colors.violet};
-        padding: 9px 22px;
+        padding: 6px 16px;
         font-weight: 700;
     }}
     QPushButton#primaryButton:hover {{
@@ -288,6 +290,12 @@ def stylesheet(colors: Palette) -> str:
     }}
     QTabBar::tab:hover {{ color: {colors.text}; background: {colors.hover}; }}
     QTabBar::tab:selected {{ color: {colors.text}; border-bottom-color: {colors.violet}; }}
+    QPushButton#disclosure {{ text-align: left; background: transparent; }}
+    QPushButton#disclosure:checked {{ background: {colors.selected}; }}
+    QListWidget#sectionMenu {{ background: transparent; border: 0; }}
+    QProgressBar {{ border: 1px solid {colors.border}; border-radius: 6px;
+        background: {colors.surface_alt}; min-height: 18px; text-align: center; }}
+    QProgressBar::chunk {{ background: {colors.violet}; border-radius: 5px; }}
     QMessageBox {{ background: {colors.surface}; }}
     QFrame#saveBanner {{
         background: {_mix(colors.window, colors.success, 0.10)};
