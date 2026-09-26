@@ -1,16 +1,27 @@
 # WordArc — DURUM (ortak — Desktop + Telegram okur)
 
-**Güncelleme:** 2026-09-25
-**Versiyon:** 0.4.22 (`brand.py`)
+**Güncelleme:** 2026-09-26
+**Versiyon:** 0.4.24 (`brand.py`)
 **Branch:** master
-**Son commit:** 994b4fc (v0.4.22 Yenile düğmesi cihaz listesi)
-**Ağaç:** temiz
-**Not:** Temiz ağaç; akış `wordarc-release` skill'i ile.
+**Son commit:** 32890b3 (v0.4.23 Yerel Whisper + cihaz kart listesi)
+**Ağaç:** temiz (yedek akışı çalışıyor)
+**Not:** Akış `wordarc-release` skill'i ile.
 
 ## Sırada
 - Kullanıcı söyler.
 
-## Yerel konuşma tanıma (2026-09-26, commitlenmedi)
+## Liste yerleşimi düzeltmesi (2026-09-26, commitlenmedi)
+Şikayet: listeler hiç görünmüyor. Kök neden: popup iki yana da sığmadığında
+eski kod tam boyu koruyup ekran dışına itiyordu (`_open_where_it_fits`).
+Ayrıca Qt seçili satırı kutuyla hizalar; geç seçimde popup üstten taşar,
+altta yer olsa bile.
+Düzeltme: `_choose_placement` (saf fonksiyon) — Qt'nin yeri görünürse
+dokunma; alta tam sığarsa kutunun altına; üste tam sığarsa yukarı; hiçbiri
+olmazsa geniş tarafı alıp o odaya kısalt (en az 3 satır), liste kayar.
+Doğrulama: 234 test (6 yeni `TestPlacementMath`, ekransız deterministik) +
+`tools/check_dropdowns.py` 0 kesik. `tmm` gelmeden commit yok.
+
+## Yerel konuşma tanıma (v0.4.23'te yayında)
 Bulut (Gemini) varsayılan; ayarlarda **Nerede çalışsın** = bulut / yerel.
 Yerel = faster-whisper, CPU, model exe'ye gömülmez, kullanıcı veri dizininde.
 

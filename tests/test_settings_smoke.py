@@ -594,6 +594,74 @@ class TestConnectionGuess(unittest.TestCase):
                          ["built-in", "bluetooth"])
 
 
+class TestPlacementMath(unittest.TestCase):
+    """The popup placement decision, without needing a screen.
+
+    _choose_placement is pure arithmetic so the cases a real monitor cannot
+    produce on demand — a list taller than both sides — are still pinned down.
+    Every result must sit fully inside the screen: a popup pushed off-screen
+    is what the user reported as a list showing nothing at all.
+    """
+
+    # A plain alias would become a bound method (self counts as an argument);
+    # keep it static so the call reads as the arithmetic it is.
+    @staticmethod
+    def place(*args):
+        return settings_ui.FitsOnScreenCombo._choose_placement(*args)
+
+    def assertInside(self, result, screen_top, screen_bottom):
+        self.assertIsNotNone(result, "expected a placement, got None")
+        top, height = result
+        self.assertGreaterEqual(top, screen_top, "hangs off the top")
+        self.assertLessEqual(top + height - 1, screen_bottom,
+                             "hangs off the bottom")
+        self.assertGreater(height, 0, "zero-height popup shows nothing")
+
+    def test_qt_placement_that_fits_is_untouched(self):
+        self.assertIsNone(self.place(500, 528, 415, 45, 10, 0, 1031,
+                                     528, 943))
+
+    def test_qt_top_overflow_moves_below_the_box(self):
+        # Qt lines the selected row up with the box; with a late selection
+        # that puts the popup's top above the screen even though the whole
+        # list fits below.
+        self.assertEqual(self.place(500, 528, 415, 45, 10, 0, 1031,
+                                    -100, 315),
+                         (528, 415))
+
+    def test_no_room_below_opens_upward_at_full_height(self):
+        self.assertEqual(self.place(900, 928, 200, 24, 10, 0, 1031,
+                                    928, 1200),
+                         (700, 200))
+
+    def test_neither_side_fits_takes_the_roomier_side_shrunk(self):
+        # A 415px list, 300px below and 100px above: must come back at most
+        # 300 high and fully inside, so it scrolls instead of vanishing.
+        result = self.place(100, 128, 415, 45, 10, 0, 399,
+                            128, 600)
+        self.assertInside(result, 0, 399)
+        self.assertLessEqual(result[1], 300 + 1)
+
+    def test_neither_side_fits_above_roomier_opens_upward_shrunk(self):
+        result = self.place(300, 328, 415, 45, 10, 0, 399,
+                            -200, 215)
+        self.assertInside(result, 0, 399)
+        self.assertLessEqual(result[1], 300 + 1)
+
+    def test_result_always_inside_across_a_sweep(self):
+        for screen_h in (600, 800, 1032, 1392):
+            bottom = screen_h - 1
+            for box_top in (20, 200, 500, 900, 1200):
+                if box_top >= bottom:
+                    continue
+                for full in (91, 200, 415, 900):
+                    result = self.place(box_top, box_top + 28, full, 45, 10,
+                                        0, bottom, box_top + 28,
+                                        box_top + 28 + full)
+                    if result is not None:
+                        self.assertInside(result, 0, bottom)
+
+
 class TestDropdownsStayOnScreen(unittest.TestCase):
     """A combo's popup opens where its box is, and Qt clips whatever hangs off
     the screen rather than opening upward. A dropdown in the last row of the
