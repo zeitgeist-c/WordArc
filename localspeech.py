@@ -26,6 +26,12 @@ import os
 import shutil
 import threading
 import wave
+import json
+import hashlib
+import time
+import ssl
+import urllib.request
+import urllib.parse
 from dataclasses import dataclass
 
 from i18n import t
@@ -63,6 +69,7 @@ REQUIRED_ANY = ("vocabulary.txt", "vocabulary.json")
 # pressed twice in a row, so a per-call load would be felt as a stall on the
 # second take. Switching model replaces it and the old one is dropped.
 _lock = threading.Lock()
+_download_lock = threading.Lock()
 _model = None
 _model_name = ""
 
@@ -206,40 +213,173 @@ def _fail(message, **kwargs):
     raise LocalSpeechError(t(message, **kwargs) if kwargs else t(message))
 
 
+@dataclass(frozen=True)
+class DownloadProgress:
+    name: str
+    completed: int
+    total: int
+    speed: float
+    remaining: float | None
+    filename: str = ""
+    phase: str = "download"
+
+
+def _download_manifest(name):
+    # Storage names stay unchanged so existing turbo installations still work.
+    repo = "dropbox-dash/faster-whisper-large-v3-turbo" if name == "large-v3-turbo" else _repo(name)
+    url = f"https://huggingface.co/api/models/{repo}?blobs=true"
+    with _download_open(url) as response:
+        manifest = json.load(response)
+    revision = manifest["sha"]
+    wanted = set(REQUIRED_FILES + ALSO_ACCEPTED)
+    files = [row for row in manifest["siblings"] if row["rfilename"] in wanted]
+    names = {row["rfilename"] for row in files}
+    if not set(REQUIRED_FILES).difference(REQUIRED_ANY).issubset(names) or not names.intersection(REQUIRED_ANY):
+        raise ValueError("Model repository is missing required files")
+    # Commit the weights last, after all support files have been verified.
+    files.sort(key=lambda row: row["rfilename"] == "model.bin")
+    return repo, revision, files
+
+
+def _download_open(url, offset=0):
+    import certifi
+    headers = {"User-Agent": "WordArc", "Accept-Encoding": "identity"}
+    if offset:
+        headers["Range"] = f"bytes={offset}-"
+    request = urllib.request.Request(url, headers=headers)
+    return urllib.request.urlopen(request, timeout=30,
+                                  context=ssl.create_default_context(cafile=certifi.where()))
+
+
+def _valid_download(path, row):
+    if not os.path.isfile(path) or os.path.getsize(path) != row["size"]:
+        return False
+    lfs = row.get("lfs") or {}
+    algorithm = "sha256" if lfs.get("sha256") else "sha1"
+    expected = lfs.get("sha256") or row.get("blobId")
+    if not expected:
+        return False
+    digest = hashlib.new(algorithm)
+    if algorithm == "sha1":
+        digest.update(f"blob {row['size']}\0".encode())
+    with open(path, "rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest() == expected
+
+
 def download(name, where=None, should_stop=None, on_progress=None):
-    """Fetch one model into place. Blocking — call it off the UI thread."""
+    # A closed window's worker may still be unwinding an HTTP read. A new
+    # window must not append to the same part until that worker has stopped.
+    while not _download_lock.acquire(timeout=0.1):
+        _check_cancelled(should_stop)
+    try:
+        _check_cancelled(should_stop)
+        return _download_model(name, where, should_stop, on_progress)
+    finally:
+        _download_lock.release()
+
+
+def _download_model(name, where=None, should_stop=None, on_progress=None):
+    """Stream verified files with byte progress, cancellation and resumable parts."""
     if _repo(name) is None:
         _fail("Unknown local model: {name}", name=name)
     if _is_installed(name, where):
         return 0
-    try:
-        from huggingface_hub import snapshot_download
-    except ImportError:
-        _fail("The download helper is missing. Reinstall WordArc to get it "
-              "back.")
     root = _root(name, where)
     os.makedirs(root, exist_ok=True)
+    started = time.monotonic()
+    received = 0
+    completed = total = 0
+    last_notice = 0.0
+    def report(filename="", phase="download", force=False):
+        nonlocal last_notice
+        now = time.monotonic()
+        if on_progress and (force or now - last_notice >= 0.15):
+            speed = received / max(now - started, 0.001)
+            remaining = (total - completed) / speed if speed > 0 and total else None
+            on_progress(DownloadProgress(name, completed, total, speed, remaining, filename, phase))
+            last_notice = now
     try:
-        snapshot_download(
-            repo_id=_repo(name),
-            local_dir=root,
-            # The tokenizer and the config are what this engine reads; the rest
-            # of the repository is another framework's copy of the same weights.
-            allow_patterns=[*REQUIRED_FILES, *ALSO_ACCEPTED],
-            max_workers=4,
-        )
+        _check_cancelled(should_stop)
+        report(phase="connecting", force=True)
+        repo, revision, files = _download_manifest(name)
+        total = sum(row["size"] for row in files)
+        for row in files:
+            _check_cancelled(should_stop)
+            filename = row["rfilename"]
+            target = os.path.join(root, filename)
+            part = target + f".{revision[:12]}.part"
+            if _valid_download(target, row):
+                completed += row["size"]
+                report(filename, force=True)
+                continue
+            offset = os.path.getsize(part) if os.path.exists(part) else 0
+            if offset > row["size"]:
+                offset = 0
+                with open(part, "wb"):
+                    pass
+            if shutil.disk_usage(root).free < row["size"] - offset + 16 * 1024 * 1024:
+                _fail("Not enough disk space for the local model.")
+            completed += offset
+            for attempt in range(3):
+                try:
+                    if offset < row["size"]:
+                        url = f"https://huggingface.co/{repo}/resolve/{revision}/{urllib.parse.quote(filename)}?download=true"
+                        with _download_open(url, offset) as response:
+                            status = response.status
+                            if offset and status == 200:
+                                completed -= offset
+                                offset = 0
+                            elif offset and (status != 206 or not response.headers.get("Content-Range", "").startswith(f"bytes {offset}-")):
+                                raise ValueError("Invalid resume response")
+                            with open(part, "ab" if offset else "wb") as stream:
+                                while True:
+                                    _check_cancelled(should_stop)
+                                    block = response.read(256 * 1024)
+                                    if not block:
+                                        break
+                                    _check_cancelled(should_stop)
+                                    stream.write(block)
+                                    offset += len(block)
+                                    completed += len(block)
+                                    received += len(block)
+                                    if offset > row["size"]:
+                                        raise ValueError("Downloaded file exceeds expected size")
+                                    report(filename)
+                    report(filename, "verifying", True)
+                    if not _valid_download(part, row):
+                        if offset >= row["size"]:
+                            completed -= offset
+                            offset = 0
+                            with open(part, "wb"):
+                                pass
+                        raise ValueError("Download size or checksum mismatch")
+                    os.replace(part, target)
+                    break
+                except Cancelled:
+                    raise
+                except Exception:
+                    if attempt == 2:
+                        raise
+                    report(filename, "retrying", True)
+                    # Wait in small increments so cancellation remains responsive.
+                    for _ in range(5 * (attempt + 1)):
+                        _check_cancelled(should_stop)
+                        time.sleep(0.1)
+            report(filename, force=True)
+        if not _is_installed(name, where):
+            _fail("The local model downloaded incompletely. Try again.")
+        report(phase="complete", force=True)
+        return _dir_size(root)
+    except Cancelled:
+        raise
+    except LocalSpeechError:
+        raise
     except Exception as exc:
-        # A half-written model is worse than none: it would pass the file check
-        # and then fail at load with a message nobody can act on.
-        shutil.rmtree(root, ignore_errors=True)
-        _fail("Could not download the local model: {error}", error=exc)
-    if not _is_installed(name, where):
-        shutil.rmtree(root, ignore_errors=True)
-        _fail("The local model downloaded incompletely. Try again.")
-    with contextlib.suppress(Exception):
-        if on_progress is not None:
-            on_progress(1.0)
-    return _dir_size(root)
+        # Retain verified files and revision-specific partial files for retry.
+        _log.warning("local download failed (%s)", type(exc).__name__)
+        _fail("Could not download the local model: {error}", error=str(exc))
 
 
 def remove(name, where=None):

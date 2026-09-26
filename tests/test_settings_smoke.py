@@ -174,23 +174,18 @@ class TestSettingsSmoke(unittest.TestCase):
                     scroller.horizontalScrollBar().maximum(), 0, index
                 )
 
-    def test_dictation_uses_section_cards(self):
+    def test_dictation_frequent_controls_are_visible_and_advanced_is_closed(self):
         window = self.window
-        window.navigate_to("dictation")
-        cards = window.tabs.widget(0).findChildren(settings_ui.QGroupBox)
-        titles = [card.title() for card in cards]
-        for expected in ("Start", "Sound", "Output", "Recording",
-                         "Cleanup", "History"):
-            self.assertIn(t(expected), titles)
-        # Every section card explains itself in one muted line.
-        main = [card for card in cards
-                if card.title() in {t("Start"), t("Sound"), t("Output"),
-                                    t("Recording"), t("Cleanup")}]
-        self.assertEqual(len(main), 5)
-        for card in main:
-            muted = [label for label in card.findChildren(settings_ui.QLabel)
-                     if label.objectName() == "muted"]
-            self.assertTrue(muted, card.title())
+        window.show()
+        self.app.processEvents()
+        for control in (window.mic, window.language, window.shortcut,
+                        window.cleanup_enabled, window.auto_paste,
+                        window.dictation_output):
+            self.assertTrue(control.isVisibleTo(window))
+        self.assertFalse(window.max_seconds.isVisibleTo(window))
+        disclosures = window.tabs.widget(0).findChildren(settings_ui.Disclosure)
+        disclosures[0].toggle.click()
+        self.assertTrue(window.max_seconds.isVisibleTo(window))
 
     def test_header_buttons_toggle_and_persist(self):
         window = self.window
@@ -339,11 +334,14 @@ class TestSettingsSmoke(unittest.TestCase):
         self.app.processEvents()
         window.navigate_to("settings")
         self.app.processEvents()
-        page = window.tabs.widget(3).findChild(settings_ui.QScrollArea).widget()
+        page = window.tabs.widget(3)
         titles = [box.title() for box in page.findChildren(settings_ui.QGroupBox)]
         for expected in ("Keys", "Speech to text", "Transcript cleanup",
                          "Names and terms", "Interface", "Startup", "Support"):
             self.assertIn(t(expected), titles)
+        self.assertFalse(window.ui_language.isVisibleTo(window))
+        window.settings_section_menu.setCurrentRow(4)
+        self.app.processEvents()
         for control in (window.ui_language, window.corner,
                         window.start_with_windows, window.close_to_tray):
             self.assertTrue(control.isVisibleTo(window), control)
@@ -681,45 +679,13 @@ class TestDropdownsStayOnScreen(unittest.TestCase):
         self.app.processEvents()
         return rect.bottom() - avail_bottom, -rect.top()
 
-    def test_a_box_with_no_room_below_opens_upward(self):
-        box = settings_ui.FitsOnScreenCombo()
-        for i in range(6):
-            box.addItem(f"item {i}", i)
-        box.setFixedSize(160, 24)
-        self.app.processEvents()
-        avail = box.screen().availableGeometry()
-        # Right at the bottom edge, where the screenshot was taken: six rows
-        # cannot fit below, and the only honest options are upward or clipped.
-        top = avail.bottom() - box.height() - 40
-        box.move(40, top)
-        self.app.processEvents()
-        if top > avail.top():
-            self.skipTest("this screen is too tall to reproduce the clipping")
-        over_bottom, over_top = self._open(box, avail.bottom())
-        self.assertLessEqual(over_bottom, 0,
-                             "the popup ran past the bottom of the screen")
-        self.assertLessEqual(over_top, 0,
-                             "the popup ran past the top of the screen")
-
-    def test_a_box_that_fits_is_left_where_qt_put_it(self):
-        box = settings_ui.FitsOnScreenCombo()
-        for i in range(4):
-            box.addItem(f"item {i}", i)
-        box.setFixedSize(160, 24)
-        box.move(40, 40)
-        self.app.processEvents()
-        box.showPopup()
-        self.app.processEvents()
-        before = box.view().window().geometry()
-        box.hidePopup()
-        self.app.processEvents()
-        avail = box.screen().availableGeometry()
-        # Room below, so Qt's own placement stands: the class does not move a
-        # list that already fits.
-        self.assertGreater(avail.bottom() - 64, 4 * 30,
-                           "no room below on this screen; nothing to check")
-        self._open(box, avail.bottom())
-        self.assertEqual(before.y(), box.view().window().geometry().y())
+    def test_small_and_large_lists_use_the_same_picker(self):
+        for count in (2, 4, 7, 44):
+            box = settings_ui.FitsOnScreenCombo()
+            box.addItems([f"item {index}" for index in range(count)])
+            with mock.patch.object(box, "_search_picker") as picker:
+                box.showPopup()
+            picker.assert_called_once_with()
 
     def test_every_settings_combo_is_protected(self):
         """Applied everywhere rather than patched per screenshot: which

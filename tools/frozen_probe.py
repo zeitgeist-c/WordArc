@@ -18,6 +18,9 @@ and swallows the evidence.
 import os
 import sys
 
+if not getattr(sys, "frozen", False):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ.pop("QT_QPA_PLATFORM", None)
 
@@ -150,9 +153,85 @@ def cards():
     print("FROZEN CARDS OK")
 
 
+def workspace():
+    """Exercise bundled settings with fully isolated storage and credentials."""
+    import tempfile
+    from pathlib import Path
+    from unittest import mock
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+    import config as cfg
+    import settings_ui
+    import startup
+    import theme
+    from brand import BRAND
+    app = QApplication.instance() or QApplication([])
+    out = Path(sys.argv[2])
+    out.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="wordarc-release-check-") as scratch:
+        root = Path(scratch)
+        with mock.patch.object(cfg, "CONFIG_DIR", root / "config"), \
+             mock.patch.object(cfg, "CONFIG_FILE", root / "config" / "config.json"), \
+             mock.patch.object(cfg, "HISTORY_FILE", root / "history.jsonl"), \
+             mock.patch.object(cfg, "MEETINGS_DIR", root / "meetings"), \
+             mock.patch.object(cfg, "MEETINGS_FILE", root / "meetings.jsonl"), \
+             mock.patch.object(cfg.credential_store, "read_all", return_value=[]), \
+             mock.patch.object(cfg.credential_store, "read", return_value=""), \
+             mock.patch.object(settings_ui.audio, "list_sources", return_value=[]), \
+             mock.patch.object(settings_ui.audio, "list_monitors", return_value=[]), \
+             mock.patch.object(settings_ui.audio, "refresh_devices"), \
+             mock.patch.object(startup, "is_enabled", return_value=False):
+            conf = cfg.Config()
+            window = settings_ui.SettingsWindow(conf, "isolated toggle")
+            window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+            theme.ThemeManager.apply("dark", app)
+            window.show()
+            window.resize(1040, 760)
+            assert window.tabs.count() == 4
+            combos = window.findChildren(settings_ui.FitsOnScreenCombo)
+            assert len(combos) >= 15
+            for combo in combos:
+                with mock.patch.object(combo, "_search_picker") as picker:
+                    combo.showPopup()
+                assert picker.call_count == 1
+            assert window.transcribe_model.lineEdit().isReadOnly()
+            assert window.dictation_record_button.isEnabled()
+            window.set_recording_state("dictation", "busy", "release probe")
+            assert not window.dictation_record_button.isEnabled()
+            window.set_dictation_result("Isolated release verification")
+            for index in range(4):
+                window.tabs.setCurrentIndex(index)
+                app.processEvents()
+                assert window.grab().save(str(out / f"workspace-{index}.png"))
+            window.close()
+            assert not cfg.CONFIG_FILE.exists()
+            assert not cfg.HISTORY_FILE.exists()
+    print(f"FROZEN WORKSPACE OK version={BRAND.version} frozen={getattr(sys, 'frozen', False)}", flush=True)
+
+
+def download():
+    """Verify HTTPS, checksums and engine loading in the frozen runtime."""
+    import localspeech
+    name, output = sys.argv[2:4]
+    last_phase = None
+    def progress(value):
+        nonlocal last_phase
+        if value.phase != last_phase:
+            print(value.phase, value.filename, value.completed, value.total, flush=True)
+            last_phase = value.phase
+    size = localspeech.download(name, where=output, on_progress=progress)
+    assert localspeech.state(name, where=output).installed
+    instance = localspeech.engine(name, where=output)
+    print(f"FROZEN DOWNLOAD OK name={name} bytes={size} engine={type(instance).__name__}", flush=True)
+
+
 def main():
     probe = sys.argv[1] if len(sys.argv) > 1 else "stt"
-    if probe == "cards":
+    if probe == "workspace":
+        workspace()
+    elif probe == "download":
+        download()
+    elif probe == "cards":
         cards()
     else:
         stt(sys.argv[2], sys.argv[3], sys.argv[4])

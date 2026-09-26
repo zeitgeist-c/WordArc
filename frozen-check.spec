@@ -32,6 +32,14 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+# Qt on Windows imports the OS ICU API without version-suffixed exports.
+# PATH may contain Poppler's incompatible ICU DLLs from a document runtime.
+# Never shadow the Windows ICU implementation inside the frozen bundle.
+a.binaries = [entry for entry in a.binaries
+              if os.path.basename(entry[0]).lower() not in
+              {"icuuc.dll", "icuin.dll"}
+              and not os.path.basename(entry[0]).lower().startswith("icudt")]
+
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [],

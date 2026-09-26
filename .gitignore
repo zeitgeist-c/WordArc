@@ -10,3 +10,6 @@ verbatim.spec.bak
 sbom.json
 .pytest_cache/
 .hermes/
+
+# Generated model/audit cache, not application data
+.cache/

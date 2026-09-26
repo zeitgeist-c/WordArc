@@ -56,4 +56,6 @@ $Launcher = "@echo off`r`nsetlocal`r`n" +
     "cd /d `"%~dp0`"`r`n" +
     "start `"WordArc $AppVersion`" `"%~dp0$VersionedName`" %*`r`n"
 [IO.File]::WriteAllText($LauncherPath, $Launcher, [Text.UTF8Encoding]::new($false))
+& $Python (Join-Path $PSScriptRoot "tools\verify_release_package.py")
+if ($LASTEXITCODE -ne 0) { throw "Release package verification failed." }
 Write-Host "Build completed: dist\$VersionedName + $LauncherName" -ForegroundColor Green
