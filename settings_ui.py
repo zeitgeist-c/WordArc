@@ -433,16 +433,13 @@ class FitsOnScreenCombo(QComboBox):
         self._open_where_it_fits()
 
     def _open_where_it_fits(self):
-        """Move the popup so the whole list is on the screen, and shrink it
-        to what fits if the screen is short even that way.
+        """Move the popup so the whole list is on the screen, shrinking it to
+        the room that exists when the full list fits neither below nor above.
 
         The view is not resized directly. A combo's view is wrapped in a QFrame
-        that Qt lays out itself — measured: a correctly-sized 320px container
-        with the view sitting at y=69, two pixels high — so anything set on
-        the view or the popup is undone on the next event, and the list comes
-        out blank. Only the popup window is placed here, and the height is
-        capped to the screen so a long list scrolls rather than hanging off
-        the bottom.
+        that Qt lays out itself, so anything set on the view is undone on the
+        next event. Only the popup window is placed here; Qt lays the rows out
+        inside it and scrolls what does not fit.
         """
         popup = self.view().window()
         screen = self.screen() or QGuiApplication.primaryScreen()
@@ -450,29 +447,52 @@ class FitsOnScreenCombo(QComboBox):
             return
         avail = screen.availableGeometry()
         box = self.mapToGlobal(self.rect().topLeft())
-        box_bottom = box.y() + self.height()
-        box_top = box.y()
-        rows = max(1, self.count())
         row_h = self._row_height()
-        # The rows plus the popup's own frame: the view is styled with a 1px
-        # border, and a popup sized to the rows alone leaves the first and last
-        # row pressed against the edge with the border drawn over them.
-        want = rows * row_h + self.view().frameWidth() * 2 + 8
-        want = min(want, avail.height() - 24)
+        frame = self.view().frameWidth() * 2 + 8
+        full = max(1, self.count()) * row_h + frame
+        placed = self._choose_placement(
+            box.y(), box.y() + self.height(), full, row_h, frame,
+            avail.top(), avail.bottom(),
+            popup.geometry().top(), popup.geometry().bottom())
+        if placed is None:
+            return                              # Qt's placement fits; leave it
+        top, height = placed
+        rect = popup.geometry()
+        popup.setGeometry(rect.x(), top, rect.width(), height)
 
-        below = avail.bottom() - box_bottom
-        above = box_top - avail.top()
-        if below >= want:
-            return                              # it fits below; leave it alone
+    @staticmethod
+    def _choose_placement(box_top, box_bottom, full, row_h, frame,
+                          screen_top, screen_bottom, qt_top, qt_bottom):
+        """Where the popup goes, as (top, height) — or None to keep Qt's.
+
+        Qt lines the selected row up with the box, so its first choice can
+        hang off the top even when the whole list would fit below — that is a
+        real placement too, not only the bottom clipping. Cases in order: what
+        Qt opened is fully visible; opens below at full height; opens above at
+        full height; neither way fits, so the roomier side is taken and the
+        list shrinks to it and scrolls — a full-height popup pushed off-screen
+        reads as a list that shows nothing at all. Never shorter than three
+        rows unless the screen itself is that short.
+        """
+        avail_h = screen_bottom - screen_top + 1
+        full = min(full, avail_h - 24)
+        # The floor, not a second full: at least three rows stay visible so a
+        # shrunk list is still a list, unless the screen itself is shorter.
+        min_h = min(3 * row_h + frame, avail_h - 24)
+        below = screen_bottom - box_bottom
+        above = box_top - screen_top
+        if qt_top >= screen_top and qt_bottom <= screen_bottom:
+            return None
+        if below >= full:
+            return box_bottom, full
+        if above >= full:
+            return box_top - full, full
         if below >= above:
-            # Neither side fits, but below is roomier: keep it there rather
-            # than pushing a short list off the top instead.
-            top = avail.bottom() - want + 1
-        else:
-            # Downward does not fit and upward is roomier: open above the box,
-            # the way menus behave everywhere else on the machine.
-            top = box_top - want
-        popup.setGeometry(box.x(), top, self.width(), want)
+            height = min(full, max(below, min_h))
+            top = min(box_bottom, screen_bottom - height + 1)
+            return max(top, screen_top), height
+        height = min(full, max(above, min_h))
+        return max(box_top - height, screen_top), height
 
     def keyPressEvent(self, event):
         # Qt decides this one for itself and does not consult the screen, so a
