@@ -44,7 +44,7 @@ import i18n  # noqa: E402
 from i18n import t  # noqa: E402
 from meeting import MeetingPipeline  # noqa: E402
 from overlay import Overlay  # noqa: E402
-from settings_ui import SettingsWindow, install_qt_translator  # noqa: E402
+from settings_ui import SettingsWindow, WindowView, install_qt_translator  # noqa: E402
 from worker import Pipeline  # noqa: E402
 
 SERVER_NAME = BRAND.ipc_name(getpass.getuser())
@@ -115,6 +115,7 @@ class WordArc:
         self.meeting_base = ""
         self.meeting_message = ""
         self.settings_window = None
+        self._settings_view = None
         self._window_dictation = False
         self._last_dictation = ""
         self._quitting = False
@@ -618,24 +619,83 @@ class WordArc:
             self.settings_window.applied.connect(self._apply_settings)
             self.settings_window.language_changed.connect(self._reopen_settings)
             self.settings_window.finished.connect(self._settings_closed)
+        # The language change rebuilds the window and hands over where the old
+        # one was; it is applied before show(), so the window never appears at
+        # its opening size first. It travels on the instance rather than in the
+        # signature because the tray action hands this method its own
+        # `checked` flag.
+        view, self._settings_view = getattr(self, "_settings_view", None), None
+        if view is not None:
+            view.apply(self.settings_window)
         self.settings_window.show()
         self.settings_window.raise_()
         self.settings_window.activateWindow()
 
     def _reopen_settings(self):
-        """Rebuild the settings window so the new language applies at once."""
-        if self.settings_window is not None:
-            # Blocked so close() does not trip _settings_closed (which would
-            # drop the fresh window and could quit the app); closeEvent still
-            # stops a running file transcription directly.
-            self.settings_window.blockSignals(True)
-            self.settings_window.close()
-            self.settings_window = None
-        self.open_settings()
+        """Rebuild the settings window so the new language applies at once.
+
+        The replacement is built before the old window goes away. Building one
+        reaches PortAudio, and a build that fails — a device rescan in a bad
+        library state, for one — used to leave a closed window and no new one:
+        nothing on screen at all. When the rebuild does fail, the window the
+        user already had stays up, and the new language arrives with the next
+        open.
+        """
+        # Qt's own strings — the context menus of text fields, the buttons of
+        # standard dialogs — come from its translator, which only the header
+        # button used to install: a language saved from the Settings tab left
+        # them in the old language. Every path goes through here.
+        install_qt_translator(self.app, i18n.language())
+        # The tray menu is drawn from the same string table, and nothing else
+        # rebuilds it: without this it kept speaking the old language until the
+        # next save.
+        self._build_tray()
+        self._refresh_tray()
+        old = self.settings_window
+        if old is None:
+            # A language saved from the Settings tab arrives here a turn later,
+            # and by then the window may already be closed: there is nothing to
+            # rebuild, and opening one here would put back on screen a window
+            # the user has just dismissed.
+            return
+        try:
+            view = WindowView(old)
+        except Exception:
+            logging.getLogger("wordarc.ui").exception(
+                "could not read the settings window state")
+            view = None
+        self._settings_view = view
+        self.settings_window = None
+        try:
+            self.open_settings()
+        except Exception:
+            logging.getLogger("wordarc.ui").exception(
+                "could not rebuild the settings window for the language change")
+            self._settings_view = None
+            self.settings_window = old
+            self._sync_workspace()
+            old.show()
+            old.raise_()
+            old.activateWindow()
+            return
+        # Blocked so close() does not trip _settings_closed (which would drop
+        # the fresh window and could quit the app); closeEvent still stops a
+        # running file transcription directly. The old window is freed a turn
+        # later, because this runs inside its own signal.
+        old.blockSignals(True)
+        old.close()
+        QTimer.singleShot(0, old.deleteLater)
 
     def _settings_closed(self, *_):
         # Don't drop the object while its own signal is still being delivered.
+        window = self.settings_window
+
         def finish_close():
+            # A window opened in between — a language change, the tray — is not
+            # the one that closed: dropping the reference would lose it, and
+            # the quit below would take the app down from under it.
+            if self.settings_window is not window:
+                return
             self.settings_window = None
             if (not self._quitting
                     and (not self.conf["close_to_tray"]
@@ -731,10 +791,17 @@ def main():
     # Windows otherwise labels source-mode launches as pythonw.exe and shows
     # Python's icon in the taskbar even though Qt has a WordArc window icon.
     set_windows_app_id()
-    migration = brand_migration.migrate(
-        cfg.LEGACY_CONFIG_DIR, cfg.CONFIG_DIR,
-        cfg.LEGACY_DATA_DIR, cfg.DATA_DIR,
-    )
+    try:
+        migration = brand_migration.migrate(
+            cfg.LEGACY_CONFIG_DIR, cfg.CONFIG_DIR,
+            cfg.LEGACY_DATA_DIR, cfg.DATA_DIR,
+        )
+    except Exception as exc:
+        # This runs before diagnostics.setup(), so anything that gets past the
+        # migration leaves a start with no window and no log to say why. The
+        # warning travels with the result and is logged below.
+        migration = brand_migration.MigrationResult(
+            warnings=(f"migration failed: {type(exc).__name__}",))
     diagnostics.setup()
     try:
         startup.ensure_current_command()

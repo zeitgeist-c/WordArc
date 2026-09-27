@@ -2,12 +2,14 @@
 
 import ctypes
 import ctypes.wintypes as w
-import threading
+import logging
 
 from PyQt6.QtCore import QObject, Qt, QCoreApplication, pyqtSignal
 from PyQt6.QtWidgets import QWidget
 
 from i18n import t
+
+_log = logging.getLogger("wordarc.hotkey")
 
 user32 = ctypes.windll.user32
 
@@ -69,10 +71,8 @@ class WindowsHotkey(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._ids = {}
-        self._names = {}
         self._widget = None
         self._next_id = 0xC000
-        self._lock = threading.Lock()
 
     @property
     def running(self):
@@ -106,7 +106,6 @@ class WindowsHotkey(QObject):
                       "be using it: {shortcut}", shortcut=sc))
                 continue
             self._ids[id_] = name
-            self._names[name] = (mods, vk)
             success += 1
         for sc in failed:
             self.failed.emit(t("Could not parse the shortcut: {shortcut}", shortcut=sc))
@@ -123,7 +122,6 @@ class WindowsHotkey(QObject):
         self._widget.close()
         self._widget = None
         self._ids.clear()
-        self._names.clear()
 
 
 EvdevHotkey = WindowsHotkey
@@ -150,5 +148,7 @@ class _HotkeyWindow(QWidget):
                     self.owner.triggered.emit(name)
                 return True, 0
         except Exception:
-            pass
+            # A shortcut that stops arriving leaves the user with nothing to go
+            # on: the reason goes to the log.
+            _log.exception("could not handle a hotkey message")
         return False, 0

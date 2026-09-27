@@ -686,6 +686,53 @@ class FitsOnScreenCombo(QComboBox):
             popup.setGeometry(rect.x(), y, rect.width(), rect.height())
 
 
+class WindowView:
+    """Where a settings window sits and which page it shows.
+
+    The language change rebuilds the window instead of retranslating every
+    widget, and the rebuild used to hand back a window at its opening size, on
+    the first tab, wherever Qt felt like placing it — which is what the change
+    looked like from the outside: the window rearranging itself. This is the
+    little that has to survive for the new window to land where the old one
+    was.
+
+    The screen is carried along with the rectangle: the new window is placed by
+    its own geometry, and without the screen Qt would answer "which monitor is
+    this on" from wherever it put the window by default, which can be the other
+    one — and then the placement check slides a window from the second monitor
+    onto the first.
+    """
+
+    PAGES = ("dictation", "meeting", "audio_file", "settings")
+
+    def __init__(self, window):
+        self.maximized = window.isMaximized()
+        rect = window.normalGeometry() if self.maximized else window.geometry()
+        self.rect = QRect(rect)
+        # A monitor that has gone away leaves this None, and the window is
+        # placed by Qt instead of being pushed onto a screen it was not on.
+        self.screen = next(
+            (screen for screen in QGuiApplication.screens()
+             if screen.availableGeometry().intersects(self.rect)), None)
+        self.page = next((name for name in self.PAGES
+                          if window._tab_index.get(name) == window.tabs.currentIndex()),
+                         "dictation")
+        menu = getattr(window, "settings_section_menu", None)
+        self.section = menu.currentRow() if menu is not None else 0
+
+    def apply(self, window):
+        """Put `window` back where the old one was."""
+        if self.screen is not None:
+            window.setScreen(self.screen)
+            window.setGeometry(self.rect)
+        window.navigate_to(self.page)
+        menu = getattr(window, "settings_section_menu", None)
+        if menu is not None:
+            menu.setCurrentRow(max(0, min(self.section, menu.count() - 1)))
+        if self.maximized:
+            window.setWindowState(Qt.WindowState.WindowMaximized)
+
+
 class SettingsWindow(QDialog):
     recording_requested = pyqtSignal(str)
     cancel_requested = pyqtSignal(str)
@@ -1102,27 +1149,46 @@ class SettingsWindow(QDialog):
         a list they cannot finish reading. The window is the cheapest place to
         fix it: nothing else has to know whether a given screen is short.
         """
+        # A maximized window already fills the screen it is on, and moving it
+        # here would only take the state away — setGeometry clears it — so a
+        # user who maximized the window and then switched tabs watched it fall
+        # back to its old size.
+        if self.isMaximized() or self.isFullScreen():
+            return
         if avail is None:
-            screen = self.screen() or QGuiApplication.primaryScreen()
+            # Which monitor the window is on is read from where it stands, not
+            # from what Qt reports for it: a window that is open has a handle
+            # and Qt's answer is right, but a window being placed before it is
+            # shown has none yet, and Qt then guesses the screen the cursor is
+            # on — which slid a window restored onto the second monitor over to
+            # the first one.
+            screen = (QGuiApplication.screenAt(self.frameGeometry().center())
+                      or self.screen() or QGuiApplication.primaryScreen())
             if screen is None:
                 return
             avail = screen.availableGeometry()
+        # setGeometry() positions the window frame but sizes the client area,
+        # and for a decorated window those are different rectangles. Measured
+        # on the frame and compared against width()/x(), which leave the frame
+        # out, a window never looked like it was already in place: every tab
+        # switch called setGeometry() with the frame's size as the client size
+        # and grew the window by its title bar and borders.
         frame = self.frameGeometry()
+        rect = self.geometry()
+        chrome = frame.height() - rect.height()  # title bar plus borders
         # Only the height is capped. The width is the user's: narrowing it to
         # the screen would fight the minimum width the window already sets,
         # and a window that is too wide just gets a horizontal scrollbar.
-        width = frame.width()
         # Tall content: let the window use the whole screen height. Every tab
         # scrolls, so this costs nothing and saves a clipped popup.
-        height = min(frame.height(), avail.height())
+        height = min(rect.height(), max(0, avail.height() - chrome))
         x = min(max(frame.x(), avail.left()),
-                max(avail.left(), avail.right() - width + 1))
+                max(avail.left(), avail.right() - rect.width() + 1))
         y = min(max(frame.y(), avail.top()),
-                max(avail.top(), avail.bottom() - height + 1))
-        if (width, height, x, y) == (self.width(), self.height(),
-                                     self.x(), self.y()):
+                max(avail.top(), avail.bottom() - height - chrome + 1))
+        if (height, x, y) == (rect.height(), frame.x(), frame.y()):
             return
-        self.setGeometry(x, y, width, height)
+        self.setGeometry(x, y, rect.width(), height)
 
     def navigate_to(self, page_id):
         """Open the tab holding one logical page."""
@@ -1222,11 +1288,13 @@ class SettingsWindow(QDialog):
         self.local_status.setText(t("Downloading {name}…", name=name))
         def work():
             try:
-                localspeech.download(name, should_stop=self._download_stop.is_set,
-                                     on_progress=self._local_download_progress.emit)
-                self._local_download_done.emit(name, "")
+                localspeech.download(
+                    name, should_stop=self._download_stop.is_set,
+                    on_progress=lambda progress: self._deliver(
+                        "_local_download_progress", progress))
+                self._deliver("_local_download_done", name, "")
             except Exception as exc:
-                self._local_download_done.emit(name, str(exc))
+                self._deliver("_local_download_done", name, str(exc))
         threading.Thread(target=work, daemon=True).start()
 
     def _on_local_download_progress(self, progress):
@@ -1304,8 +1372,9 @@ class SettingsWindow(QDialog):
             logging.getLogger("wordarc.ui").warning(
                 "language changed but could not be persisted")
         i18n.set_language(code)
-        install_qt_translator(QGuiApplication.instance(), code)
         self._refresh_header_lang()
+        # The window rebuilds itself on the signal, and the app installs Qt's
+        # translator before it does, so both languages change together.
         self.language_changed.emit()
 
     def _cycle_theme(self):
@@ -1426,7 +1495,7 @@ class SettingsWindow(QDialog):
         for label, code in UI_LANGUAGES:
             self.ui_language.addItem(t(label), code)
         self.ui_language.setToolTip(
-            t("Restart WordArc for the language change to reach every window.")
+            t("Applies as soon as you save: the window is rebuilt in that language.")
         )
         body.addWidget(self._label_row("Interface language", self.ui_language))
 
@@ -2056,11 +2125,9 @@ class SettingsWindow(QDialog):
         box = QGroupBox(t(title))
         box.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         outer = QVBoxLayout(box)
-        detail = QLabel(t(description))
-        detail.setObjectName("muted")
-        detail.setWordWrap(True)
+        # The description is the tooltip: the line itself was built here, never
+        # added to a layout and thrown away on the next turn of the loop.
         box.setToolTip(t(description))
-        detail.deleteLater()
         inner = QVBoxLayout()
         inner.setSpacing(8)
         inner.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -2142,6 +2209,7 @@ class SettingsWindow(QDialog):
 
     def _save(self):
         conf = self.conf
+        language_before = i18n.language()
         # Theme and header language apply on click and persist at once;
         # Save keeps them, it does not read them back from the buttons.
         conf["start_with_windows"] = self.start_with_windows.isChecked()
@@ -2229,6 +2297,15 @@ class SettingsWindow(QDialog):
             print(f"wordarc: could not trim the history ({exc})")
         self._load_history()  # the trim may just have dropped rows from the list
         self.applied.emit()
+        if i18n.language() != language_before:
+            # The box on the Settings tab changes the language the same way the
+            # header button does: the window is rebuilt in it, so the window is
+            # never left standing in one language while the tray menu and the
+            # dialogs speak the other. A turn later, because a save can be only
+            # the first half of a click — "start recording" saves first — and
+            # this window is replaced by the rebuild.
+            QTimer.singleShot(0, self.language_changed.emit)
+            return True
         self._confirm_saved()
         return True
 
@@ -2344,34 +2421,34 @@ class SettingsWindow(QDialog):
     def _refresh_audio_devices(self, *_):
         """Rescan hot-plugged devices while preserving current selections."""
         # PortAudio only reports what it saw when it started; restarting the
-        # library is what makes a device connected later show up here.
-        audio.refresh_devices()
-        sources = audio.describe_sources()
-        for combo, default_label in (
-                (getattr(self, "mic", None), t("Default microphone")),
-                (getattr(self, "meeting_mic", None), t("Same as dictation"))):
+        # library is what makes a device connected later show up here. The
+        # rescan can also fail — a device pulled mid-query, a library left in
+        # a bad state — and this runs while the window is being built, so a
+        # failure leaves the boxes exactly as they are instead of taking the
+        # window down with it.
+        try:
+            audio.refresh_devices()
+            sources = audio.describe_sources()
+            monitors = audio.describe_monitors()
+        except Exception as exc:
+            logging.getLogger("wordarc.ui").warning(
+                "audio device rescan failed: %s", exc)
+            sources = monitors = None
+        for combo, default_label, rows in (
+                (getattr(self, "mic", None), t("Default microphone"), sources),
+                (getattr(self, "meeting_mic", None), t("Same as dictation"), sources),
+                (getattr(self, "meeting_system", None), t("Current output"), monitors)):
             if combo is None:
                 continue
+            if rows is None:
+                # Nothing could be read this time: a box that has not been
+                # filled yet still says what it means rather than standing
+                # empty, and a filled one keeps the selection it has.
+                if not combo.count():
+                    combo.addItem(default_label, "")
+                continue
             selected = combo.currentData() if combo.count() else ""
-            self._fill_device_combo(combo, sources, default_label, selected)
-        mic_status = getattr(self, "mic_status", None)
-        if mic_status is not None:
-            mic_status.setText(
-                t("{count} inputs found", count=len(sources))
-                if sources else t("No inputs seen — press Reload"))
-        monitors = audio.describe_monitors()
-        combo = getattr(self, "meeting_system", None)
-        if combo is not None:
-            selected = combo.currentData() if combo.count() else ""
-            self._fill_device_combo(
-                combo, monitors, t("Current output"), selected)
-        monitor_status = getattr(self, "monitor_status", None)
-        if monitor_status is not None:
-            monitor_status.setText(
-                t("{count} outputs found", count=len(monitors))
-                if monitors else t("No outputs seen — press Reload"))
-
-    # ---- api helpers -----------------------------------------------------
+            self._fill_device_combo(combo, rows, default_label, selected)
 
     # ---- api helpers -----------------------------------------------------
 
@@ -2471,6 +2548,19 @@ class SettingsWindow(QDialog):
     def _gemini_runtime_keys(self):
         return list(self._gemini_keys) or self.conf.gemini_keys()
 
+    def _deliver(self, name, *args):
+        """Hand a worker thread's result back to this window, if it is still here.
+
+        A language change frees the old window a turn later, and a thread it
+        started may still be fetching or downloading: reaching for the signal on
+        a deleted window raises, the thread dies with a traceback nobody reads,
+        and the download it was running is cut off with it.
+        """
+        try:
+            getattr(self, name).emit(*args)
+        except RuntimeError:
+            pass
+
     def _load_transcribe_models(self):
         self.refresh_transcribe_models.setEnabled(False)
         self.transcribe_status.setText(t("Fetching model list…"))
@@ -2479,9 +2569,9 @@ class SettingsWindow(QDialog):
         def work():
             try:
                 models = api.GeminiClient(keys).list_models()
-                self._transcribe_models_loaded.emit(models, "")
+                self._deliver("_transcribe_models_loaded", models, "")
             except api.ApiError as exc:
-                self._transcribe_models_loaded.emit([], str(exc))
+                self._deliver("_transcribe_models_loaded", [], str(exc))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -2503,9 +2593,9 @@ class SettingsWindow(QDialog):
 
         def work():
             try:
-                self._models_loaded.emit(api.GeminiClient(keys).list_models(), "")
+                self._deliver("_models_loaded", api.GeminiClient(keys).list_models(), "")
             except api.ApiError as exc:
-                self._models_loaded.emit([], str(exc))
+                self._deliver("_models_loaded", [], str(exc))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -2534,11 +2624,11 @@ class SettingsWindow(QDialog):
         def work():
             try:
                 models = api.gemini_models(key)
-                self._test_done.emit(
-                    True, t("Connection works. {count} models visible.", count=len(models))
-                )
+                self._deliver(
+                    "_test_done", True,
+                    t("Connection works. {count} models visible.", count=len(models)))
             except api.ApiError as exc:
-                self._test_done.emit(False, str(exc))
+                self._deliver("_test_done", False, str(exc))
 
         threading.Thread(target=work, daemon=True).start()
 

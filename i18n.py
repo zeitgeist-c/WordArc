@@ -250,8 +250,8 @@ TR = {
     "Automatic (system)": "Otomatik (sistem)",
     "Turkish": "Türkçe",
     "English": "İngilizce",
-    "Restart WordArc for the language change to reach every window.":
-        "Dil değişikliğinin her pencereye işlemesi için WordArc'ı yeniden başlat.",
+    "Applies as soon as you save: the window is rebuilt in that language.":
+        "Kaydettiğin anda geçerli olur: pencere o dilde yeniden kurulur.",
     "Microphone": "Mikrofon",
     "Default microphone": "Varsayılan mikrofon",
     "Built-in": "Dahili",
@@ -760,10 +760,6 @@ TR = {
         "Modeller, dil, başlangıç ve görünüm.",
     "Stored only in Windows Credential Manager.":
         "Yalnız Windows Kimlik Bilgisi Yöneticisi'nde saklanır.",
-    "{count} inputs found": "{count} giriş bulundu",
-    "No inputs seen — press Reload": "Giriş görülmedi — Yenile'ye bas",
-    "{count} outputs found": "{count} çıkış bulundu",
-    "No outputs seen — press Reload": "Çıkış görülmedi — Yenile'ye bas",
 }
 
 TR.update({

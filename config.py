@@ -2,8 +2,10 @@ r"""Settings storage in %APPDATA%\WordArc\config.json"""
 
 import hashlib
 import json
+import logging
 import os
 import pathlib
+import shutil
 import threading
 import unicodedata
 
@@ -11,6 +13,8 @@ import api
 from brand import BRAND
 import credential_store
 import i18n
+
+_log = logging.getLogger("wordarc.config")
 
 
 def _win_path(env, fallback):
@@ -372,7 +376,7 @@ da senin soracağın soruya verilecek bir yanıt yok.
 DEFAULTS = {
     "config_schema": CONFIG_SCHEMA,
     "ui_language": "tr",                # tr | en | auto
-    "theme_mode": "dark",               # dark | light | system
+    "theme_mode": "dark",               # dark | light
     "start_with_windows": False,
     "close_to_tray": True,
     "gemini_api_key": "",
@@ -472,6 +476,31 @@ def _name_key(name):
     return "".join(char for char in folded if not unicodedata.combining(char))
 
 
+def _fits(default, value):
+    """Whether a stored value can stand in for the default's type.
+
+    A hand-edited file can hold a number where a string belongs, and the
+    strip()/int() calls that read these values would take the app down before
+    it opened a window.
+    """
+    return default is None or isinstance(value, type(default))
+
+
+def _keep_unreadable_config():
+    """Keep a copy of a settings file that could not be read.
+
+    The next save() writes the defaults over it, so without this the user's
+    settings would be gone without a trace.
+    """
+    keep = CONFIG_FILE.parent / (CONFIG_FILE.name + ".corrupt")
+    try:
+        if CONFIG_FILE.exists() and not keep.exists():
+            shutil.copy2(CONFIG_FILE, keep)
+            _log.warning("settings kept as %s", keep)
+    except OSError as exc:
+        _log.warning("could not keep a copy of the unreadable settings (%s)", exc)
+
+
 class Config:
     def __init__(self):
         self.data = dict(DEFAULTS)
@@ -483,11 +512,22 @@ class Config:
             with open(CONFIG_FILE, encoding="utf-8") as fh:
                 stored = json.load(fh)
             if isinstance(stored, dict):
-                self.data.update({k: v for k, v in stored.items() if k in DEFAULTS})
+                for key, value in stored.items():
+                    if key not in DEFAULTS:
+                        continue
+                    if _fits(DEFAULTS[key], value):
+                        self.data[key] = value
+                    else:
+                        _log.warning("settings: %r holds an unexpected type; "
+                                     "keeping the default", key)
         except FileNotFoundError:
             pass
-        except (json.JSONDecodeError, OSError) as exc:
-            print(f"wordarc: could not read settings ({exc}), using defaults")
+        except (ValueError, OSError) as exc:
+            # ValueError covers both a broken document and one saved in another
+            # encoding (UnicodeDecodeError): either reached main() and took the
+            # window down before it ever opened.
+            _log.warning("could not read settings (%s); using defaults", exc)
+            _keep_unreadable_config()
         self._migrate(stored)
         self._migrate_plaintext_secret()
         self.data["overlay_corner"] = _CORNER_MIGRATION.get(
@@ -857,5 +897,8 @@ def delete_meetings(bases):
             for path in meeting_paths(base):
                 try:
                     path.unlink(missing_ok=True)
-                except OSError:
-                    pass
+                except OSError as exc:
+                    # The row is already gone from the list, so the files it
+                    # pointed at would be left behind with nothing to reach
+                    # them; at least the log says where they are.
+                    _log.warning("could not delete %s (%s)", path, exc)

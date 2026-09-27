@@ -3,6 +3,7 @@ import queue
 import shutil
 import tempfile
 import unittest
+import weakref
 from unittest import mock
 
 import audio
@@ -348,6 +349,53 @@ class TestMeetingRecorderReuse(unittest.TestCase):
             self.assertEqual(calls, [24, None])
         finally:
             recorder.cancel()
+
+
+class TestStaleStreams(unittest.TestCase):
+    """A stream that is already over must not answer the rescan with an error.
+
+    PortAudio hands back a stale pointer for it after the library is restarted
+    under it (error -9988), and the wrapper outlives the stop for a moment
+    because the callback thread is still holding it. That error used to come
+    out of the device rescan, and the rescan runs while the settings window is
+    being built — so the window came out half-built and the language change
+    that asked for it left nothing on screen.
+    """
+
+    class _DeadStream:
+        """A stopped stream whose pointer PortAudio has already invalidated."""
+
+        @property
+        def active(self):
+            raise audio.sd.PortAudioError(
+                "Invalid stream pointer [PaErrorCode -9988]")
+
+    class _LiveStream:
+        active = True
+
+    def _with_streams(self, *streams):
+        return mock.patch.object(audio, "_streams", weakref.WeakSet(streams))
+
+    def test_a_dead_stream_counts_as_no_recording(self):
+        dead = self._DeadStream()
+        with self._with_streams(dead):
+            self.assertFalse(audio.has_active_capture())
+            # And it is let go, so the next rescan does not meet it again.
+            self.assertNotIn(dead, audio._streams)
+
+    def test_a_dead_entry_does_not_hide_a_live_recording(self):
+        # Held in a name of its own: the set keeps only weak references, and a
+        # temporary would be collected before the call under test.
+        dead, live = self._DeadStream(), self._LiveStream()
+        with self._with_streams(dead, live):
+            self.assertTrue(audio.has_active_capture())
+
+    def test_refresh_devices_survives_a_dead_stream(self):
+        dead = self._DeadStream()
+        with self._with_streams(dead), \
+             mock.patch.object(audio.sd, "_terminate"), \
+             mock.patch.object(audio.sd, "_initialize"):
+            self.assertTrue(audio.refresh_devices())
 
 
 if __name__ == "__main__":
