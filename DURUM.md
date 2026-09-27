@@ -27,7 +27,8 @@ Frozen smoke: `WordArc-0.6.1.exe --version` → `WordArc version 0.6.1`
 (offscreen, kullanıcı ekranına pencere basılmadan). Düzeltme sembolleri
 (`_on_usage_tick`, süre logları) paketlenmiş bytecode içinde doğrulandı.
 
-Yedek 2026-09-27: yerel commit + v0.6.1 etiketi tamamlandı; push bekliyor.
+Yedek 2026-09-27: yerel commit + v0.6.1 etiketi tamamlandı; `origin/master` ve
+`v0.6.1` etiketi açık yetkiyle push edildi (uzak sha'lar doğrulandı).
 
 ## 0.6.0 — API sıralı kullanım (round-robin)
 
