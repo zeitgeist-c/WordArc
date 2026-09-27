@@ -209,12 +209,12 @@ TR = {
     "Remove": "Kaldır",
     "Move up": "Yukarı taşı",
     "Move down": "Aşağı taşı",
-    "Default API": "Varsayılan API",
-    "Backup API {number}": "Yedek API {number}",
     "Gemini API key": "Gemini API anahtarı",
     "This API key is already listed.": "Bu API anahtarı zaten listede.",
-    "Default API did not respond; trying API {number}...":
-        "Varsayılan API yanıt vermedi; API {number} deneniyor...",
+    "last used: {when}": "son kullanım: {when}",
+    "not used yet": "henüz kullanılmadı",
+    "API {used} did not respond; trying API {number}...":
+        "API {used} yanıt vermedi; API {number} deneniyor...",
     "All configured Gemini APIs failed.":
         "Yapılandırılmış tüm Gemini API'leri başarısız oldu.",
     "All configured Gemini APIs failed. Last error: {error}":
@@ -377,8 +377,8 @@ TR = {
         "Yazıya çevrilecek ses veya video dosyasını seç.",
     "How the transcript should look.": "Transkriptin nasıl görüneceği.",
     "The finished text.": "Bitmiş metin.",
-    "Your Gemini API keys, tried from top to bottom.":
-        "Gemini API anahtarların, yukarıdan aşağıya denenir.",
+    "Your Gemini API keys, used one after another.":
+        "Gemini API anahtarları sırayla kullanılır.",
     "The local model {name} is not installed yet. Download it in Settings.":
         "{name} modeli henüz kurulu değil. Ayarlar'dan indir.",
     "The local speech engine is missing. Reinstall WordArc to get it back.":

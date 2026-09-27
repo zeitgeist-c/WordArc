@@ -34,6 +34,7 @@ LOG_DIR = DATA_DIR / "logs"
 CONFIG_SCHEMA = 4
 _history_lock = threading.RLock()
 _meeting_lock = threading.RLock()
+_rotation_lock = threading.RLock()
 
 CLEANUP_PROMPT_EN = """You clean up dictation transcripts. You are given the raw
 text of something spoken out loud. Make it readable with MINIMAL interference.
@@ -380,6 +381,8 @@ DEFAULTS = {
     "start_with_windows": False,
     "close_to_tray": True,
     "gemini_api_key": "",
+    "gemini_next_slot": 0,      # round-robin: sıradaki bulut işlemi hangi API slotundan başlar
+    "gemini_last_used": [],     # slot başına son başarılı kullanım (ISO-8601 str, "" = henüz yok)
     "gemini_transcribe_model": "gemini-3.5-flash-lite",
     # cloud | local — where dictation, audio files and meetings are transcribed.
     "transcribe_engine": "cloud",
@@ -640,6 +643,78 @@ class Config:
     def gemini_key(self):
         keys = self.gemini_keys()
         return keys[0] if keys else ""
+
+    # --- API rotation -----------------------------------------------------
+    # Birden fazla anahtar varsa her yeni bulut işlemi sıradaki slotla başlar.
+    # Sıra anahtar değerine değil listedeki konuma bağlıdır; damga yalnız
+    # başarılı işlemde yazılır, başarısız deneme sırayı sessizce ilerletir.
+
+    @staticmethod
+    def _slot_total(n_keys):
+        try:
+            total = int(n_keys)
+        except (TypeError, ValueError):
+            total = 0
+        return max(total, 0)
+
+    def claim_api_slot(self, n_keys):
+        """Sıradaki bulut işlemi hangi slotla başlayacak (ilerletmeden)."""
+        total = self._slot_total(n_keys)
+        if total <= 0:
+            return 0
+        try:
+            slot = int(self.data.get("gemini_next_slot", 0))
+        except (TypeError, ValueError):
+            slot = 0
+        if not 0 <= slot < total:
+            slot = 0
+        return slot
+
+    def rotation_stamps(self, n_keys):
+        """Slot başına son kullanım damgaları, anahtar sayısına uyarlanmış."""
+        stamps = self.data.get("gemini_last_used") or []
+        stamps = [stamp if isinstance(stamp, str) else "" for stamp in stamps]
+        if len(stamps) < n_keys:
+            stamps = stamps + [""] * (n_keys - len(stamps))
+        return stamps[:n_keys]
+
+    def _store_rotation(self, stamps, next_slot):
+        self.data["gemini_last_used"] = stamps
+        self.data["gemini_next_slot"] = next_slot
+        try:
+            self.save()
+        except OSError as exc:
+            # Ayar yazılamazsa sıra yalnız bellekte ilerler; işlem durmaz.
+            _log.warning("rotation state could not be saved (%s)", exc)
+
+    def record_api_success(self, used_slot, n_keys):
+        """Başarılı işlem: damgayı yaz, sırayı bir sonraya al, kaydet."""
+        import datetime
+        total = self._slot_total(n_keys)
+        if total <= 0:
+            return
+        with _rotation_lock:
+            stamps = self.rotation_stamps(total)
+            if 0 <= used_slot < total:
+                stamps[used_slot] = datetime.datetime.now().astimezone().replace(
+                    microsecond=0).isoformat()
+                nxt = (used_slot + 1) % total
+            else:
+                nxt = self.claim_api_slot(total)
+            self._store_rotation(stamps, nxt)
+
+    def record_api_attempt(self, used_slot, n_keys):
+        """Başarısız işlem: damgaya dokunmadan sırayı bir sonraya al, kaydet."""
+        total = self._slot_total(n_keys)
+        if total <= 0:
+            return
+        with _rotation_lock:
+            stamps = self.rotation_stamps(total)
+            if 0 <= used_slot < total:
+                nxt = (used_slot + 1) % total
+            else:
+                nxt = self.claim_api_slot(total)
+            self._store_rotation(stamps, nxt)
 
     def transcribe_target(self):
         """Key, endpoint and model for Gemini speech to text."""

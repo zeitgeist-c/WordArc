@@ -1,5 +1,6 @@
 """Settings window."""
 
+from datetime import datetime
 import os
 import logging
 import sys
@@ -1544,7 +1545,7 @@ class SettingsWindow(QDialog):
         # API keys first, then model selection. Two rows: the list with its two
         # main actions on top, the row actions underneath.
         keys, keys_body = self._section_card(
-            "Keys", "Your Gemini API keys, tried from top to bottom.")
+            "Keys", "Your Gemini API keys, used one after another.")
         key_help = QLabel(t("Stored only in Windows Credential Manager."))
         key_help.setWordWrap(True)
         key_help.setObjectName("muted")
@@ -2281,6 +2282,8 @@ class SettingsWindow(QDialog):
         except cfg.credential_store.CredentialError as exc:
             warn_box(self, t("Error"), str(exc))
             return
+        # Anahtarlık değiştiyse damgalar slotlara göre kırpılır/uzatılır.
+        conf["gemini_last_used"] = conf.rotation_stamps(len(self._gemini_keys))
         try:
             conf.save()
         except OSError as exc:
@@ -2457,13 +2460,35 @@ class SettingsWindow(QDialog):
         suffix = key[-4:] if len(key) >= 4 else "••••"
         return f"••••••••{suffix}"
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        # İşlemler pencereden bağımsız koşar; liste her açılışta kayıtlı
+        # damgaları yeniden okur.
+        if getattr(self, "_gemini_keys", None) is not None:
+            self._refresh_gemini_keys()
+
+    @staticmethod
+    def _format_last_used(stamp):
+        try:
+            when = datetime.fromisoformat(stamp)
+        except (TypeError, ValueError):
+            return stamp
+        return when.strftime("%d.%m.%Y %H:%M:%S")
+
     def _refresh_gemini_keys(self, selected=None):
         if selected is None:
             selected = self.gemini_keys_list.currentRow()
         self.gemini_keys_list.clear()
+        stamps = self.conf.rotation_stamps(len(self._gemini_keys))
         for index, key in enumerate(self._gemini_keys, start=1):
-            label = t("Default API") if index == 1 else t("Backup API {number}", number=index)
-            self.gemini_keys_list.addItem(f"{label} — {self._masked_key(key)}")
+            stamp = stamps[index - 1]
+            if stamp:
+                usage = t("last used: {when}",
+                          when=self._format_last_used(stamp))
+            else:
+                usage = t("not used yet")
+            self.gemini_keys_list.addItem(
+                f"API {index} — {self._masked_key(key)} — {usage}")
         if self._gemini_keys:
             self.gemini_keys_list.setCurrentRow(
                 min(max(selected, 0), len(self._gemini_keys) - 1)

@@ -32,6 +32,28 @@ class _FakeConf(dict):
     def speaker_names(self):
         return ("Me", "Them")
 
+    # --- rotation doubles (mirror Config.claim/record semantics) ---
+    def claim_api_slot(self, n_keys):
+        total = max(int(n_keys), 0)
+        if total <= 0:
+            return 0
+        try:
+            slot = int(self.get("gemini_next_slot", 0))
+        except (TypeError, ValueError):
+            slot = 0
+        return slot if 0 <= slot < total else 0
+
+    def record_api_success(self, used_slot, n_keys):
+        stamps = self.setdefault("gemini_last_used", [""] * n_keys)
+        while len(stamps) < n_keys:
+            stamps.append("")
+        stamps[used_slot] = "used"
+        self["gemini_next_slot"] = (used_slot + 1) % n_keys
+
+    def record_api_attempt(self, used_slot, n_keys):
+        self.setdefault("gemini_last_used", [""] * n_keys)
+        self["gemini_next_slot"] = (used_slot + 1) % n_keys
+
 
 class _FakeClient:
     def transcribe(self, model, path, language="", prompt=""):
@@ -65,6 +87,7 @@ class TestSummaryFailure(unittest.TestCase):
         self.addCleanup(shutil.rmtree, workdir, True)
         updates = []
         client = mock.Mock()
+        client.active_slot = 0
         client.cleanup.side_effect = api.ApiError("summary failed")
         pipe = self._pipeline(updates, client)
         paths = (pathlib.Path(workdir) / "doc.md", pathlib.Path(workdir) / "rec.wav")
@@ -86,6 +109,7 @@ class TestSummaryFailure(unittest.TestCase):
         self.addCleanup(shutil.rmtree, workdir, True)
         updates = []
         client = mock.Mock()
+        client.active_slot = 0
         pipe = self._pipeline(updates, client)
         wav = pathlib.Path(workdir) / "rec.wav"
         wav.write_bytes(b"RIFF")
@@ -211,6 +235,68 @@ class TestNewEntry(unittest.TestCase):
         self.assertEqual(e["duration"], 30.0)
         self.assertEqual(e["status"], "recorded")
         self.assertEqual(e["ts"], "2026-01-01 10:00")
+
+
+class TestApiRotation(unittest.TestCase):
+    def _run_meeting(self, conf, client):
+        workdir = tempfile.mkdtemp(prefix="wordarc-test-rotation-")
+        self.addCleanup(shutil.rmtree, workdir, True)
+        paths = (pathlib.Path(workdir) / "doc.md",
+                 pathlib.Path(workdir) / "rec.wav")
+        paths[1].write_bytes(b"RIFF")
+        created = {}
+        def factory(api_keys, **kwargs):
+            created.update(keys=list(api_keys), kwargs=kwargs)
+            client.active_slot = kwargs.get("start_slot", 0)
+            return client
+        finished, failures = [], []
+        pipe = meeting.MeetingPipeline(conf)
+        pipe.finished.connect(lambda *args: finished.append(args))
+        pipe.failed.connect(lambda *args: failures.append(args))
+        patches = [
+            mock.patch.object(meeting.api, "GeminiClient", side_effect=factory),
+            mock.patch.object(meeting.cfg, "update_meeting"),
+            mock.patch.object(meeting.cfg, "meeting_paths", return_value=paths),
+            mock.patch.object(meeting.MeetingPipeline, "_transcribe",
+                              return_value="fresh transcript"),
+        ]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        pipe._work({"base": "2026-01-01-1200", "status": ""})
+        return created, finished, failures
+
+    def _rotation_conf(self):
+        conf = _FakeConf({
+            "meeting_model": "test-model", "meeting_reasoning": "",
+            "meeting_cleanup": False, "meeting_keep_audio": True,
+            "gemini_next_slot": 1, "gemini_last_used": ["", ""],
+        })
+        conf.gemini_keys = lambda: ["k1", "k2"]
+        conf.meeting_prompt = lambda: ""
+        return conf
+
+    def test_meeting_starts_at_claimed_slot_and_records_success(self):
+        client = mock.Mock()
+        client.cleanup.return_value = "# Title\nminutes body"
+        conf = self._rotation_conf()
+        created, finished, failures = self._run_meeting(conf, client)
+        self.assertEqual(created["kwargs"]["start_slot"], 1)
+        self.assertEqual(len(finished), 1)
+        self.assertEqual(failures, [])
+        self.assertEqual(client.active_slot, 1)
+        self.assertEqual(conf["gemini_next_slot"], 0)
+        self.assertEqual(conf["gemini_last_used"], ["", "used"])
+
+    def test_meeting_failure_advances_without_a_stamp(self):
+        client = mock.Mock()
+        client.cleanup.side_effect = api.ApiError("busy", 429, "temporary")
+        conf = self._rotation_conf()
+        created, finished, failures = self._run_meeting(conf, client)
+        self.assertEqual(finished, [])
+        self.assertEqual(len(failures), 1)
+        self.assertEqual(conf["gemini_next_slot"], 0)
+        self.assertEqual(conf["gemini_last_used"], ["", ""])
 
 if __name__ == "__main__":
     unittest.main()

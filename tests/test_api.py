@@ -245,5 +245,46 @@ class TestGeminiFallback(unittest.TestCase):
         self.assertNotIn("secret-one", message)
         self.assertNotIn("secret-two", message)
 
+class TestGeminiStartSlot(unittest.TestCase):
+    def test_starts_from_given_slot(self):
+        seen = []
+        def models(key):
+            seen.append(key)
+            return ["model"]
+        client = api.GeminiClient(["one", "two", "three"], start_slot=2)
+        with mock.patch.object(api, "gemini_models", side_effect=models):
+            self.assertEqual(client.list_models(), ["model"])
+        self.assertEqual(seen, ["three"])
+
+    def test_start_slot_out_of_range_falls_back_to_zero(self):
+        self.assertEqual(api.GeminiClient(["one", "two"], start_slot=99)._active, 0)
+        self.assertEqual(api.GeminiClient(["one", "two"], start_slot=-1)._active, 0)
+
+    def test_active_slot_reports_where_work_happened(self):
+        def models(key):
+            if key == "primary":
+                raise api.ApiError("rejected", 401, "user")
+            return ["model"]
+        client = api.GeminiClient(["primary", "backup"], start_slot=0)
+        with mock.patch.object(api, "gemini_models", side_effect=models):
+            client.list_models()
+        self.assertEqual(client.active_slot, 1)
+
+    def test_fallback_reports_the_failed_slot(self):
+        calls = []
+        client = api.GeminiClient(
+            ["one", "two"],
+            on_fallback=lambda *args, **kwargs: calls.append((args, kwargs)),
+        )
+        def models(key):
+            if key == "one":
+                raise api.ApiError("rejected", 401, "user")
+            return ["model"]
+        with mock.patch.object(api, "gemini_models", side_effect=models):
+            self.assertEqual(client.list_models(), ["model"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0][0], 2)
+        self.assertEqual(calls[0][1]["failed"], 1)
+
 if __name__ == "__main__":
     unittest.main()

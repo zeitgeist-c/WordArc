@@ -63,6 +63,113 @@ def _dictation_conf(**overrides):
     return conf
 
 
+def _run_dictation(conf, keys, transcribe_return="raw words",
+                   transcribe_effect=None, cleanup_return="clean words"):
+    """Run pipeline._work with a capturing GeminiClient factory.
+
+    Returns (created, client, finished, failures); created holds the keys and
+    kwargs the pipeline built its client with.
+    """
+    pipeline = worker.Pipeline(conf)
+    finished, failures = [], []
+    pipeline.finished.connect(lambda *args: finished.append(args))
+    pipeline.failed.connect(lambda message, _op: failures.append(message))
+    created = {}
+    client = mock.Mock()
+    client.cleanup.return_value = cleanup_return
+    transcribe = (mock.Mock(side_effect=transcribe_effect)
+                  if transcribe_effect is not None
+                  else mock.Mock(return_value=transcribe_return))
+    def factory(api_keys, **kwargs):
+        created.update(keys=list(api_keys), kwargs=kwargs)
+        client.active_slot = kwargs.get("start_slot", 0)
+        return client
+    with mock.patch.object(worker.localspeech, "transcribe_for", transcribe), \
+         mock.patch.object(worker.api, "GeminiClient", side_effect=factory), \
+         mock.patch.object(cfg.Config, "gemini_keys", return_value=list(keys)), \
+         mock.patch.object(cfg.Config, "save"), \
+         mock.patch.object(worker.paste, "copy"), \
+         mock.patch.object(worker.paste, "press"):
+        pipeline._work("no-such-recording.wav", 1.0, [], "op-rot", auto_paste=True)
+    return created, client, finished, failures
+
+
+def test_successful_dictation_starts_at_claimed_slot_and_advances():
+    conf = _dictation_conf()
+    conf.data["gemini_next_slot"] = 1
+    created, _client, finished, failures = _run_dictation(conf, ["k1", "k2"])
+    assert created["kwargs"]["start_slot"] == 1
+    assert len(finished) == 1 and not failures
+    assert conf["gemini_next_slot"] == 0
+    assert conf["gemini_last_used"][0] == ""
+    assert conf["gemini_last_used"][1] != "", "başarılı işlem damga yazmalı"
+
+
+def test_failed_dictation_advances_without_a_stamp():
+    conf = _dictation_conf()
+    created, _client, finished, failures = _run_dictation(
+        conf, ["k1", "k2"],
+        transcribe_effect=worker.api.ApiError("busy", 429, "temporary"))
+    assert not finished and failures, "hata kullanıcıya ulaşmalı"
+    assert conf["gemini_next_slot"] == 1
+    assert conf["gemini_last_used"] == ["", ""], "başarısız deneme damga yazmamalı"
+
+
+def test_local_dictation_without_cleanup_leaves_rotation_alone():
+    conf = _dictation_conf(transcribe_engine="local", cleanup_enabled=False)
+    created, _client, finished, failures = _run_dictation(conf, ["k1", "k2"])
+    assert len(finished) == 1 and not failures
+    assert created["kwargs"]["start_slot"] == 0
+    assert conf["gemini_next_slot"] == 0
+    assert conf["gemini_last_used"] == [], "bulut kullanılmadı, sıra oynamamalı"
+
+
+def test_local_dictation_with_cleanup_rotates_the_cleanup_api():
+    """Local transcribe uses no API, but cleanup still calls Gemini."""
+    conf = _dictation_conf(transcribe_engine="local", cleanup_enabled=True)
+    created, _client, finished, failures = _run_dictation(conf, ["k1", "k2"])
+    assert len(finished) == 1 and not failures
+    assert created["kwargs"]["start_slot"] == 0
+    assert conf["gemini_next_slot"] == 1
+    assert conf["gemini_last_used"][0] != ""
+
+
+def test_fallback_stage_names_the_failing_slot():
+    """Rotasyonda 'Default API' yalan söyler; mesaj giden slotu adıyla söyler."""
+    import i18n
+    old_lang = i18n.language()
+    conf = _dictation_conf()
+    # Config() dili saklanan ui_language'e sıfırlar; test dilini sonra kur.
+    i18n.set_language("en")
+    try:
+        pipeline = worker.Pipeline(conf)
+        stages = []
+        pipeline.stage.connect(lambda message, _op: stages.append(message))
+        client = mock.Mock()
+        client.cleanup.return_value = "clean words"
+        def factory(api_keys, **kwargs):
+            client.active_slot = kwargs.get("start_slot", 0)
+            if kwargs.get("on_fallback") is not None:
+                kwargs["on_fallback"](
+                    2, worker.api.ApiError("busy", 429, "temporary"),
+                    failed=1)
+            return client
+        with mock.patch.object(worker.localspeech, "transcribe_for",
+                               return_value="raw words"), \
+             mock.patch.object(worker.api, "GeminiClient",
+                               side_effect=factory), \
+             mock.patch.object(cfg.Config, "gemini_keys",
+                               return_value=["k1", "k2"]), \
+             mock.patch.object(cfg.Config, "save"), \
+             mock.patch.object(worker.paste, "copy"), \
+             mock.patch.object(worker.paste, "press"):
+            pipeline._work("no-such-recording.wav", 1.0, [], "op-fb",
+                           auto_paste=True)
+    finally:
+        i18n.set_language(old_lang)
+    assert "API 1 did not respond; trying API 2..." in stages, stages
+
+
 def test_a_stop_during_cleanup_is_not_a_cleanup_failure():
     """Cancelled is an ApiError.
 
