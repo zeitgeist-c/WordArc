@@ -1,9 +1,42 @@
 # WordArc — durum
 
 Güncelleme: 2026-09-27
-Hazırlanan paket: 0.5.3 (`brand.py`)
+Hazırlanan paket: 0.6.0 (`brand.py`)
 Dal: master
-Git dönüş noktası: 1ac6b5b / v0.5.2
+Git dönüş noktası: 6515c25 / v0.5.3
+
+## 0.6.0 — API sıralı kullanım (round-robin)
+
+- Birden fazla Gemini API anahtarı varsa her yeni bulut işlemi (dikte,
+  toplantı, ses dosyası) sıradaki API ile baştan sona tek slotta çalışır;
+  transkripsiyon + temizleme ayrılmaz.
+- Sıra `config.json` içinde (`gemini_next_slot` + `gemini_last_used`)
+  tutulur; yeniden başlatmada kaldığı yerden devam eder. Başarısız işlem
+  damga yazmadan sırayı ilerletir, iptal dokunmaz.
+- Bulut kullanılmayan işlem (yerel transkripsiyon + temizleme kapalı) sırayı
+  oynatmaz; yerel transkripsiyon + bulut temizlemede temizleme sıraya girer.
+- Ayarlar anahtar listesi "API 1..N — son kullanım: gg.aa.yyyy ss:dd:ss /
+  henüz kullanılmadı" gösterir; "Varsayılan/Yedek" dili kalktı. Pencere her
+  açılışta damgaları tazeler.
+- Yedek mesajı giden slotu adıyla söyler ("API 1 yanıt vermedi; API 2
+  deneniyor..."); `on_fallback` artık `failed` slotunu da geçirir.
+
+Doğrulama: 302 test geçti, 1 atlandı (önceki 280 + 22 yeni test);
+`compileall` ve modül yükleme denetimi temiz; `pip_audit` bilinen açık
+bulmadı; SBOM yeniden üretildi, değişmedi. Yeni testler sıra devri/sarma,
+damga yazımı, başarısız denemede damgasız ilerleme, yerel kip davranışı,
+başlangıç slotu, yedek mesajı ve ayar listesi damgalarını kapsar. Yeniden
+başlatmada sıra devamlılığı izole ayarla ayrıca simüle edildi (0→1→2→başa
+sarma, hatalı slot damgasız).
+
+Paket: dist/WordArc-0.6.0.exe + dist/WordArc-0.6.0.bat.
+EXE SHA256: f6093367c070d9611945478e9bea9a8d2e6968b7c8f46870c53b4d91fe1bcf76.
+Frozen smoke: `WordArc-0.6.0.exe --version` → `WordArc version 0.6.0`
+(offscreen, kullanıcı ekranına pencere basılmadan). Rotasyon sembolleri
+(`claim_api_slot`, `start_slot`, `record_api_success`, damga dizgileri)
+paketlenmiş bytecode içinde doğrulandı.
+
+Yedek 2026-09-27: yerel commit + v0.6.0 etiketi tamamlandı; push bekliyor.
 
 ## 0.5.3 — dil değişimi, denetim düzeltmeleri ve temizlik
 
