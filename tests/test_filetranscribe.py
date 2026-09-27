@@ -61,7 +61,7 @@ class TestApiRotation(unittest.TestCase):
     def _rotation_conf(self):
         conf = cfg.Config()
         conf.data.update({"language": "tr", "transcribe_prompt": "",
-                          "gemini_next_slot": 1})
+                          "gemini_next_slot": 1, "gemini_last_used": []})
         return conf
 
     def test_file_run_starts_at_claimed_slot_and_records_success(self):

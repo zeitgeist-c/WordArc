@@ -762,6 +762,10 @@ class SettingsWindow(QDialog):
         # the whole app. Without a parent the object outlives the window and
         # Qt drops signals to dead slots safely.
         self.transcriber = FileTranscriber(conf)
+        # Damgalar işlemler tarafından pencereden bağımsız yazılır; açık
+        # kalan liste 5 saniyede bir tazelenir, gizlenince durur.
+        self._usage_timer = QTimer(self)
+        self._usage_timer.timeout.connect(self._on_usage_tick)
         self.setObjectName("settingsRoot")
         self.setWindowTitle(t("WordArc Settings"))
         self.setWindowIcon(QIcon(str(brand_asset("wordarc.ico"))))
@@ -2463,7 +2467,16 @@ class SettingsWindow(QDialog):
     def showEvent(self, event):
         super().showEvent(event)
         # İşlemler pencereden bağımsız koşar; liste her açılışta kayıtlı
-        # damgaları yeniden okur.
+        # damgaları yeniden okur, açık kaldığı sürece de tikle tazelenir.
+        if getattr(self, "_gemini_keys", None) is not None:
+            self._refresh_gemini_keys()
+        self._usage_timer.start(5000)
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._usage_timer.stop()
+
+    def _on_usage_tick(self):
         if getattr(self, "_gemini_keys", None) is not None:
             self._refresh_gemini_keys()
 

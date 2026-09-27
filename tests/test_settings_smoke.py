@@ -385,6 +385,23 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertNotEqual(before, after)
         self.assertIn("27.09.2026 14:32:11", after)
 
+    def test_key_usage_refreshes_while_window_stays_open(self):
+        """Açık kalan pencerede damgalar 5 sn'lik tikle tazelenir."""
+        window = self.window
+        window._gemini_keys = ["key-1-aaaa"]
+        window._refresh_gemini_keys()
+        before = window.gemini_keys_list.item(0).text()
+        window.show()
+        self.app.processEvents()
+        self.assertTrue(window._usage_timer.isActive())
+        window.conf.data["gemini_last_used"] = ["2026-09-27T14:32:11+03:00"]
+        window._on_usage_tick()
+        after = window.gemini_keys_list.item(0).text()
+        window.hide()
+        self.assertFalse(window._usage_timer.isActive())
+        self.assertNotEqual(before, after)
+        self.assertIn("27.09.2026 14:32:11", after)
+
     def test_key_prompt_speaks_the_ui_language(self):
         import i18n
         previous = i18n.language()
