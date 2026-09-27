@@ -1,9 +1,33 @@
 # WordArc — durum
 
 Güncelleme: 2026-09-27
-Hazırlanan paket: 0.6.0 (`brand.py`)
+Hazırlanan paket: 0.6.1 (`brand.py`)
 Dal: master
-Git dönüş noktası: 6515c25 / v0.5.3
+Git dönüş noktası: 8eca9d3 / v0.6.0
+
+## 0.6.1 — damga tazeleme ve süre logları
+
+- Ayarlar anahtar listesi açık kalan pencerede 5 saniyede bir tazelenir
+  (gizlenince durur); işlem sonrası "henüz kullanılmadı" diye takılı kalması
+  giderildi. Veride damga doğruydu, ekrana yansımıyordu.
+- Dikte hattı transkripsiyon ve temizleme sürelerini loga yazar
+  (`transcribe took …`, `cleanup took …`); yavaş temizleme tanısı için.
+  0.6.0 sonrası tek başarılı işlem yedek anahtara geçmeden API 1'de
+  bitmişti, gecikme API tarafındaydı.
+- Rotasyon testleri gerçek kullanıcı ayarındaki sıra durumunu okuyup
+  kırılgan hale gelmişti; testler artık sıra durumunu sıfırlayarak kurulur.
+
+Doğrulama: 304 test geçti, 1 atlandı (önceki 302 + 2 yeni test);
+`compileall` ve modül yükleme denetimi temiz; `pip_audit` bilinen açık
+bulmadı; SBOM yeniden üretildi, değişmedi.
+
+Paket: dist/WordArc-0.6.1.exe + dist/WordArc-0.6.1.bat.
+EXE SHA256: 577c605682de6a861b46aaff012bc35f68e55200c48fa1a54e0e5c82d49a52cb.
+Frozen smoke: `WordArc-0.6.1.exe --version` → `WordArc version 0.6.1`
+(offscreen, kullanıcı ekranına pencere basılmadan). Düzeltme sembolleri
+(`_on_usage_tick`, süre logları) paketlenmiş bytecode içinde doğrulandı.
+
+Yedek 2026-09-27: yerel commit + v0.6.1 etiketi tamamlandı; push bekliyor.
 
 ## 0.6.0 — API sıralı kullanım (round-robin)
 

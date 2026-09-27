@@ -58,7 +58,9 @@ def _dictation_conf(**overrides):
     conf = cfg.Config()
     conf.data.update({"skip_silent": False, "filter_hallucinations": False,
                       "cleanup_enabled": True, "history_enabled": False,
-                      "keep_audio": False, "auto_paste": True})
+                      "keep_audio": False, "auto_paste": True,
+                      # Sıra durumu gerçek kullanıcı ayarından sızmamalı.
+                      "gemini_next_slot": 0, "gemini_last_used": []})
     conf.data.update(overrides)
     return conf
 
@@ -132,6 +134,16 @@ def test_local_dictation_with_cleanup_rotates_the_cleanup_api():
     assert created["kwargs"]["start_slot"] == 0
     assert conf["gemini_next_slot"] == 1
     assert conf["gemini_last_used"][0] != ""
+
+
+def test_stages_log_their_durations(caplog):
+    conf = _dictation_conf()
+    with caplog.at_level("INFO", logger="wordarc.worker"):
+        _created, _client, finished, _failures = _run_dictation(conf, ["k1"])
+    assert len(finished) == 1
+    messages = [record.message for record in caplog.records]
+    assert any(message.startswith("transcribe took") for message in messages), messages
+    assert any(message.startswith("cleanup took") for message in messages), messages
 
 
 def test_fallback_stage_names_the_failing_slot():

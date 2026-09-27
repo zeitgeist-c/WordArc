@@ -95,6 +95,7 @@ class Pipeline(QObject):
                       used=failed, number=slot), operation_id),
                 start_slot=start,
             )
+            transcribe_started = time.monotonic()
             raw = localspeech.transcribe_for(
                 conf, wav_path,
                 language=conf["language"],
@@ -102,6 +103,8 @@ class Pipeline(QObject):
                 should_stop=self._stop.is_set,
                 client=client,
             )
+            _log.info("transcribe took %.1fs for %.1fs of audio",
+                      time.monotonic() - transcribe_started, duration)
 
             if conf["filter_hallucinations"] and vad.looks_like_hallucination(raw, duration):
                 self._discard(wav_path)
@@ -116,6 +119,7 @@ class Pipeline(QObject):
             # a second or two lighter.
             if conf["cleanup_enabled"]:
                 self.stage.emit(t("Cleaning up…"), operation_id)
+                cleanup_started = time.monotonic()
                 try:
                     text = client.cleanup(
                         raw,
@@ -137,6 +141,8 @@ class Pipeline(QObject):
                     _log.warning("cleanup request failed (status=%s, category=%s)",
                                  exc.status, exc.category)
                     print(f"wordarc: cleanup failed: {exc}", file=sys.stderr)
+                _log.info("cleanup took %.1fs for %d chars",
+                          time.monotonic() - cleanup_started, len(raw))
 
             with _paste_lock:
                 previous = paste.read_clipboard() if should_paste and conf["restore_clipboard"] else None
