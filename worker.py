@@ -81,12 +81,19 @@ class Pipeline(QObject):
 
         try:
             self.stage.emit(t("Transcribing…"), operation_id)
+            keys = conf.gemini_keys()
+            # Sıra, işlem gerçekten bulut API kullanıyorsa ilerler: yerel
+            # transkripsiyon API harcamaz ama temizleme hâlâ Gemini'ye gider.
+            uses_cloud = (conf.get("transcribe_engine") != "local"
+                          or conf["cleanup_enabled"])
+            start = conf.claim_api_slot(len(keys)) if uses_cloud else 0
             client = api.GeminiClient(
-                conf.gemini_keys(),
+                keys,
                 should_stop=self._stop.is_set,
-                on_fallback=lambda slot, _exc: self.stage.emit(
-                    t("Default API did not respond; trying API {number}...",
-                      number=slot), operation_id),
+                on_fallback=lambda slot, _exc, failed=0: self.stage.emit(
+                    t("API {used} did not respond; trying API {number}...",
+                      used=failed, number=slot), operation_id),
+                start_slot=start,
             )
             raw = localspeech.transcribe_for(
                 conf, wav_path,
@@ -169,6 +176,8 @@ class Pipeline(QObject):
                     cfg.trim_history(conf["history_limit"])
                 except OSError as exc:
                     print(f"wordarc: could not trim the history: {exc}", file=sys.stderr)
+            if uses_cloud:
+                conf.record_api_success(client.active_slot, len(keys))
             self.finished.emit(raw, text, warning, operation_id)
 
         except api.Cancelled:
@@ -179,6 +188,11 @@ class Pipeline(QObject):
                 paste.PasteError) as exc:
             _log.warning("pipeline failed (%s)", type(exc).__name__)
             print(f"wordarc: {exc}", file=sys.stderr)
+            # Yalnız API hatası sırayı ilerletir: pano ya da yerel motor
+            # arızası başka bir API'nin suçu değildir. İptal yukarıda
+            # ayrı dalda tutulur, sıraya dokunmaz.
+            if uses_cloud and isinstance(exc, api.ApiError):
+                conf.record_api_attempt(client.active_slot, len(keys))
             self.failed.emit(str(exc), operation_id)
         except Exception as exc:  # never fail silently
             _log.exception("unexpected pipeline error")

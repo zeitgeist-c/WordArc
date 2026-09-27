@@ -110,13 +110,17 @@ class MeetingPipeline(QObject):
         # has already paid for.
         have_transcript = False
         try:
+            # Tutanak her koşulda bulut API ile yazılır, o yüzden toplantı
+            # transkripsiyonu yerelde koşsa da sıraya girer.
+            keys = self.conf.gemini_keys()
             client = api.GeminiClient(
-                self.conf.gemini_keys(),
+                keys,
                 should_stop=self._stop.is_set,
-                on_fallback=lambda slot, _exc: self._say(t(
-                    "Default API did not respond; trying API {number}...",
-                    number=slot,
+                on_fallback=lambda slot, _exc, failed=0: self._say(t(
+                    "API {used} did not respond; trying API {number}...",
+                    used=failed, number=slot,
                 )),
+                start_slot=self.conf.claim_api_slot(len(keys)),
             )
             transcript = self._stored_transcript(entry, doc_path)
             have_transcript = bool(transcript)
@@ -148,6 +152,7 @@ class MeetingPipeline(QObject):
             cfg.update_meeting(base, status="done", error="", title=title,
                                model=self.conf["meeting_model"])
             self._discard_audio(wav_path)
+            self.conf.record_api_success(client.active_slot, len(keys))
             self.finished.emit(base, title)
 
         except (Cancelled, api.Cancelled, localspeech.Cancelled):
@@ -156,6 +161,10 @@ class MeetingPipeline(QObject):
         except (api.ApiError, localspeech.LocalSpeechError, OSError,
                 subprocess.SubprocessError, wave.Error) as exc:
             _log.warning("meeting pipeline failed (%s)", type(exc).__name__)
+            # Yalnız API hatası sırayı ilerletir; iptal yukarıdaki dalda
+            # tutulur ve sıraya dokunmaz.
+            if isinstance(exc, api.ApiError):
+                self.conf.record_api_attempt(client.active_slot, len(keys))
             # The audio stays put no matter what the keep setting says: it is the
             # only copy of the meeting, and the run can be tried again from it.
             # A transcript already on disk keeps the status that says so: marking

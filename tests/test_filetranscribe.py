@@ -1,4 +1,6 @@
 import unittest
+from unittest import mock
+import config as cfg
 import filetranscribe
 
 class TestTimestamps(unittest.TestCase):
@@ -28,6 +30,64 @@ class TestSplitText(unittest.TestCase):
         blocks = filetranscribe.split_text(text, True)
         self.assertIsInstance(blocks, list)
         self.assertTrue(all(blocks))
+
+class TestApiRotation(unittest.TestCase):
+    def _run_file(self, conf, keys, client, do_cleanup=False):
+        worker = filetranscribe.FileTranscriber(conf)
+        finished, failures = [], []
+        worker.finished.connect(lambda *args: finished.append(args))
+        worker.failed.connect(lambda message: failures.append(message))
+        created = {}
+        def factory(api_keys, **kwargs):
+            created.update(keys=list(api_keys), kwargs=kwargs)
+            client.active_slot = kwargs.get("start_slot", 0)
+            return client
+        with mock.patch.object(filetranscribe, "_to_wav",
+                               return_value="x.wav"), \
+             mock.patch.object(filetranscribe, "split_wav",
+                               return_value=[("c.wav", 0.0)]), \
+             mock.patch.object(filetranscribe.localspeech, "transcribe_for",
+                               return_value=[(0.0, 0.0, "hello")]), \
+             mock.patch.object(filetranscribe, "wav_duration",
+                               return_value=5.0), \
+             mock.patch.object(filetranscribe.api, "GeminiClient",
+                               side_effect=factory), \
+             mock.patch.object(cfg.Config, "gemini_keys",
+                               return_value=list(keys)), \
+             mock.patch.object(cfg.Config, "save"):
+            worker._work("input.mp3", False, do_cleanup)
+        return created, finished, failures
+
+    def _rotation_conf(self):
+        conf = cfg.Config()
+        conf.data.update({"language": "tr", "transcribe_prompt": "",
+                          "gemini_next_slot": 1})
+        return conf
+
+    def test_file_run_starts_at_claimed_slot_and_records_success(self):
+        client = mock.Mock()
+        conf = self._rotation_conf()
+        created, finished, failures = self._run_file(
+            conf, ["k1", "k2"], client)
+        self.assertEqual(created["kwargs"]["start_slot"], 1)
+        self.assertEqual(len(finished), 1)
+        self.assertEqual(failures, [])
+        self.assertEqual(conf["gemini_next_slot"], 0)
+        self.assertEqual(len(conf["gemini_last_used"]), 2)
+        self.assertEqual(conf["gemini_last_used"][0], "")
+        self.assertRegex(conf["gemini_last_used"][1], r"^\d{4}-\d{2}-\d{2}T")
+
+    def test_local_file_run_without_cleanup_leaves_rotation_alone(self):
+        client = mock.Mock()
+        conf = self._rotation_conf()
+        conf.data["transcribe_engine"] = "local"
+        created, finished, failures = self._run_file(
+            conf, ["k1", "k2"], client)
+        self.assertEqual(len(finished), 1)
+        self.assertEqual(failures, [])
+        self.assertEqual(created["kwargs"]["start_slot"], 0)
+        self.assertEqual(conf["gemini_next_slot"], 1)
+        self.assertEqual(conf["gemini_last_used"], [])
 
 if __name__ == "__main__":
     unittest.main()

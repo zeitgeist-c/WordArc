@@ -358,6 +358,33 @@ class TestSettingsSmoke(unittest.TestCase):
         src = pathlib.Path(settings_ui.__file__).read_text(encoding="utf-8")
         self.assertNotIn("Keys are tried from top to bottom and stored only", src)
 
+    def test_key_list_shows_last_used_times(self):
+        window = self.window
+        window._gemini_keys = ["first-key-aaaa", "second-key-bbbb"]
+        window.conf.data["gemini_last_used"] = ["2026-09-27T14:32:11+03:00", ""]
+        window._refresh_gemini_keys()
+        first = window.gemini_keys_list.item(0).text()
+        second = window.gemini_keys_list.item(1).text()
+        self.assertIn("API 1", first)
+        self.assertNotIn("Varsayılan", first)
+        self.assertNotIn("Default", first)
+        self.assertIn("27.09.2026 14:32:11", first)
+        self.assertIn("API 2", second)
+        self.assertIn(t("not used yet"), second)
+
+    def test_showing_window_refreshes_key_usage(self):
+        window = self.window
+        window._gemini_keys = ["key-1-aaaa"]
+        window._refresh_gemini_keys()
+        before = window.gemini_keys_list.item(0).text()
+        window.conf.data["gemini_last_used"] = ["2026-09-27T14:32:11+03:00"]
+        window.show()
+        self.app.processEvents()
+        after = window.gemini_keys_list.item(0).text()
+        window.hide()
+        self.assertNotEqual(before, after)
+        self.assertIn("27.09.2026 14:32:11", after)
+
     def test_key_prompt_speaks_the_ui_language(self):
         import i18n
         previous = i18n.language()

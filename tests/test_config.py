@@ -195,5 +195,60 @@ class TestHistory(unittest.TestCase):
             thread.join()
         self.assertEqual(len(cfg.read_history()), 40)
 
+class TestApiRotation(unittest.TestCase):
+    def test_rotation_defaults_exist(self):
+        self.assertIn("gemini_next_slot", cfg.DEFAULTS)
+        self.assertIn("gemini_last_used", cfg.DEFAULTS)
+        self.assertEqual(cfg.DEFAULTS["gemini_next_slot"], 0)
+        self.assertEqual(cfg.DEFAULTS["gemini_last_used"], [])
+
+    def _fresh_conf(self, n_keys, next_slot=0):
+        conf = cfg.Config.__new__(cfg.Config)
+        conf.data = dict(cfg.DEFAULTS)
+        conf.data["gemini_next_slot"] = next_slot
+        conf.data["gemini_last_used"] = [""] * n_keys
+        return conf
+
+    def test_claim_returns_next_slot_without_advancing(self):
+        conf = self._fresh_conf(n_keys=3, next_slot=2)
+        self.assertEqual(conf.claim_api_slot(3), 2)
+        self.assertEqual(conf.claim_api_slot(3), 2)
+
+    def test_claim_wraps_and_clamps(self):
+        self.assertEqual(self._fresh_conf(1).claim_api_slot(1), 0)
+        self.assertEqual(self._fresh_conf(2, next_slot=99).claim_api_slot(2), 0)
+        self.assertEqual(self._fresh_conf(2, next_slot=-1).claim_api_slot(2), 0)
+        self.assertEqual(self._fresh_conf(0).claim_api_slot(0), 0)
+
+    def test_record_success_advances_and_stamps(self):
+        conf = self._fresh_conf(n_keys=3, next_slot=2)
+        with mock.patch.object(cfg.Config, "save"):
+            conf.record_api_success(2, n_keys=3)
+        self.assertEqual(conf["gemini_next_slot"], 0)
+        self.assertRegex(conf["gemini_last_used"][2],
+                         r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+        self.assertEqual(conf["gemini_last_used"][:2], ["", ""])
+
+    def test_record_attempt_advances_without_stamp(self):
+        conf = self._fresh_conf(n_keys=2, next_slot=0)
+        with mock.patch.object(cfg.Config, "save"):
+            conf.record_api_attempt(0, n_keys=2)
+        self.assertEqual(conf["gemini_next_slot"], 1)
+        self.assertEqual(conf["gemini_last_used"], ["", ""])
+
+    def test_record_normalises_shorter_stamp_list(self):
+        conf = self._fresh_conf(n_keys=1, next_slot=0)
+        with mock.patch.object(cfg.Config, "save"):
+            conf.record_api_success(1, n_keys=2)
+        self.assertEqual(len(conf["gemini_last_used"]), 2)
+        self.assertEqual(conf["gemini_last_used"][0], "")
+        self.assertEqual(conf["gemini_next_slot"], 0)
+
+    def test_record_save_failure_does_not_raise(self):
+        conf = self._fresh_conf(n_keys=2, next_slot=0)
+        with mock.patch.object(cfg.Config, "save", side_effect=OSError("disk full")):
+            conf.record_api_success(0, n_keys=2)
+        self.assertEqual(conf["gemini_next_slot"], 1)
+
 if __name__ == "__main__":
     unittest.main()

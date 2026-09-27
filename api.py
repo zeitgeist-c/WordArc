@@ -363,7 +363,8 @@ class GeminiClient:
 
     FAILOVER_STATUSES = {401, 402, 403, 429, 500, 502, 503, 504}
 
-    def __init__(self, api_keys, should_stop=None, on_fallback=None):
+    def __init__(self, api_keys, should_stop=None, on_fallback=None,
+                 start_slot=0):
         if isinstance(api_keys, str):
             api_keys = [api_keys]
         self.api_keys = []
@@ -373,8 +374,19 @@ class GeminiClient:
                 self.api_keys.append(key)
         self.should_stop = should_stop
         self.on_fallback = on_fallback
-        self._active = 0
+        try:
+            start = int(start_slot)
+        except (TypeError, ValueError):
+            start = 0
+        if not self.api_keys or not 0 <= start < len(self.api_keys):
+            start = 0
+        self._active = start
         self._unavailable = set()
+
+    @property
+    def active_slot(self):
+        """İşin gerçekten yapıldığı slot (failover sonrası değişmiş olabilir)."""
+        return self._active
 
     @staticmethod
     def _can_fail_over(exc):
@@ -411,7 +423,7 @@ class GeminiClient:
                     remaining[0] + 1 if remaining else "none",
                 )
                 if remaining and self.on_fallback is not None:
-                    self.on_fallback(remaining[0] + 1, exc)
+                    self.on_fallback(remaining[0] + 1, exc, failed=index + 1)
         if last_error is not None:
             raise ApiError(t(
                 "All configured Gemini APIs failed. Last error: {error}",
