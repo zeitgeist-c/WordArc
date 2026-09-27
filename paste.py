@@ -92,13 +92,19 @@ def copy_bytes(data):
     if not user32.OpenClipboard(0):
         return
     try:
-        user32.EmptyClipboard()
         handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(data) + 2)
         if not handle:
             return
         ptr = kernel32.GlobalLock(handle)
         if not ptr:
+            # Without this the block stayed allocated for the life of the
+            # process.
+            kernel32.GlobalFree(handle)
             return
+        # Emptied only once the replacement is in hand: emptying first left the
+        # clipboard holding nothing at all when the allocation above failed,
+        # and by then the old contents were already gone.
+        user32.EmptyClipboard()
         # Treat as a string sent in via copy earlier: simplest correct case is
         # to re-copy the UTF-8 bytes as UTF-16 text when they were text. We keep
         # the prior bytes only when they decode as UTF-8 (the common case).

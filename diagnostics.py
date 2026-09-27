@@ -6,6 +6,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import re
 import sys
+import threading
 
 import config as cfg
 
@@ -53,4 +54,13 @@ def setup():
         previous(exc_type, exc, tb)
 
     sys.excepthook = report
+
+    def report_thread(args):
+        # A worker thread that dies takes its traceback with it: whatever it
+        # was feeding sits on its last message and the log stays empty.
+        root.exception("unhandled error in %s",
+                       getattr(args.thread, "name", "a worker thread"),
+                       exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+
+    threading.excepthook = report_thread
     return root

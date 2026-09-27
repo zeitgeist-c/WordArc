@@ -105,6 +105,10 @@ class MeetingPipeline(QObject):
         base = entry["base"]
         doc_path, wav_path = cfg.meeting_paths(base)
         workdir = None
+        # Whether a transcript is on disk for this meeting: the failure path
+        # below has to know, or a summary that fails throws away a stage the run
+        # has already paid for.
+        have_transcript = False
         try:
             client = api.GeminiClient(
                 self.conf.gemini_keys(),
@@ -115,6 +119,7 @@ class MeetingPipeline(QObject):
                 )),
             )
             transcript = self._stored_transcript(entry, doc_path)
+            have_transcript = bool(transcript)
             if not transcript:
                 if not wav_path.exists():
                     raise api.ApiError(t("The recording is gone: {path}", path=wav_path))
@@ -128,6 +133,7 @@ class MeetingPipeline(QObject):
                 # a retry starts from here instead of from the audio.
                 self._write(doc_path, "", transcript, entry)
                 cfg.update_meeting(base, status="transcribed", error="")
+                have_transcript = True
 
             self._check()
             self._say(t("Writing the minutes…"))
@@ -152,7 +158,14 @@ class MeetingPipeline(QObject):
             _log.warning("meeting pipeline failed (%s)", type(exc).__name__)
             # The audio stays put no matter what the keep setting says: it is the
             # only copy of the meeting, and the run can be tried again from it.
-            cfg.update_meeting(base, status="failed", error=str(exc))
+            # A transcript already on disk keeps the status that says so: marking
+            # the row failed made the next try transcribe the whole meeting
+            # again, which is exactly what the first write promises it will not.
+            if have_transcript:
+                keep = "done" if entry.get("status") == "done" else "transcribed"
+                cfg.update_meeting(base, status=keep, error=str(exc))
+            else:
+                cfg.update_meeting(base, status="failed", error=str(exc))
             self.failed.emit(base, str(exc))
         finally:
             if workdir:
@@ -164,7 +177,10 @@ class MeetingPipeline(QObject):
             return ""
         try:
             return read_transcript(doc_path.read_text(encoding="utf-8"))
-        except OSError:
+        except (OSError, UnicodeDecodeError):
+            # A document saved in another encoding is no reason to lose the run:
+            # the thread would die without a single signal, leaving the window
+            # on "Working…" for good.
             return ""
 
     def _transcribe(self, client, wav_path, workdir):
@@ -287,8 +303,11 @@ class MeetingPipeline(QObject):
             return
         try:
             wav_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as exc:
+            # The user believes the recording is gone; the least this can do is
+            # leave a trace of where it actually is.
+            _log.warning("could not delete the meeting recording (%s); kept %s",
+                         exc, wav_path)
 
 
 # --- audio ----------------------------------------------------------------

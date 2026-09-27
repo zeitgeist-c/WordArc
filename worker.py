@@ -116,6 +116,12 @@ class Pipeline(QObject):
                         conf.cleanup_prompt(),
                         reasoning=conf["cleanup_reasoning"],
                     )
+                except api.Cancelled:
+                    # A stop that lands while the cleanup request is in flight
+                    # is a stop, not a cleanup failure: Cancelled is an
+                    # ApiError, so without this it was swallowed here and the
+                    # run went on to paste the raw text as if all were well.
+                    raise
                 except api.ApiError as exc:
                     # Keep the transcript, but never let the failure pass unseen:
                     # a rejected key would otherwise look like working dictation.
@@ -131,10 +137,21 @@ class Pipeline(QObject):
 
                 if should_paste:
                     self.stage.emit(t("Pasting…"), operation_id)
-                    paste.press(conf["paste_shortcut"])
-                    if previous is not None:
-                        time.sleep(0.35)
-                        paste.copy_bytes(previous)
+                    pasted = False
+                    try:
+                        paste.press(conf["paste_shortcut"])
+                        pasted = True
+                    finally:
+                        # The old contents go back whatever happened: when the
+                        # keystroke never landed, the clipboard was left holding
+                        # the dictation text and the user's own clipboard was
+                        # gone for good.
+                        if previous is not None:
+                            if pasted:
+                                # The target reads the clipboard after the
+                                # keystroke lands, so the old contents wait.
+                                time.sleep(0.35)
+                            paste.copy_bytes(previous)
 
             history_entry = {
                 "ts": time.strftime("%Y-%m-%d %H:%M:%S"),

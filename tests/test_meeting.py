@@ -1,10 +1,13 @@
 import unittest
 import array
 import os
+import pathlib
 import shutil
 import tempfile
+from unittest import mock
 import wave
 
+import api
 import meeting
 from i18n import t
 
@@ -35,6 +38,67 @@ class _FakeClient:
         if "mine" in os.path.basename(path):
             return "mine words"
         return "theirs words"
+
+
+class TestSummaryFailure(unittest.TestCase):
+    """A summary that fails must not cost the transcript the run already paid for."""
+
+    def _pipeline(self, updates, client):
+        conf = _FakeConf({
+            "meeting_model": "test-model", "meeting_reasoning": "",
+            "meeting_cleanup": False, "meeting_keep_audio": True,
+        })
+        conf.gemini_keys = lambda: ["key"]
+        conf.meeting_prompt = lambda: ""
+        pipe = meeting.MeetingPipeline(conf)
+        self._patches = [
+            mock.patch.object(meeting.api, "GeminiClient", return_value=client),
+            mock.patch.object(meeting.cfg, "update_meeting",
+                              side_effect=lambda base, **kw: updates.append(kw)),
+        ]
+        return pipe
+
+    def test_a_failed_summary_keeps_the_transcript_ready_status(self):
+        """Marking the row failed threw away the stage that was already done:
+        the next try transcribed the whole meeting again."""
+        workdir = tempfile.mkdtemp(prefix="wordarc-test-meeting-")
+        self.addCleanup(shutil.rmtree, workdir, True)
+        updates = []
+        client = mock.Mock()
+        client.cleanup.side_effect = api.ApiError("summary failed")
+        pipe = self._pipeline(updates, client)
+        paths = (pathlib.Path(workdir) / "doc.md", pathlib.Path(workdir) / "rec.wav")
+        paths[1].write_bytes(b"RIFF")
+        for patch in self._patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        with mock.patch.object(meeting.cfg, "meeting_paths", return_value=paths), \
+             mock.patch.object(meeting.MeetingPipeline, "_transcribe",
+                               return_value="fresh transcript"):
+            pipe._work({"base": "2026-01-01-1200", "status": ""})
+
+        self.assertEqual(updates[0], {"status": "transcribed", "error": ""})
+        self.assertEqual(updates[-1],
+                         {"status": "transcribed", "error": "summary failed"})
+
+    def test_a_failure_before_any_transcript_still_marks_the_row_failed(self):
+        workdir = tempfile.mkdtemp(prefix="wordarc-test-meeting-")
+        self.addCleanup(shutil.rmtree, workdir, True)
+        updates = []
+        client = mock.Mock()
+        pipe = self._pipeline(updates, client)
+        wav = pathlib.Path(workdir) / "rec.wav"
+        wav.write_bytes(b"RIFF")
+        paths = (pathlib.Path(workdir) / "doc.md", wav)
+        for patch in self._patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+        with mock.patch.object(meeting.cfg, "meeting_paths", return_value=paths), \
+             mock.patch.object(meeting.MeetingPipeline, "_transcribe",
+                               side_effect=api.ApiError("no audio")):
+            pipe._work({"base": "2026-01-01-1200", "status": ""})
+
+        self.assertEqual(updates, [{"status": "failed", "error": "no audio"}])
 
 
 class TestTranscribeTimeline(unittest.TestCase):

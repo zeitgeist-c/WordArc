@@ -448,6 +448,173 @@ class TestSettingsSmoke(unittest.TestCase):
             self.assertIn(note, text)
             self.assertEqual(window.local_stt_model.itemData(index), name)
 
+    def test_saving_a_new_language_rebuilds_the_window(self):
+        """The box on the Settings tab does what the header button does.
+
+        Saving a new language used to leave the window standing in the old one
+        while the tray menu and the dialogs already spoke the new one.
+        """
+        import i18n
+        window = self.window
+        previous = i18n.language()
+        fired = []
+        window.language_changed.connect(lambda: fired.append(True))
+        window._select_data(window.ui_language, "en")
+        try:
+            with mock.patch.object(settings_ui.startup, "set_enabled"), \
+                 mock.patch.object(settings_ui.sounds, "play"), \
+                 mock.patch.object(settings_ui.QTimer, "singleShot") as later:
+                window._save()
+            later.assert_called_once()
+            self.assertEqual(later.call_args[0][0], 0)
+            self.assertFalse(fired, "the rebuild must not run inside the save")
+            later.call_args[0][1]()          # the queued emit
+            self.assertTrue(fired)
+            self.assertEqual(window.conf["ui_language"], "en")
+        finally:
+            i18n.set_language(previous)
+
+    def test_a_failed_rescan_keeps_the_devices_already_listed(self):
+        """A rescan that cannot read anything must not empty the boxes.
+
+        An emptied box would write the default back over a saved microphone
+        the next time Save is pressed.
+        """
+        window = self.window
+        window._fill_device_combo(window.mic, [("sd:2:USB Mic", "USB Mic")],
+                                  t("Default microphone"), "sd:2:USB Mic")
+        with mock.patch.object(settings_ui.audio, "describe_sources",
+                               side_effect=RuntimeError("device list failed")):
+            window._refresh_audio_devices()
+        self.assertEqual(window.mic.currentData(), "sd:2:USB Mic")
+        self.assertEqual(window.mic.count(), 2)
+
+    def test_a_rebuild_lands_on_the_same_page_and_place(self):
+        """The language change rebuilds the window; the user should not be able
+        to tell beyond the words."""
+        window = self.window
+        window.resize(900, 620)
+        window.move(120, 80)
+        window.navigate_to("application")
+        self.app.processEvents()
+        view = settings_ui.WindowView(window)
+        fresh = settings_ui.SettingsWindow(window.conf, "wordarc toggle")
+        try:
+            view.apply(fresh)
+            self.assertEqual(fresh.tabs.currentIndex(), window.tabs.currentIndex())
+            self.assertEqual((fresh.width(), fresh.height()), (900, 620))
+            self.assertEqual(fresh.settings_section_menu.currentRow(), 4)
+        finally:
+            fresh.close()
+            fresh.deleteLater()
+
+    def test_switching_tabs_keeps_a_maximized_window_maximized(self):
+        """The placement check slides the window inside its screen. A maximized
+        window is already inside it, and moving it there clears the state, so
+        the window fell back to its old size on a tab switch."""
+        window = self.window
+        window.showMaximized()
+        self.app.processEvents()
+        window.navigate_to("meeting")
+        self.app.processEvents()
+        self.assertTrue(window.isMaximized())
+
+    def test_the_placement_check_does_not_grow_a_decorated_window(self):
+        """Like must be compared with like.
+
+        The check measured frameGeometry() — title bar and borders included —
+        and compared it against width()/x(), which leave the frame out, so a
+        decorated window never looked like it was already in place: every tab
+        switch called setGeometry() with the frame's size and grew the window
+        by the frame.
+        """
+        window = self.window
+        window.show()
+        self.app.processEvents()
+        window.move(120, 90)
+        self.app.processEvents()
+        before = window.geometry()
+        decorated = before.adjusted(-8, -31, 8, 8)  # frame around the client
+        with mock.patch.object(settings_ui.SettingsWindow, "frameGeometry",
+                               return_value=decorated):
+            window._fit_on_screen(QRect(0, 0, 4000, 3000))
+        self.app.processEvents()
+        self.assertEqual(window.geometry(), before)
+
+    def test_a_window_off_the_bottom_is_pulled_back_in(self):
+        window = self.window
+        window.show()
+        self.app.processEvents()
+        avail = QRect(0, 0, 1200, 800)
+        window.resize(700, 900)
+        window.move(100, 400)
+        self.app.processEvents()
+        window._fit_on_screen(avail)
+        self.app.processEvents()
+        self.assertLessEqual(window.geometry().bottom(), avail.bottom())
+        self.assertGreaterEqual(window.geometry().height(), window.minimumHeight())
+
+    def test_a_maximized_rebuild_comes_back_maximized(self):
+        window = self.window
+        window.showMaximized()
+        self.app.processEvents()
+        window.navigate_to("meeting")
+        self.app.processEvents()
+        view = settings_ui.WindowView(window)
+        fresh = settings_ui.SettingsWindow(window.conf, "wordarc toggle")
+        try:
+            view.apply(fresh)
+            fresh.show()
+            self.app.processEvents()
+            self.assertTrue(fresh.isMaximized())
+            self.assertEqual(fresh.tabs.currentIndex(), window.tabs.currentIndex())
+        finally:
+            fresh.close()
+            fresh.deleteLater()
+
+
+class TestTheWindowSurvivesABadAudioLibrary(unittest.TestCase):
+    """The device rescan runs while the settings window is being built.
+
+    PortAudio answers a stale pointer with an error for a stream that is
+    already over (error -9988). That error came out of the rescan, out of the
+    window's constructor, and the language change — which closes the window it
+    has before building the new one — left nothing on screen at all.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_a_rescan_that_raises_still_gives_a_whole_window(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = pathlib.Path(tmp.name)
+        with mock.patch.object(cfg, "CONFIG_DIR", root / "cfg"), \
+             mock.patch.object(cfg, "CONFIG_FILE", root / "cfg" / "config.json"), \
+             mock.patch.object(cfg, "DATA_DIR", root / "data"), \
+             mock.patch.object(cfg, "HISTORY_FILE", root / "data" / "h.jsonl"), \
+             mock.patch.object(cfg, "MEETINGS_DIR", root / "data" / "m"), \
+             mock.patch.object(cfg, "MEETINGS_FILE", root / "data" / "m.jsonl"), \
+             mock.patch.object(cfg.credential_store, "read", return_value=""), \
+             mock.patch.object(cfg.credential_store, "read_all", return_value=[]), \
+             mock.patch.object(cfg.credential_store, "write_all"), \
+             mock.patch.object(settings_ui.audio, "refresh_devices",
+                               side_effect=audio.sd.PortAudioError(
+                                   "Invalid stream pointer [PaErrorCode -9988]")), \
+             mock.patch.object(settings_ui.audio, "list_sources", return_value=[]), \
+             mock.patch.object(settings_ui.audio, "list_monitors", return_value=[]), \
+             mock.patch.object(settings_ui.startup, "is_enabled", return_value=False):
+            window = settings_ui.SettingsWindow(cfg.Config(), "wordarc toggle")
+        try:
+            self.assertEqual(window.tabs.count(), 4)
+            self.assertEqual(window.mic.count(), 1)
+            self.assertEqual(window.mic.currentData(), "")
+            self.assertTrue(window.dictation_output.isReadOnly())
+        finally:
+            window.close()
+            window.deleteLater()
+
 
 class TestDeviceCards(unittest.TestCase):
     """Long device lists draw as cards: the name, and under it how the device is

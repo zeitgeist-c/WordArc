@@ -101,6 +101,31 @@ class TestConfigLoadSave(unittest.TestCase):
         cfg.CONFIG_FILE.write_text(json.dumps({"unknown_key": "ignored"}), encoding="utf-8")
         c = cfg.Config()
         self.assertNotIn("unknown_key", c.data)
+
+    def test_a_settings_file_in_another_encoding_does_not_stop_the_app(self):
+        """A UnicodeDecodeError is not a JSONDecodeError.
+
+        It escaped load() and reached main(), which meant no window and no log:
+        the file is now read as far as it can be, and a copy is kept.
+        """
+        cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        cfg.CONFIG_FILE.write_bytes(
+            '{"cleanup_prompt": "açıklama"}'.encode("cp1254"))
+        c = cfg.Config()
+        self.assertEqual(c["cleanup_prompt"], cfg.DEFAULTS["cleanup_prompt"])
+        kept = cfg.CONFIG_FILE.parent / (cfg.CONFIG_FILE.name + ".corrupt")
+        self.assertTrue(kept.exists(), "okunamayan ayar dosyası saklanmalı")
+
+    def test_a_setting_of_the_wrong_type_falls_back_to_its_default(self):
+        """A hand-edited file can hold a number where a string belongs, and the
+        strip()/int() calls that read it took the app down before it opened."""
+        cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        cfg.CONFIG_FILE.write_text(
+            json.dumps({"cleanup_prompt": None, "history_limit": "many"}),
+            encoding="utf-8")
+        c = cfg.Config()
+        self.assertEqual(c["cleanup_prompt"], cfg.DEFAULTS["cleanup_prompt"])
+        self.assertEqual(c["history_limit"], cfg.DEFAULTS["history_limit"])
     def test_retired_default_models_are_migrated(self):
         cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         cfg.CONFIG_FILE.write_text(json.dumps({

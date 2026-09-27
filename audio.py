@@ -81,8 +81,25 @@ def _open_portaudio_stream(**kwargs):
 
 
 def has_active_capture():
-    """Whether a PortAudio stream is running right now."""
-    return any(getattr(stream, "active", False) for stream in _streams)
+    """Whether a PortAudio stream is running right now.
+
+    A stream that has been stopped keeps its Python wrapper for a moment —
+    the callback thread may still be holding it — and a PortAudio restart
+    under it (which refresh_devices() does itself) leaves that wrapper with a
+    dead pointer, so asking whether it is active raises instead of answering.
+    Such an entry is a stream that is over, not a recording: it is dropped
+    here. Letting the error out took the whole settings window down with it,
+    because a device rescan runs while the window is built.
+    """
+    for stream in list(_streams):
+        try:
+            running = getattr(stream, "active", False)
+        except Exception:
+            _streams.discard(stream)
+            continue
+        if running:
+            return True
+    return False
 
 
 def refresh_devices():
