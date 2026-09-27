@@ -111,7 +111,8 @@ EXE SHA256: 3a40980222ae558038c5e18515c1c7c4f8d65383f4625cc9f02490f74299959a.
 Frozen smoke: `WordArc-0.5.3.exe --version` → `WordArc version 0.5.3` (offscreen,
 kullanıcı ekranına pencere basılmadan).
 
-Yedek 2026-09-27: yerel commit + v0.5.3 etiketi tamamlandı; push yetki bekliyor.
+Yedek 2026-09-27: yerel commit + v0.5.3 etiketi tamamlandı; `origin/master` ve
+`v0.5.3` etiketi açık yetkiyle push edildi (uzak sha'lar doğrulandı).
 
 ## 0.5.2 — yerel model indirme
 
