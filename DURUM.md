@@ -1,9 +1,44 @@
 # WordArc — durum
 
-Güncelleme: 2026-09-27
-Hazırlanan paket: 0.6.1 (`brand.py`)
+Güncelleme: 2026-09-29
+Hazırlanan paket: 0.6.2 (`brand.py`)
 Dal: master
-Git dönüş noktası: 8eca9d3 / v0.6.0
+Git dönüş noktası: 50879a8 / v0.6.1
+
+## 0.6.2 — İngilizce çeviri butonu (akademik + oyun)
+
+- Dikte sekmesindeki "Son dikte" kartına tek çeviri butonu + mod seçici
+  eklendi (Akademik İngilizce / Oyun İngilizcesi); son seçim
+  `config.json` içinde (`translate_mode`) hatırlanır.
+- Kaynak her zaman son dikte metni, yön sabit Türkçe→İngilizce; motor
+  mevcut Gemini API (`GeminiClient.translate`, slot rotasyonu ve yedek
+  mantığı aynen kullanılır, yeni servis yok).
+- Akademik mod: dolgu sözcükleri temizlenir, zengin lügat, düzgün gramer.
+  Oyun modu: kısa sokak dili, hafif noktalama, tekrarsız, abartısız,
+  anlamdan sapma yok. Her iki prompt da talimat-koruması taşır.
+- Sonuç Qt panosuna yazılır + kart içi durum metni ve overlay bildirimi;
+  boş metinde API çağrılmaz, çeviri arka planda (`QThread`) koşar.
+- Yeni çeviri modeli anahtarı `gemini_translate_model`
+  (varsayılan `gemini-3.5-flash-lite`); ölü model göçüne dahil.
+- Yan düzeltme: `test_filetranscribe.py` rotasyon testi gerçek kullanıcı
+  ayarını (`transcribe_engine=local`) okuyup kırılgan hale gelmişti;
+  test artık motoru açıkça `cloud` kurar (0.6.1'deki sıra-durumu
+  dersiyle aynı sınıf).
+
+Doğrulama: 315 test geçti, 1 atlandı (önceki 304 + 11 yeni çeviri testi);
+`compileall` ve modül yükleme denetimi temiz;
+`pip_audit` bilinen açık bulmadı; SBOM yeniden üretildi, değişmedi.
+
+Paket: dist/WordArc-0.6.2.exe + dist/WordArc-0.6.2.bat.
+EXE SHA256: 47dbbdf4c8aefee007d3a8cd00f307d0e2c9e695bc91d6a4f2c538d32dd0aeec.
+Frozen smoke: `WordArc-0.6.2.exe --version` → `WordArc version 0.6.2`
+(offscreen, kullanıcı ekranına pencere basılmadan). Çeviri sembolleri
+(`TRANSLATE_PROMPT_ACADEMIC/GAME`, `_TranslateWorker`, `translate_mode`,
+Türkçe karşılıklar) paketlenmiş PYZ bytecode içinde doğrulandı
+(`CArchiveReader` + kod nesnesi taraması).
+
+Yedek 2026-09-29: yerel commit + v0.6.2 etiketi tamamlandı; push yapılmadı
+(açık yetki bekleniyor).
 
 ## 0.6.1 — damga tazeleme ve süre logları
 

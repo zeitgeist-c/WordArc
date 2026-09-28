@@ -441,6 +441,13 @@ class GeminiClient:
                                 timeout, self.should_stop)
         )
 
+    def translate(self, text, model, system_prompt, timeout=180):
+        return self._call(
+            lambda key: gemini_chat([{"role": "user", "content": text}],
+                                    key, model, system_prompt,
+                                    timeout, self.should_stop)
+        )
+
     def complete(self, messages, model, system_prompt="", timeout=180):
         return self._call(
             lambda key: gemini_chat(messages, key, model, system_prompt,

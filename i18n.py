@@ -787,3 +787,14 @@ TR.update({
     "Download stopped. Press Download to resume.": "İndirme durduruldu. Devam etmek için İndir'e bas.",
     "Model ready: {name}": "Model hazır: {name}",
 })
+
+TR.update({
+    "Academic English": "Akademik İngilizce",
+    "Game English": "Oyun İngilizcesi",
+    "Translate to English": "İngilizceye çevir",
+    "Translating…": "Çevriliyor…",
+    "Translated and copied to clipboard.": "Çevrildi, panoya kopyalandı.",
+    "Nothing to translate yet. Dictate something first.": "Çevrilecek bir şey yok. Önce bir şey dikte et.",
+    "Translate failed: {error}": "Çeviri başarısız: {error}",
+    "Translated: {preview}": "Çevrildi: {preview}",
+})
