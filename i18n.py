@@ -791,10 +791,6 @@ TR.update({
 TR.update({
     "Academic English": "Akademik İngilizce",
     "Game English": "Oyun İngilizcesi",
-    "Translate to English": "İngilizceye çevir",
     "Translating…": "Çevriliyor…",
-    "Translated and copied to clipboard.": "Çevrildi, panoya kopyalandı.",
-    "Nothing to translate yet. Dictate something first.": "Çevrilecek bir şey yok. Önce bir şey dikte et.",
-    "Translate failed: {error}": "Çeviri başarısız: {error}",
-    "Translated: {preview}": "Çevrildi: {preview}",
+    "Translate dictation to English": "Dikteyi İngilizceye çevir",
 })

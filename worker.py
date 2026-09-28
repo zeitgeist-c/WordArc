@@ -83,9 +83,10 @@ class Pipeline(QObject):
             self.stage.emit(t("Transcribing…"), operation_id)
             keys = conf.gemini_keys()
             # Sıra, işlem gerçekten bulut API kullanıyorsa ilerler: yerel
-            # transkripsiyon API harcamaz ama temizleme hâlâ Gemini'ye gider.
+            # transkripsiyon API harcamaz ama temizleme/çeviri hâlâ Gemini'ye gider.
             uses_cloud = (conf.get("transcribe_engine") != "local"
-                          or conf["cleanup_enabled"])
+                          or conf["cleanup_enabled"]
+                          or conf.get("translate_enabled"))
             start = conf.claim_api_slot(len(keys)) if uses_cloud else 0
             client = api.GeminiClient(
                 keys,
@@ -117,16 +118,26 @@ class Pipeline(QObject):
             # Claude reads through “eee” and “hani” without help, so a dictation
             # on its way there is normally sent as it was heard, one API call and
             # a second or two lighter.
-            if conf["cleanup_enabled"]:
-                self.stage.emit(t("Cleaning up…"), operation_id)
+            translate_on = bool(conf.get("translate_enabled"))
+            if translate_on or conf["cleanup_enabled"]:
+                self.stage.emit(
+                    t("Translating…" if translate_on else "Cleaning up…"),
+                    operation_id)
                 cleanup_started = time.monotonic()
                 try:
-                    text = client.cleanup(
-                        raw,
-                        conf["cleanup_model"],
-                        conf.cleanup_prompt(),
-                        reasoning=conf["cleanup_reasoning"],
-                    )
+                    if translate_on:
+                        text = client.translate(
+                            raw,
+                            conf["gemini_translate_model"],
+                            cfg.translate_prompt(conf.get("translate_mode", "academic")),
+                        )
+                    else:
+                        text = client.cleanup(
+                            raw,
+                            conf["cleanup_model"],
+                            conf.cleanup_prompt(),
+                            reasoning=conf["cleanup_reasoning"],
+                        )
                 except api.Cancelled:
                     # A stop that lands while the cleanup request is in flight
                     # is a stop, not a cleanup failure: Cancelled is an

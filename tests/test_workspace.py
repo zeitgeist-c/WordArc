@@ -78,6 +78,7 @@ def test_pipeline_window_override_does_not_modify_paste_preference(override, exp
     conf = cfg.Config()
     conf["skip_silent"] = False
     conf["cleanup_enabled"] = False
+    conf["translate_enabled"] = False
     conf["filter_hallucinations"] = False
     conf["history_enabled"] = False
     conf["auto_paste"] = True

@@ -481,6 +481,7 @@ DEFAULTS = {
     "assistant_paste": True,        # paste the answer, not just copy it
     "assistant_session_minutes": 30,  # 0 -> every command starts fresh
     "assistant_timeout": 240,
+    "translate_enabled": False,    # True -> temizleme yerine Ingilizce ceviri
     "translate_mode": "academic",      # academic | game
     "gemini_translate_model": "gemini-3.5-flash-lite",
 }

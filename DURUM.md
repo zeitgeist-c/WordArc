@@ -5,36 +5,38 @@ Hazırlanan paket: 0.6.2 (`brand.py`)
 Dal: master
 Git dönüş noktası: 50879a8 / v0.6.1
 
-## 0.6.2 — İngilizce çeviri butonu (akademik + oyun)
+## 0.6.2 — Hatta İngilizce çeviri (akademik + oyun)
 
-- Dikte sekmesindeki "Son dikte" kartına tek çeviri butonu + mod seçici
-  eklendi (Akademik İngilizce / Oyun İngilizcesi); son seçim
-  `config.json` içinde (`translate_mode`) hatırlanır.
-- Kaynak her zaman son dikte metni, yön sabit Türkçe→İngilizce; motor
-  mevcut Gemini API (`GeminiClient.translate`, slot rotasyonu ve yedek
-  mantığı aynen kullanılır, yeni servis yok).
+- Çeviri dikte hattının içine taşındı: ses → yazı (bulut ya da yerel) →
+  Ayarlarda açıksa temizleme adımının yerine İngilizce çeviri → normal
+  dikte gibi pano/yapıştırma. Ayrı buton çözümü kaldırıldı (kalıntı yok).
+- Kip Ayarlar sekmesinde: "Dikteyi İngilizceye çevir" onay kutusu
+  (`translate_enabled`, varsayılan kapalı) + mod seçici (Akademik / Oyun,
+  `translate_mode`). Kapalıyken davranış birebir eski (ham Türkçe +
+  temizleme).
+- Temizleme ayarı kapalıysa çeviri de yapılmaz, ham Türkçe yapıştırılır.
+  Geçmişe ham Türkçe (`raw`) + İngilizce (`text`) birlikte yazılır.
 - Akademik mod: dolgu sözcükleri temizlenir, zengin lügat, düzgün gramer.
   Oyun modu: kısa sokak dili, hafif noktalama, tekrarsız, abartısız,
   anlamdan sapma yok. Her iki prompt da talimat-koruması taşır.
-- Sonuç Qt panosuna yazılır + kart içi durum metni ve overlay bildirimi;
-  boş metinde API çağrılmaz, çeviri arka planda (`QThread`) koşar.
-- Yeni çeviri modeli anahtarı `gemini_translate_model`
-  (varsayılan `gemini-3.5-flash-lite`); ölü model göçüne dahil.
-- Yan düzeltme: `test_filetranscribe.py` rotasyon testi gerçek kullanıcı
-  ayarını (`transcribe_engine=local`) okuyup kırılgan hale gelmişti;
-  test artık motoru açıkça `cloud` kurar (0.6.1'deki sıra-durumu
-  dersiyle aynı sınıf).
+- Çeviri bulut işi sayılır (yerel transkripsiyonda da sıra ilerler);
+  hata yolu aynen korunur (ham metin + uyarı, gizli başarısızlık yok).
+- Yan düzeltmeler (hepsi aynı sınıf: test gerçek kullanıcı ayarını okuyordu):
+  `test_filetranscribe.py` motoru `cloud` kurar; `test_worker.py` ve
+  `test_workspace.py` `translate_enabled=False` sabitler.
+- Temizlik: silinen 0.7.0 sürümünün yetim derleme çıktısı
+  (`build/wordarc-0.7.0`, 183M) kaldırıldı; yayındaki 0.6.1 paketi ve
+  güncel ara çıktılar korundu. Buton artığı ve ölü çeviri anahtarı yok.
 
-Doğrulama: 315 test geçti, 1 atlandı (önceki 304 + 11 yeni çeviri testi);
-`compileall` ve modül yükleme denetimi temiz;
-`pip_audit` bilinen açık bulmadı; SBOM yeniden üretildi, değişmedi.
+Doğrulama: 318 test geçti, 1 atlandı (önceki 304 + 14 hatta çeviri testi);
+`compileall` temiz; `pip_audit` bilinen açık bulmadı.
 
 Paket: dist/WordArc-0.6.2.exe + dist/WordArc-0.6.2.bat.
-EXE SHA256: 47dbbdf4c8aefee007d3a8cd00f307d0e2c9e695bc91d6a4f2c538d32dd0aeec.
+EXE SHA256: 8bf4be59bc2f7e5b50cf031278741a3e63991dbba7d862ba50eff145f6cbcf2b.
 Frozen smoke: `WordArc-0.6.2.exe --version` → `WordArc version 0.6.2`
 (offscreen, kullanıcı ekranına pencere basılmadan). Çeviri sembolleri
-(`TRANSLATE_PROMPT_ACADEMIC/GAME`, `_TranslateWorker`, `translate_mode`,
-Türkçe karşılıklar) paketlenmiş PYZ bytecode içinde doğrulandı
+(`TRANSLATE_PROMPT_ACADEMIC/GAME`, `translate_enabled`, hatta `translate`
+çağrısı, Türkçe karşılıklar) paketlenmiş PYZ bytecode içinde doğrulandı
 (`CArchiveReader` + kod nesnesi taraması).
 
 Yedek 2026-09-29: yerel commit + v0.6.2 etiketi tamamlandı; push yapılmadı

@@ -615,7 +615,6 @@ class WordArc:
             self.settings_window.recording_requested.connect(self._window_record)
             self.settings_window.cancel_requested.connect(self._window_cancel)
             self.settings_window.set_dictation_result(self._last_dictation)
-            self.settings_window._wordarc_app = self
             self._sync_workspace()
             self.settings_window.applied.connect(self._apply_settings)
             self.settings_window.language_changed.connect(self._reopen_settings)
