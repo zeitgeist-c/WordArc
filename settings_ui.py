@@ -7,7 +7,7 @@ import sys
 import threading
 
 from PyQt6.QtCore import (QEasingCurve, QLibraryInfo, QPoint, QPropertyAnimation,
-                          QRect, QSize, Qt, QThread, QTimer, QEvent, QTranslator, QUrl, pyqtSignal)
+                          QRect, QSize, Qt, QTimer, QEvent, QTranslator, QUrl, pyqtSignal)
 from PyQt6.QtGui import (QColor, QDesktopServices, QFont, QFontMetrics,
                          QGuiApplication, QIcon, QKeySequence, QShortcut, QPainter)
 from PyQt6.QtWidgets import (
@@ -687,45 +687,6 @@ class FitsOnScreenCombo(QComboBox):
             popup.setGeometry(rect.x(), y, rect.width(), rect.height())
 
 
-class _TranslateWorker(QThread):
-    """Son dikte metnini arka planda İngilizceye çevirir."""
-
-    done = pyqtSignal(str)
-    failed = pyqtSignal(str)
-
-    def __init__(self, conf, text, mode, parent=None):
-        super().__init__(parent)
-        self._conf = conf
-        self._text = text
-        self._mode = mode
-
-    def run(self):
-        import api
-        import config as cfg
-        keys = self._conf.gemini_keys()
-        start = self._conf.claim_api_slot(len(keys))
-        client = api.GeminiClient(keys, start_slot=start)
-        try:
-            out = client.translate(
-                self._text,
-                self._conf["gemini_translate_model"],
-                cfg.translate_prompt(self._mode),
-            )
-        except Exception as exc:  # noqa: BLE001 - hata metni durum satırına taşınır
-            if isinstance(exc, api.ApiError):
-                try:
-                    self._conf.record_api_attempt(client.active_slot, len(keys))
-                except Exception:  # noqa: BLE001 - sayaç çeviriyi engellemez
-                    pass
-            self.failed.emit(str(exc))
-            return
-        try:
-            self._conf.record_api_success(client.active_slot, len(keys))
-        except Exception:  # noqa: BLE001 - sayaç çeviriyi engellemez
-            pass
-        self.done.emit(out)
-
-
 class WindowView:
     """Where a settings window sits and which page it shows.
 
@@ -1005,45 +966,6 @@ class SettingsWindow(QDialog):
         self.dictation_output.setPlainText(text)
         self._load_history()
 
-    def _on_translate_mode_changed(self, index):
-        mode = self.translate_mode.itemData(index) or "academic"
-        self.conf["translate_mode"] = mode
-        try:
-            self.conf.save()
-        except OSError as exc:
-            self.translate_status.setText(t("Failed: {error}", error=exc))
-
-    def _on_translate_clicked(self):
-        text = self.dictation_output.toPlainText().strip()
-        if not text:
-            self.translate_status.setText(
-                t("Nothing to translate yet. Dictate something first."))
-            return
-        mode = self.translate_mode.currentData() or "academic"
-        self.translate_button.setEnabled(False)
-        self.translate_status.setText(t("Translating…"))
-        self._translate_thread = _TranslateWorker(self.conf, text, mode, self)
-        self._translate_thread.done.connect(self._on_translate_done)
-        self._translate_thread.failed.connect(self._on_translate_failed)
-        self._translate_thread.finished.connect(
-            lambda: self.translate_button.setEnabled(True))
-        self._translate_thread.start()
-
-    def _on_translate_done(self, out):
-        QGuiApplication.clipboard().setText(out)
-        self.translate_status.setText(t("Translated and copied to clipboard."))
-        app = getattr(self, "_wordarc_app", None)
-        if app is not None:
-            try:
-                preview = out.replace("\n", " ")[:48]
-                app.overlay.show_done(t("Translated: {preview}", preview=preview))
-            except Exception:  # noqa: BLE001 - bildirim çeviriyi engellemez
-                pass
-
-    def _on_translate_failed(self, error):
-        first = error.strip().splitlines()[0] if error.strip() else error
-        self.translate_status.setText(t("Translate failed: {error}", error=first))
-
     def _workspace_page(self, kind, original):
         old = original.layout()
         widgets = []
@@ -1133,23 +1055,6 @@ class SettingsWindow(QDialog):
             copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(
                 self.dictation_output.toPlainText()))
             body.addWidget(copy)
-            self.translate_mode = FitsOnScreenCombo()
-            self.translate_mode.addItem(t("Academic English"), "academic")
-            self.translate_mode.addItem(t("Game English"), "game")
-            mode = self.conf.get("translate_mode", "academic")
-            self.translate_mode.setCurrentIndex(1 if mode == "game" else 0)
-            self.translate_mode.currentIndexChanged.connect(self._on_translate_mode_changed)
-            self.translate_button = QPushButton(t("Translate to English"))
-            self.translate_button.clicked.connect(self._on_translate_clicked)
-            self.translate_status = QLabel("")
-            self.translate_status.setObjectName("translateStatus")
-            row = QHBoxLayout()
-            row.addWidget(self.translate_mode, 1)
-            row.addWidget(self.translate_button, 2)
-            row_holder = QWidget()
-            row_holder.setLayout(row)
-            body.addWidget(row_holder)
-            body.addWidget(self.translate_status)
             self.history.setFixedHeight(120)
             controls, controls_body = self._section_card("Dictation", "Record, transcribe and paste spoken text.")
             for widget in (self.mic.parentWidget().parentWidget(), self.language.parentWidget(),
@@ -1577,6 +1482,12 @@ class SettingsWindow(QDialog):
             "Cleanup", "An optional second pass that tidies the transcript.")
         self.cleanup_enabled = QCheckBox(t("Clean the transcript with a model"))
         body.addWidget(self.cleanup_enabled)
+        self.translate_enabled = QCheckBox(t("Translate dictation to English"))
+        body.addWidget(self.translate_enabled)
+        self.translate_mode = FitsOnScreenCombo()
+        self.translate_mode.addItem(t("Academic English"), "academic")
+        self.translate_mode.addItem(t("Game English"), "game")
+        body.addWidget(self.translate_mode)
         body.addWidget(self._shared_ai_note())
         layout.addWidget(cleanup)
         layout.addWidget(self._history_box())
@@ -2268,6 +2179,9 @@ class SettingsWindow(QDialog):
                           conf.get("local_stt_model") or localspeech.default_model())
         self._refresh_local_controls()
         self.cleanup_enabled.setChecked(conf["cleanup_enabled"])
+        self.translate_enabled.setChecked(conf.get("translate_enabled", False))
+        mode = conf.get("translate_mode", "academic")
+        self.translate_mode.setCurrentIndex(1 if mode == "game" else 0)
         self.cleanup_model.setCurrentText(conf["cleanup_model"])
         self._select_data(self.cleanup_reasoning, conf["cleanup_reasoning"])
         self.cleanup_prompt.setPlainText(conf["cleanup_prompt"] or cfg.default_cleanup_prompt())
@@ -2335,6 +2249,8 @@ class SettingsWindow(QDialog):
                                            or cfg.DEFAULTS["gemini_transcribe_model"])
 
         conf["cleanup_enabled"] = self.cleanup_enabled.isChecked()
+        conf["translate_enabled"] = self.translate_enabled.isChecked()
+        conf["translate_mode"] = self.translate_mode.currentData() or "academic"
         conf["cleanup_model"] = self.cleanup_model.currentText().strip()
         conf["cleanup_reasoning"] = self.cleanup_reasoning.currentData() or ""
 

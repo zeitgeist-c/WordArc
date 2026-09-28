@@ -9,6 +9,7 @@ from unittest import mock
 
 import api
 import config as cfg
+import worker
 
 
 class TestTranslatePrompts(unittest.TestCase):
@@ -46,6 +47,7 @@ class TestTranslateConfig(unittest.TestCase):
 
     def test_defaults(self):
         c = cfg.Config()
+        self.assertFalse(c["translate_enabled"])
         self.assertEqual(c["translate_mode"], "academic")
         self.assertEqual(c["gemini_translate_model"], "gemini-3.5-flash-lite")
 
@@ -61,9 +63,12 @@ class TestTranslateConfig(unittest.TestCase):
 
     def test_mode_roundtrip(self):
         c = cfg.Config()
+        c["translate_enabled"] = True
         c["translate_mode"] = "game"
         c.save()
-        self.assertEqual(cfg.Config()["translate_mode"], "game")
+        c2 = cfg.Config()
+        self.assertTrue(c2["translate_enabled"])
+        self.assertEqual(c2["translate_mode"], "game")
 
 
 class TestTranslateClient(unittest.TestCase):
@@ -92,7 +97,105 @@ class TestTranslateClient(unittest.TestCase):
         self.assertEqual(ctx.exception.category, "user")
 
 
-class TestTranslateUI(unittest.TestCase):
+def _translate_conf(**overrides):
+    conf = cfg.Config()
+    conf.data.update({"skip_silent": False, "filter_hallucinations": False,
+                      "cleanup_enabled": True, "translate_enabled": False,
+                      "translate_mode": "academic",
+                      "history_enabled": False,
+                      "keep_audio": False, "auto_paste": True,
+                      # Sıra durumu gerçek kullanıcı ayarından sızmamalı.
+                      "gemini_next_slot": 0, "gemini_last_used": []})
+    conf.data.update(overrides)
+    return conf
+
+
+def _run_dictation(conf, keys, transcribe_return="ham metin",
+                   translate_return="translated text",
+                   cleanup_return="clean words",
+                   translate_effect=None):
+    pipeline = worker.Pipeline(conf)
+    finished, failures = [], []
+    pipeline.finished.connect(lambda *args: finished.append(args))
+    pipeline.failed.connect(lambda message, _op: failures.append(message))
+    client = mock.Mock()
+    client.cleanup.return_value = cleanup_return
+    if translate_effect is not None:
+        client.translate.side_effect = translate_effect
+    else:
+        client.translate.return_value = translate_return
+    created = {}
+
+    def factory(api_keys, **kwargs):
+        created.update(keys=list(api_keys), kwargs=kwargs)
+        client.active_slot = kwargs.get("start_slot", 0)
+        return client
+
+    with mock.patch.object(worker.localspeech, "transcribe_for",
+                           return_value=transcribe_return), \
+         mock.patch.object(worker.api, "GeminiClient", side_effect=factory), \
+         mock.patch.object(cfg.Config, "gemini_keys", return_value=list(keys)), \
+         mock.patch.object(cfg.Config, "save"), \
+         mock.patch.object(worker.paste, "copy"), \
+         mock.patch.object(worker.paste, "press"):
+        pipeline._work("no-such-recording.wav", 1.0, [], "op-tr", auto_paste=True)
+    return created, client, finished, failures
+
+
+class TestTranslatePipeline(unittest.TestCase):
+    def test_translate_replaces_cleanup_when_enabled(self):
+        conf = _translate_conf(translate_enabled=True, translate_mode="game")
+        _created, client, finished, failures = _run_dictation(conf, ["k1"])
+        self.assertEqual(client.translate.call_count, 1)
+        self.assertEqual(client.cleanup.call_count, 0)
+        args, _kwargs = client.translate.call_args
+        self.assertEqual(args[0], "ham metin")
+        self.assertEqual(args[1], conf["gemini_translate_model"])
+        self.assertIn("gamer slang", args[2])
+        self.assertEqual(len(finished), 1)
+        self.assertEqual(failures, [])
+        raw, text, _warning, _op = finished[0]
+        self.assertEqual(raw, "ham metin")
+        self.assertEqual(text, "translated text")
+
+    def test_cleanup_runs_when_translate_disabled(self):
+        conf = _translate_conf(translate_enabled=False)
+        _created, client, finished, failures = _run_dictation(conf, ["k1"])
+        self.assertEqual(client.translate.call_count, 0)
+        self.assertEqual(client.cleanup.call_count, 1)
+        self.assertEqual(finished[0][1], "clean words")
+
+    def test_raw_turkish_kept_when_translate_fails(self):
+        conf = _translate_conf(translate_enabled=True)
+        _created, client, finished, failures = _run_dictation(
+            conf, ["k1"],
+            translate_effect=api.ApiError("HTTP 429", 429, "temporary"))
+        self.assertEqual(len(finished), 1)
+        raw, text, warning, _op = finished[0]
+        self.assertEqual(text, "ham metin")
+        self.assertTrue(warning, "hata gizlenmemeli")
+
+    def test_history_holds_both_languages(self):
+        conf = _translate_conf(translate_enabled=True, history_enabled=True)
+        saved = []
+        with mock.patch.object(worker.cfg, "append_history",
+                               side_effect=saved.append), \
+             mock.patch.object(worker.cfg, "trim_history"):
+            _run_dictation(conf, ["k1"])
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(saved[0]["raw"], "ham metin")
+        self.assertEqual(saved[0]["text"], "translated text")
+
+    def test_local_engine_with_translate_still_uses_cloud_slot(self):
+        conf = _translate_conf(translate_enabled=True,
+                               transcribe_engine="local")
+        created, _client, finished, failures = _run_dictation(conf, ["k1", "k2"])
+        self.assertEqual(created["kwargs"]["start_slot"], 0)
+        self.assertEqual(len(finished), 1)
+        self.assertEqual(conf["gemini_next_slot"], 1)
+
+
+class TestTranslateSettingsControls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         from PyQt6.QtWidgets import QApplication
@@ -119,9 +222,7 @@ class TestTranslateUI(unittest.TestCase):
         ]
         for patcher in self.patchers:
             patcher.start()
-        import settings_ui as ui
-        self.ui = ui
-        self.window = ui.SettingsWindow(cfg.Config(), "wordarc toggle")
+        self.window = settings_ui.SettingsWindow(cfg.Config(), "wordarc toggle")
 
     def tearDown(self):
         self.window.close()
@@ -129,25 +230,16 @@ class TestTranslateUI(unittest.TestCase):
             patcher.stop()
         self.tmp.cleanup()
 
-    def test_translate_controls_exist(self):
-        self.assertEqual(self.window.translate_mode.count(), 2)
-        self.assertEqual(self.window.translate_mode.itemData(0), "academic")
-        self.assertEqual(self.window.translate_mode.itemData(1), "game")
-        self.assertTrue(self.window.translate_button.isEnabled())
-        self.assertEqual(self.window.translate_status.text(), "")
-
-    def test_empty_text_does_not_call_api(self):
-        self.window.dictation_output.setPlainText("   ")
-        with mock.patch.object(
-            self.ui._TranslateWorker, "start"
-        ) as start:
-            self.window._on_translate_clicked()
-        start.assert_not_called()
-        self.assertIn("nce bir", self.window.translate_status.text())
-
-    def test_mode_change_persists(self):
-        self.window.translate_mode.setCurrentIndex(1)
-        self.assertEqual(self.window.conf["translate_mode"], "game")
+    def test_translate_controls_exist_and_persist(self):
+        window = self.window
+        self.assertFalse(window.translate_enabled.isChecked())
+        self.assertEqual(window.translate_mode.itemData(0), "academic")
+        self.assertEqual(window.translate_mode.itemData(1), "game")
+        window.translate_enabled.setChecked(True)
+        window.translate_mode.setCurrentIndex(1)
+        window._save()
+        self.assertTrue(window.conf["translate_enabled"])
+        self.assertEqual(window.conf["translate_mode"], "game")
 
 
 if __name__ == "__main__":

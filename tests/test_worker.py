@@ -57,7 +57,8 @@ def test_discard_removes_the_temporary_recording_by_default():
 def _dictation_conf(**overrides):
     conf = cfg.Config()
     conf.data.update({"skip_silent": False, "filter_hallucinations": False,
-                      "cleanup_enabled": True, "history_enabled": False,
+                      "cleanup_enabled": True, "translate_enabled": False,
+                      "history_enabled": False,
                       "keep_audio": False, "auto_paste": True,
                       # Sıra durumu gerçek kullanıcı ayarından sızmamalı.
                       "gemini_next_slot": 0, "gemini_last_used": []})
