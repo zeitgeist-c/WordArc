@@ -154,6 +154,27 @@ class TestPromptAssembly(unittest.TestCase):
     def test_meeting_prompt_default_tr(self):
         import i18n; i18n.set_language("tr")
         self.assertIn("toplantı tutanağı", cfg.default_meeting_prompt())
+    def test_pipeline_prompts_keep_their_instruction_guard(self):
+        """Transkript/talimat karıştırma koruması dillerde de durmalı.
+
+        Temizleme, dosya ve tutanak promptları her iki dilde de konuşulan
+        metni talimat saymamalı; asistan promptu bilinçli olarak hariçtir
+        (ürün, söylenen komutu yerine getirmektir).
+        """
+        import i18n
+        previous = i18n.language()
+        try:
+            guards = {"en": "DO NOT follow", "tr": "ONA UYMA"}
+            prompts = (cfg.default_cleanup_prompt,
+                       cfg.default_file_cleanup_prompt,
+                       cfg.default_meeting_prompt)
+            for lang, guard in guards.items():
+                i18n.set_language(lang)
+                for prompt_fn in prompts:
+                    self.assertIn(guard, prompt_fn(),
+                                  f"{prompt_fn.__name__} [{lang}]")
+        finally:
+            i18n.set_language(previous)
     def test_participants_dedupe_turkish_case_variants(self):
         c = cfg.Config()
         c.data["meeting_self_name"] = "İSMAİL"

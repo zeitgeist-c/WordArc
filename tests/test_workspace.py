@@ -53,7 +53,7 @@ def test_controller_routes_buttons_to_existing_recorders():
     controller.stop = mock.Mock()
     controller._toggle_meeting = mock.Mock()
     controller._window_record("dictation")
-    controller.start.assert_called_once_with(from_window=True)
+    controller.start.assert_called_once_with()
     controller.state = wordarc.RECORDING
     controller._window_record("dictation")
     controller.stop.assert_called_once()

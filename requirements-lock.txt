@@ -7,3 +7,11 @@ SoundCard==0.4.6
 numpy==1.26.4
 cffi==2.1.1
 pycparser==3.0
+# Local speech-to-text stack (localspeech.REQUIRED_PACKAGES + load-time deps).
+# Missing these left pip-audit and sbom.json blind to the bundled STT engine.
+faster-whisper==1.2.1
+ctranslate2==4.8.2
+onnxruntime==1.30.0
+tokenizers==0.23.2
+huggingface_hub==1.33.0
+av==18.1.0

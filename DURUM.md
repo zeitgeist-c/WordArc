@@ -1,9 +1,52 @@
 # WordArc — durum
 
-Güncelleme: 2026-09-29
-Hazırlanan paket: 0.6.3 (`brand.py`)
+Güncelleme: 2026-09-30
+Hazırlanan paket: 0.6.4 (`brand.py`)
 Dal: master
-Git dönüş noktası: 88614db / v0.6.2
+Git dönüş noktası: 4e77a89 / v0.6.3
+
+## 0.6.4 — 21 becerilik bakım turu + pencere dikte sadeleştirmesi
+
+- 21 denetim becerisi tek turda uygulandı (sıra: yapı, yapılandırma,
+  bağımlılık-denetimi, bağımlılık, sözleşme, yetki, asenkron,
+  hata-denetimi, gözlem, tekrar, tutarlılık, regresyon, darboğaz,
+  performans, denetle, güvenlik, temizle, debug, geliştir,
+  hızlı-derle, yedek). Kritik/yüksek bulgu çıkmadı.
+- Bağımlılık (DEP-001, P2): yerel STT yığını (faster-whisper 1.2.1,
+  ctranslate2 4.8.2, onnxruntime 1.30.0, tokenizers, huggingface_hub,
+  av) `requirements-lock.txt` dışında kalmıştı; pip-audit ve SBOM bu
+  motora kördü. Pin eklendi, SBOM 14 bileşene çıktı.
+- Arayüz (UI-001, P3): ayarlar panelindeki "Discard recording" tepsi
+  menüsündeki "Cancel recording" ile birleştirildi; ölü çeviri anahtarı
+  silindi.
+- Test: 2 regression guard eklendi — ölü PortAudio akışında ayarlar
+  penceresinin çökmesi (`test_audio.py`) ve hat temizleme/dosya/tutanak
+  promptlarındaki talimat-korumasının iki dilde durması
+  (`test_config.py`). Asistan promptu bilinçli olarak korumasızdır
+  (ürün, söylenen komutu yerine getirmektir).
+- Pencere diktesi sadeleşti (kullanıcı WIP'i): `_window_dictation`
+  bayrağı kalktı; yapıştır/kopyala bildirimi `auto_paste` ayarından
+  okunuyor.
+- Geçmiş loglardaki iki çökme (`meetings.cancel`, ölü akışta ayarlar
+  penceresi) mevcut kodda zaten düzeltilmiş; testlerle doğrulandı.
+- Paket yükseltmesi yapılmadı: audit temiz, adaylar major (numpy 2.x,
+  huggingface_hub 2.0, av 19) — ayrıMigration işi olarak ertelendi.
+- Eski `build/` ara çıktıları silinmedi (senkron churn riski + aidiyet
+  belirsizliği); aday olarak raporlandı.
+
+Doğrulama: 339 test geçti, 1 atlandı (ağ isteyen hub testi, opt-in);
+`compileall` temiz; `pip_audit` bilinen açık bulmadı (genişletilmiş lock).
+
+Paket: dist/WordArc-0.6.4.exe + dist/WordArc-0.6.4.bat.
+EXE SHA256: 49995e3b5916a487ac0f6ac572a00a9bbefa4ca4c3ab3be460bcff7f6e56dc02.
+Frozen smoke: `WordArc-0.6.4.exe --version` → `WordArc version 0.6.4`
+(offscreen). `Cancel recording` etiketi ve `ONA UYMA` koruması
+paketlenmiş PYZ bytecode içinde doğrulandı (`CArchiveReader` + kod
+nesnesi taraması).
+
+Yedek 2026-09-30: yerel commit + v0.6.4 etiketi tamamlandı; `origin/master` ve
+`v0.6.4` etiketi push edildi, GitHub Release açıldı (uzak sha'lar ve asset
+hash'i doğrulandı).
 
 ## 0.6.3 — yerel modelde otomatik cihaz seçimi
 

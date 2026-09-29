@@ -926,7 +926,7 @@ class SettingsWindow(QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         button = QPushButton(t("Start recording"))
         button.setObjectName("primaryButton")
-        cancel = QPushButton(t("Discard recording"))
+        cancel = QPushButton(t("Cancel recording"))
         cancel.hide()
         status = QLabel(t("Ready"))
         status.setObjectName("muted")
