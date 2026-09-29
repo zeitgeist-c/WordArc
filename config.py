@@ -423,6 +423,7 @@ DEFAULTS = {
     # cloud | local — where dictation, audio files and meetings are transcribed.
     "transcribe_engine": "cloud",
     "local_stt_model": "large-v3-turbo",
+    "local_stt_device": "auto",      # auto | cuda | cpu — where the local model runs
     "gemini_cleanup_model": "gemini-3.5-flash-lite",
     "gemini_meeting_model": "gemini-3.6-flash",
     "gemini_assistant_model": "gemini-3.5-flash-lite",
@@ -602,6 +603,8 @@ class Config:
             self.data["history_enabled"] = True
         if self.data.get("theme_mode") not in ("dark", "light"):
             self.data["theme_mode"] = "dark"
+        if self.data.get("local_stt_device") not in ("auto", "cuda", "cpu"):
+            self.data["local_stt_device"] = "auto"
         self.data["config_schema"] = CONFIG_SCHEMA
 
     def _migrate_plaintext_secret(self):

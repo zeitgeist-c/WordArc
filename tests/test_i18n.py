@@ -56,6 +56,8 @@ UNTRANSLATED = {
     "{action}: {preview}", "{name}: {preview}",
     # Model names, the same in both languages.
     "Whisper base", "Whisper small", "Whisper large-v3-turbo",
+    # Compute device names, the same in both languages.
+    "Nvidia GPU", "CPU",
 }
 
 SOURCE_FILES = ("settings_ui.py", "wordarc.py", "meeting.py", "worker.py",

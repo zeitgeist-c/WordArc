@@ -81,6 +81,7 @@ tests/            pytest paketi
 - **`Ctrl+Space` işlemiyor?** Kısayol başka uygulamada olabilir — boşaltıp `wordarc.py restart` çalıştır.
 - **Toplantıda karşı ses yok?** Sistem sesi yakalama loopback ister; Windows ses ayarlarına bak.
 - **Anahtar reddedildi?** Ayarlar'dan yeniden gir; yalnızca Credential Manager'da durur.
+- **Yerel model GPU'da mı?** Yerel motor, sürücü ve CUDA çalışması yanıt veriyorsa Nvidia GPU'yu kendi seçer (kart fark etmez, `cuda` + `float16`); yoksa CPU ile çalışır (`cpu` + `int8`). Nvidia GPU için güncel sürücü + CUDA runtime gerekir; Windows'ta AMD kartlarda yalnızca CPU desteklenir. Cihaz Ayarlar → Konuşmayı yazıya çevir → Cihaz adımından zorlanabilir.
 
 ## Yol haritası
 

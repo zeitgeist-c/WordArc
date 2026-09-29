@@ -1248,6 +1248,16 @@ class SettingsWindow(QDialog):
         self.transcribe_status.setVisible(not local)
         self.local_row.setVisible(local)
         self.local_status.setVisible(local)
+        if hasattr(self, "device_row"):
+            self.device_row.setVisible(local)
+            self.local_device_note.setVisible(local)
+            if local and hasattr(self, "local_stt_device"):
+                preference = self.local_stt_device.currentData() or "auto"
+                note = localspeech.describe_device(preference)
+                fallback = localspeech.last_fallback_note()
+                if fallback:
+                    note = f"{note} — {fallback}"
+                self.local_device_note.setText(note)
         if hasattr(self, "local_privacy_note"):
             self.local_privacy_note.setVisible(local)
             enabled = hasattr(self, "cleanup_enabled") and self.cleanup_enabled.isChecked()
@@ -1280,6 +1290,23 @@ class SettingsWindow(QDialog):
         name = self.local_stt_model.currentData()
         if self._download_name or not name or localspeech.state(name).installed:
             return
+        # Install-time system check: missing Python packages are offered for
+        # automatic install; a driver without a working CUDA runtime only
+        # changes where the model will run. Nothing missing -> straight on.
+        status = localspeech.prerequisite_status()
+        missing = list(status["packages_missing"])
+        if missing:
+            if not confirm_box(self, t("Install"), t(
+                    "The local engine needs {packages}. Install them "
+                    "automatically and continue with the setup?",
+                    packages=", ".join(missing))):
+                return
+        elif status["driver"] and not status["gpu_ready"]:
+            if not confirm_box(self, t("Download"), t(
+                    "An Nvidia driver is present, but the CUDA runtime does "
+                    "not answer (cuBLAS/cuDNN may be missing). Setup continues "
+                    "and the model runs on the CPU. Continue?")):
+                return
         self._download_name = name
         self._download_stop.clear()
         self.local_stt_model.setEnabled(False)
@@ -1293,6 +1320,12 @@ class SettingsWindow(QDialog):
         self.local_status.setText(t("Downloading {name}…", name=name))
         def work():
             try:
+                if missing:
+                    self._deliver("_local_download_progress",
+                                  localspeech.DownloadProgress(
+                                      name, 0, 0, 0.0, None,
+                                      t("Installing…"), "installing"))
+                    localspeech.install_missing_packages(missing)
                 localspeech.download(
                     name, should_stop=self._download_stop.is_set,
                     on_progress=lambda progress: self._deliver(
@@ -1624,6 +1657,15 @@ class SettingsWindow(QDialog):
             "Measured on Turkish dictation. base is quick and the smallest "
             "download; small is in between; large-v3-turbo reads hardest audio "
             "most reliably and never invents a closing sentence."))
+        self.local_stt_device = FitsOnScreenCombo()
+        for label, value in localspeech.DEVICE_CHOICES:
+            self.local_stt_device.addItem(t(label), value)
+        self.local_stt_device.setToolTip(t(
+            "Automatic uses the Nvidia GPU when its driver and CUDA runtime "
+            "answer, otherwise the CPU. Forcing Nvidia GPU fails with a clear "
+            "message when CUDA is missing instead of silently using the CPU."))
+        self.local_stt_device.currentIndexChanged.connect(
+            self._refresh_local_controls)
         self.local_download_button = QPushButton(t("Download"))
         self.local_download_button.clicked.connect(self._download_local_model)
         self.local_remove_button = QPushButton(t("Remove"))
@@ -1646,6 +1688,12 @@ class SettingsWindow(QDialog):
                                      self.local_download_button,
                                      self.local_remove_button))
         stt_body.addWidget(self.local_row)
+        self.device_row = self._label_row("Device", self.local_stt_device)
+        stt_body.addWidget(self.device_row)
+        self.local_device_note = QLabel("")
+        self.local_device_note.setObjectName("muted")
+        self.local_device_note.setWordWrap(True)
+        stt_body.addWidget(self.local_device_note)
         self.local_status = QLabel("")
         self.local_status.setObjectName("muted")
         self.local_status.setWordWrap(True)
@@ -2177,6 +2225,8 @@ class SettingsWindow(QDialog):
         self._select_data(self.transcribe_engine, conf["transcribe_engine"])
         self._select_data(self.local_stt_model,
                           conf.get("local_stt_model") or localspeech.default_model())
+        self._select_data(self.local_stt_device,
+                          conf.get("local_stt_device") or "auto")
         self._refresh_local_controls()
         self.cleanup_enabled.setChecked(conf["cleanup_enabled"])
         self.translate_enabled.setChecked(conf.get("translate_enabled", False))
@@ -2245,6 +2295,8 @@ class SettingsWindow(QDialog):
         conf["transcribe_engine"] = self.transcribe_engine.currentData() or "cloud"
         conf["local_stt_model"] = (self.local_stt_model.currentData()
                                    or localspeech.default_model())
+        conf["local_stt_device"] = (self.local_stt_device.currentData()
+                                    or "auto")
         conf["gemini_transcribe_model"] = (self.transcribe_model.currentText().strip()
                                            or cfg.DEFAULTS["gemini_transcribe_model"])
 

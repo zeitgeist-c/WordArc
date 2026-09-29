@@ -81,6 +81,7 @@ tests/            pytest suite
 - **Nothing happens on `Ctrl+Space`?** Another app may own the hotkey — change or free it, then `wordarc.py restart`.
 - **Meeting has no counterpart audio?** System-audio capture needs loopback; check Windows sound settings.
 - **Key rejected?** Re-enter it in Settings; it is stored only in Credential Manager.
+- **Local model on GPU?** The local engine picks the Nvidia GPU on its own when the driver and the CUDA runtime answer (any card, `cuda` + `float16`); otherwise it runs on the CPU (`cpu` + `int8`). An Nvidia GPU needs a current driver + CUDA runtime; on Windows, AMD cards are CPU-only. The device can be forced in Settings → Speech to text → Device.
 
 ## Roadmap
 
