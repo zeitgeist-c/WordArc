@@ -790,7 +790,7 @@ TR = {
 
 TR.update({
     "Latest dictation": "Son dikte", "Your next dictation appears here.": "Bir sonraki dikten burada görünecek.",
-    "Ready": "Hazır", "Recording…": "Kaydediliyor…", "Discard recording": "Kaydı iptal et",
+    "Ready": "Hazır", "Recording…": "Kaydediliyor…",
     "Artificial intelligence": "Yapay zekâ", "API keys": "API anahtarları", "Application": "Uygulama",
     "Search…": "Ara…", "Select": "Seç", "No matches": "Eşleşme bulunamadı",
 })

@@ -117,7 +117,6 @@ class WordArc:
         self.meeting_message = ""
         self.settings_window = None
         self._settings_view = None
-        self._window_dictation = False
         self._last_dictation = ""
         self._quitting = False
 
@@ -316,10 +315,9 @@ class WordArc:
         self.last_toggle.restart()
         return False
 
-    def start(self, from_window=False):
+    def start(self):
         if self.state != IDLE:
             return
-        self._window_dictation = from_window
         self.dictation_operation.begin()
         self.overlay.show_recording()
         if not self._begin_recording():
@@ -525,8 +523,7 @@ class WordArc:
     def _on_recorded(self, wav_path, duration, rms_values):
         self.pipeline.run(
             wav_path, duration, rms_values,
-            operation_id=self.dictation_operation.operation_id,
-            auto_paste=False if self._window_dictation else None)
+            operation_id=self.dictation_operation.operation_id)
 
     def _on_dictation_stage(self, message, operation_id):
         if self.dictation_operation.accepts(operation_id):
@@ -546,14 +543,14 @@ class WordArc:
         if warning:
             # The text was still pasted, but cleanup did not run. Say so loudly:
             # a rejected key otherwise looks exactly like working dictation.
-            message = t("Copied raw, cleanup failed: {error}", error=warning.splitlines()[0]) if self._window_dictation else t("Pasted raw, cleanup failed: {error}", error=warning.splitlines()[0])
+            message = t("Copied raw, cleanup failed: {error}", error=warning.splitlines()[0]) if not self.conf["auto_paste"] else t("Pasted raw, cleanup failed: {error}", error=warning.splitlines()[0])
             self.overlay.show_warning(message)
             self.tray.showMessage(
                 t("WordArc: cleanup failed"), warning,
                 QSystemTrayIcon.MessageIcon.Warning, 10000,
             )
         else:
-            action = t("Pasted") if self.conf["auto_paste"] and not self._window_dictation else t("Copied")
+            action = t("Pasted") if self.conf["auto_paste"] else t("Copied")
             self.overlay.show_done(
                 t("{action}: {preview}", action=action, preview=_preview(text))
             )
@@ -596,7 +593,7 @@ class WordArc:
     def _window_record(self, kind):
         if kind == "dictation":
             if self.state == IDLE:
-                self.start(from_window=True)
+                self.start()
             elif self.state == RECORDING:
                 self.stop()
         else:

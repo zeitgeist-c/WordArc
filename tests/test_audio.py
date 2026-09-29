@@ -183,6 +183,25 @@ class TestDeviceRescan(unittest.TestCase):
         finally:
             audio._streams.discard(stream)
 
+    def test_a_dead_stream_pointer_does_not_take_down_the_rescan(self):
+        """A wrapper whose PortAudio pointer died raises on .active.
+
+        Regression guard for the settings-window crash: such an entry is a
+        stream that is over, so it is dropped and the rescan proceeds.
+        """
+        stream = mock.Mock()
+        type(stream).active = mock.PropertyMock(
+            side_effect=RuntimeError("Invalid stream pointer"))
+        audio._streams.add(stream)
+        try:
+            with mock.patch.object(audio.sd, "_terminate") as terminate, \
+                 mock.patch.object(audio.sd, "_initialize"):
+                self.assertTrue(audio.refresh_devices())
+            terminate.assert_called_once_with()
+            self.assertNotIn(stream, audio._streams)
+        finally:
+            audio._streams.discard(stream)
+
     def test_streams_are_tracked_for_the_guard(self):
         fake = mock.Mock(active=True)
         with mock.patch.object(audio.sd, "InputStream", return_value=fake):
