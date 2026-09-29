@@ -421,6 +421,32 @@ TR = {
         "{name} henüz indirilmedi — {size}. Bir kez indirildikten sonra "
         "internetsiz de çalışır.",
     "Downloading {name}…": "{name} indiriliyor…",
+    "Automatic": "Otomatik",
+    "Device": "Cihaz",
+    "Install": "Kur",
+    "Installing…": "Kuruluyor…",
+    "Automatic uses the Nvidia GPU when its driver and CUDA runtime "
+    "answer, otherwise the CPU. Forcing Nvidia GPU fails with a clear "
+    "message when CUDA is missing instead of silently using the CPU.":
+        "Otomatik, sürücüsü ve CUDA çalışması yanıt veren Nvidia GPU'yu "
+        "kullanır, yoksa CPU'ya geçer. Nvidia GPU'ya zorlamak, CUDA yokken "
+        "sessizce CPU'ya geçmek yerine açık bir hata verir.",
+    "The local engine needs {packages}. Install them "
+    "automatically and continue with the setup?":
+        "Yerel motor için {packages} gerekli. Otomatik kurulup kuruluma "
+        "devam edilsin mi?",
+    "An Nvidia driver is present, but the CUDA runtime does "
+    "not answer (cuBLAS/cuDNN may be missing). Setup continues "
+    "and the model runs on the CPU. Continue?":
+        "Nvidia sürücüsü var, ama CUDA çalışması yanıt vermiyor (cuBLAS/cuDNN "
+        "eksik olabilir). Kurulum sürer, model CPU ile çalışır. Devam edilsin mi?",
+    "Nvidia GPU was requested, but no usable CUDA device was "
+    "found. Check the driver and the CUDA runtime, or switch the "
+    "device back to Automatic.":
+        "Nvidia GPU istendi, ama kullanılabilir CUDA cihazı bulunamadı. "
+        "Sürücüyü ve CUDA çalışmasını denetle ya da cihazı Otomatik'e al.",
+    "Could not install the local speech engine: {error}":
+        "Yerel ses motoru kurulamadı: {error}",
     "Could not download {name}: {error}": "{name} indirilemedi: {error}",
     "Delete the downloaded {name} model? {size} goes back to the disk. "
     "Nothing else is touched.":

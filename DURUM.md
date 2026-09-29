@@ -1,9 +1,41 @@
 # WordArc — durum
 
 Güncelleme: 2026-09-29
-Hazırlanan paket: 0.6.2 (`brand.py`)
+Hazırlanan paket: 0.6.3 (`brand.py`)
 Dal: master
-Git dönüş noktası: 50879a8 / v0.6.1
+Git dönüş noktası: 88614db / v0.6.2
+
+## 0.6.3 — yerel modelde otomatik cihaz seçimi
+
+- Tek karar noktası `localspeech.get_best_device()`: Nvidia + çalışır CUDA
+  varsa `cuda` + `float16` (kart modeli ayırt edilmez,
+  `ctranslate2.get_cuda_device_count() > 0`), yoksa (AMD kart, GPU'suz
+  makine) `cpu` + `int8`. Tüm yüklemeler (`engine`, `transcribe`,
+  `transcribe_for`) buradan geçer; cihaz değişince model yeniden yüklenir.
+- CUDA kütüphane hatasında (cuBLAS/cuDNN/runtime bulunamadı) loga yazıp
+  sessizce CPU'ya düşer; "out of memory" dahil gerçek çalıştırma hataları
+  gizlenmez, yukarı iletilir.
+- Ayarlar → Konuşmayı yazıya çevir → Cihaz: Otomatik / Nvidia GPU / CPU
+  (`local_stt_device`, varsayılan Otomatik). Zorlanmış CUDA bulunamazsa
+  açık hata verir, sessizce CPU'ya kaçmaz.
+- Kurulum öncesi sistem kontrolü: eksik Python paketi sorulup otomatik
+  kurulur, sürücü-var-runtime-yoksa CPU uyarısıyla devam sorulur; eksik
+  yoksa doğrudan indirilir.
+- Açılışta ve her model yüklemede seçilen cihaz loga yazılır
+  (`local speech device: …`).
+
+Doğrulama: 337 test geçti, 1 atlandı (önceki 318 + 19 cihaz testi);
+`compileall` temiz.
+
+Paket: dist/WordArc-0.6.3.exe + dist/WordArc-0.6.3.bat.
+EXE SHA256: f9fc233ced39ead62dad3cd75304a96a4677862e26c8fbdeb49e9a9e62aac6a7.
+Frozen smoke: `WordArc-0.6.3.exe --version` → `WordArc version 0.6.3`
+(offscreen, kullanıcı ekranına pencere basılmadan). Cihaz sembolleri
+(`get_best_device`, `local_stt_device`, CUDA geri düşüş notu) paketlenmiş
+PYZ bytecode içinde doğrulandı (`CArchiveReader` + kod nesnesi taraması).
+
+Yedek 2026-09-29: yerel commit + v0.6.3 etiketi tamamlandı; push yapılmadı
+(açık yetki bekleniyor).
 
 ## 0.6.2 — Hatta İngilizce çeviri (akademik + oyun)
 

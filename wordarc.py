@@ -35,6 +35,7 @@ import config as cfg  # noqa: E402
 import diagnostics  # noqa: E402
 import hotkey  # noqa: E402
 import meeting  # noqa: E402
+import localspeech  # noqa: E402
 import operation  # noqa: E402
 import brand_migration  # noqa: E402
 import theme  # noqa: E402
@@ -853,6 +854,8 @@ def main():
         print("wordarc: no system tray found, running anyway")
 
     conf = cfg.Config()
+    localspeech.log_startup_device(conf.get("local_stt_device") or "auto",
+                                   conf.get("transcribe_engine") == "local")
     install_qt_translator(app, i18n.language())
     theme.ThemeManager.apply(conf["theme_mode"], app)
     wordarc = WordArc(app, conf)

@@ -39,8 +39,178 @@ from i18n import t
 _log = logging.getLogger("wordarc.localspeech")
 
 RATE = 16000           # what the app records, and what Whisper is trained on
-COMPUTE_TYPE = "int8"  # float32 is several times slower for no accuracy gain here
 THREADS = 8
+
+# --- compute device -------------------------------------------------------
+# One place decides where the model runs; every load goes through it.
+#   Nvidia + working CUDA -> cuda + float16 (any card: GTX 10xx through RTX
+#   50xx; no per-model code, ctranslate2.get_cuda_device_count() > 0 is the
+#   whole check).
+#   Otherwise (AMD card, no GPU) -> cpu + int8. On Windows an AMD card can
+#   never run the model on the GPU, so CPU is mandatory there.
+DEVICE_AUTO, DEVICE_CUDA, DEVICE_CPU = "auto", "cuda", "cpu"
+DEVICE_CHOICES = (
+    ("Automatic", DEVICE_AUTO),
+    ("Nvidia GPU", DEVICE_CUDA),
+    ("CPU", DEVICE_CPU),
+)
+COMPUTE_CPU = "int8"
+COMPUTE_CUDA = "float16"
+
+# Python packages the local engine cannot run without.
+REQUIRED_PACKAGES = ("faster_whisper", "ctranslate2")
+
+# Fragments of a failed load that mean "the CUDA libraries are missing"
+# (cuBLAS/cuDNN/CUDA runtime not found) as opposed to a real run failure.
+# Those fall back to CPU; anything else — including "out of memory" — is
+# re-raised so a genuine execution error is never hidden.
+_CUDA_LIBRARY_HINTS = ("cublas", "cudnn", "cudart", "cuda driver",
+                       "cuda runtime", "cublaslt", "libcuda",
+                       "no cuda", "cuda is not available",
+                       "could not load library", "failed to load")
+_OOM_HINTS = ("out of memory", "out-of-memory", "cuda error 2",
+              "out of device memory")
+COMPUTE_TYPE = COMPUTE_CPU  # historic name for the CPU compute type
+
+
+def _cuda_device_count():
+    """Usable Nvidia GPUs, or None when ctranslate2 cannot even be asked."""
+    try:
+        import ctranslate2
+    except Exception:
+        return None
+    get = getattr(ctranslate2, "get_cuda_device_count", None)
+    if get is None:
+        return None
+    try:
+        return int(get())
+    except Exception:
+        return None
+
+
+def cuda_available():
+    """True when any Nvidia card answers through the CUDA runtime."""
+    count = _cuda_device_count()
+    return count is not None and count > 0
+
+
+def cuda_driver_present():
+    """True when the Nvidia driver answers (nvidia-smi runs)."""
+    try:
+        import subprocess
+        subprocess.run(["nvidia-smi", "-L"], capture_output=True,
+                       timeout=15, check=True)
+    except Exception:
+        return False
+    return True
+
+
+def missing_python_packages():
+    """Required packages that are not importable right now."""
+    import importlib.util
+    return [name for name in REQUIRED_PACKAGES
+            if importlib.util.find_spec(name) is None]
+
+
+def prerequisite_status():
+    """What the install-time system check found.
+
+    Keys: ``packages_missing`` (list), ``driver`` (bool),
+    ``cuda_devices`` (int or None), ``gpu_ready`` (bool).
+    """
+    missing = missing_python_packages()
+    driver = cuda_driver_present()
+    devices = _cuda_device_count()
+    return {
+        "packages_missing": missing,
+        "driver": driver,
+        "cuda_devices": devices,
+        "gpu_ready": bool(devices is not None and devices > 0
+                          and not missing),
+    }
+
+
+def install_missing_packages(packages=None):
+    """pip-install the missing engine packages; LocalSpeechError on failure.
+
+    Frozen builds carry their own packages, so a missing one there means a
+    broken install, not something pip could fix.
+    """
+    missing = list(packages) if packages else missing_python_packages()
+    if not missing:
+        return ()
+    import sys
+    if getattr(sys, "frozen", False):
+        _fail("The local speech engine is missing. Reinstall WordArc to "
+              "get it back.")
+    import subprocess
+    _log.info("installing local speech packages: %s", ", ".join(missing))
+    try:
+        subprocess.run([sys.executable, "-m", "pip", "install", *missing],
+                       capture_output=True, timeout=600, check=True)
+    except Exception as exc:
+        _fail("Could not install the local speech engine: {error}",
+              error=exc)
+    return tuple(missing)
+
+
+def get_best_device(preference=DEVICE_AUTO):
+    """(device, compute_type) for a WhisperModel load.
+
+    ``preference`` is the Settings choice: auto (default), cuda or cpu.
+    Forced cuda with no usable CUDA raises instead of silently landing on
+    the CPU; forced cpu always lands on the CPU.
+    """
+    want = (preference or DEVICE_AUTO).lower()
+    if want == DEVICE_CPU:
+        return DEVICE_CPU, COMPUTE_CPU
+    if want == DEVICE_CUDA:
+        if cuda_available():
+            return DEVICE_CUDA, COMPUTE_CUDA
+        _fail("Nvidia GPU was requested, but no usable CUDA device was "
+              "found. Check the driver and the CUDA runtime, or switch the "
+              "device back to Automatic.")
+    if cuda_available():
+        return DEVICE_CUDA, COMPUTE_CUDA
+    return DEVICE_CPU, COMPUTE_CPU
+
+
+def describe_device(preference=DEVICE_AUTO):
+    """Short human line naming the resolved device, for Settings and logs."""
+    try:
+        device, compute = get_best_device(preference)
+    except LocalSpeechError as exc:
+        return f"CUDA unavailable ({exc})"
+    if device == DEVICE_CUDA:
+        return f"Nvidia GPU (cuda, {compute})"
+    return f"CPU ({device}, {compute})"
+
+
+def log_startup_device(preference=DEVICE_AUTO, enabled=True):
+    """Log which device the local engine would use; never raises."""
+    try:
+        if not enabled:
+            _log.info("local speech device: not in use (cloud engine selected)")
+        else:
+            _log.info("local speech device: %s", describe_device(preference))
+    except Exception as exc:  # logging must never break startup
+        _log.warning("local speech device: could not be determined (%s)",
+                     type(exc).__name__)
+
+
+def _is_cuda_library_error(exc):
+    text = str(exc).lower()
+    if any(hint in text for hint in _OOM_HINTS):
+        return False
+    return any(hint in text for hint in _CUDA_LIBRARY_HINTS)
+
+
+# The last silent CUDA->CPU fallback, so the UI can say what happened.
+_last_fallback_note = ""
+
+
+def last_fallback_note():
+    return _last_fallback_note
 
 # The three sizes, and what each is for. Measured on the machine this was
 # written on (16 threads, no GPU) on Turkish dictation: base read a noisy take
@@ -72,6 +242,7 @@ _lock = threading.Lock()
 _download_lock = threading.Lock()
 _model = None
 _model_name = ""
+_model_device = ("", "")
 
 
 class LocalSpeechError(Exception):
@@ -396,47 +567,75 @@ def _check_cancelled(should_stop):
         raise Cancelled(t("Stopped."))
 
 
-def engine(name, where=None):
+def _load_model(path, device, compute_type):
+    from faster_whisper import WhisperModel
+    # faster-whisper's own downloader is deliberately bypassed. It
+    # would look the model up by name in the huggingface cache, which
+    # is a different layout from the one download() writes, so the
+    # engine went looking for a snapshot the app never created. Handing
+    # it the directory we filled is the whole point of doing the
+    # download ourselves.
+    return WhisperModel(path, device=device, compute_type=compute_type,
+                        cpu_threads=THREADS)
+
+
+def engine(name, where=None, device_preference=None):
     """The loaded model, or an error saying what the user should do.
 
     ``where`` is where the models live; the app always uses the default, and a
     test passes its own directory so a run never touches the real one.
+    ``device_preference`` is the Settings choice (auto/cuda/cpu); every load
+    resolves it through get_best_device(), so there is exactly one place
+    that picks a device.
     """
-    global _model, _model_name
+    global _model, _model_name, _model_device, _last_fallback_note
     name = name or default_model()
     if _repo(name) is None:
         _fail("Unknown local model: {name}", name=name)
     cache = where or models_dir()
+    device, compute_type = get_best_device(device_preference or DEVICE_AUTO)
     with _lock:
-        if _model is not None and _model_name == name:
+        if (_model is not None and _model_name == name
+                and _model_device == (device, compute_type)):
             return _model
         if not _is_installed(name, cache):
             _fail("The local model {name} is not installed yet. Download it "
                   "in Settings.", name=name)
         try:
-            from faster_whisper import WhisperModel
-            # faster-whisper's own downloader is deliberately bypassed. It
-            # would look the model up by name in the huggingface cache, which
-            # is a different layout from the one download() writes, so the
-            # engine went looking for a snapshot the app never created. Handing
-            # it the directory we filled is the whole point of doing the
-            # download ourselves.
-            _model = WhisperModel(_root(name, cache), device="cpu",
-                                  compute_type=COMPUTE_TYPE,
-                                  cpu_threads=THREADS)
+            _model = _load_model(_root(name, cache), device, compute_type)
         except ImportError:
-            _model, _model_name = None, ""
+            _model, _model_name, _model_device = None, "", ("", "")
             _fail("The local speech engine is missing. Reinstall WordArc to "
                   "get it back.")
         except Exception as exc:  # ctranslate2 raises bare RuntimeError
-            _model, _model_name = None, ""
-            _fail("Could not load the local model: {error}", error=exc)
+            if device == DEVICE_CUDA and _is_cuda_library_error(exc):
+                # The CUDA libraries (cuBLAS/cuDNN/runtime) are missing, not
+                # the GPU: run on the CPU and say so in the log instead of
+                # failing the dictation. Anything else — out of memory
+                # included — is a real failure and goes up unchanged.
+                _last_fallback_note = (
+                    f"CUDA load failed ({exc}); using CPU instead.")
+                _log.warning("local speech: %s", _last_fallback_note)
+                try:
+                    _model = _load_model(_root(name, cache), DEVICE_CPU,
+                                         COMPUTE_CPU)
+                except Exception as cpu_exc:
+                    _model, _model_name, _model_device = None, "", ("", "")
+                    _fail("Could not load the local model: {error}",
+                          error=cpu_exc)
+                device, compute_type = DEVICE_CPU, COMPUTE_CPU
+            else:
+                _model, _model_name, _model_device = None, "", ("", "")
+                _fail("Could not load the local model: {error}", error=exc)
+        _log.info("local speech device: %s (%s) for model %s",
+                  device, compute_type, name)
         _model_name = name
+        _model_device = (device, compute_type)
         return _model
 
 
 def transcribe(name, wav_path, language="", prompt="", should_stop=None,
-               with_segments=False, where=None):
+               with_segments=False, where=None, device_preference=None):
     """The transcript of one WAV file.
 
     Same arguments as the cloud call, so a caller that already speaks to a
@@ -444,7 +643,7 @@ def transcribe(name, wav_path, language="", prompt="", should_stop=None,
     asks for [(start, end, text)] instead of a single string, which the callers
     that lay out a timeline need and the dictation path does not.
     """
-    model = engine(name, where)
+    model = engine(name, where, device_preference)
     audio = _read_wav(wav_path)
     # A zero-length take makes Whisper answer with something invented, which is
     # the one failure the app's own silence check exists to prevent; fail here
@@ -520,9 +719,10 @@ def transcribe_for(conf, wav_path, language="", prompt="", should_stop=None,
         return _cloud(conf, wav_path, language, prompt, should_stop,
                       with_segments, client)
     name = conf.get("local_stt_model") or default_model()
+    device_preference = conf.get("local_stt_device") or DEVICE_AUTO
     try:
         return transcribe(name, wav_path, language, prompt, should_stop,
-                          with_segments)
+                          with_segments, device_preference=device_preference)
     except Cancelled:
         raise
     except LocalSpeechError as exc:

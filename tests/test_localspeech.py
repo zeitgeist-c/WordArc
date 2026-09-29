@@ -342,6 +342,202 @@ class TestModelFilesOnDisk(unittest.TestCase):
                     f"{name} carries no tokenizer this check accepts")
 
 
+class TestDeviceSelection(unittest.TestCase):
+    """One function picks the device; forced choices must hold."""
+
+    def test_forced_cpu_always_lands_on_cpu(self):
+        with mock.patch.object(localspeech, "cuda_available",
+                               return_value=True):
+            self.assertEqual(localspeech.get_best_device("cpu"),
+                             ("cpu", "int8"))
+
+    def test_forced_cuda_reaches_the_gpu_as_float16(self):
+        with mock.patch.object(localspeech, "cuda_available",
+                               return_value=True):
+            self.assertEqual(localspeech.get_best_device("cuda"),
+                             ("cuda", "float16"))
+
+    def test_forced_cuda_without_cuda_is_a_clear_error_not_a_silent_cpu(self):
+        with mock.patch.object(localspeech, "cuda_available",
+                               return_value=False):
+            with self.assertRaises(localspeech.LocalSpeechError):
+                localspeech.get_best_device("cuda")
+
+    def test_auto_picks_cuda_when_there_and_cpu_otherwise(self):
+        with mock.patch.object(localspeech, "cuda_available",
+                               return_value=True):
+            self.assertEqual(localspeech.get_best_device("auto"),
+                             ("cuda", "float16"))
+            self.assertEqual(localspeech.get_best_device(""),
+                             ("cuda", "float16"))
+        with mock.patch.object(localspeech, "cuda_available",
+                               return_value=False):
+            self.assertEqual(localspeech.get_best_device("auto"),
+                             ("cpu", "int8"))
+            self.assertEqual(localspeech.get_best_device(None),
+                             ("cpu", "int8"))
+
+    def test_cuda_detection_counts_devices(self):
+        fake = mock.Mock()
+        fake.get_cuda_device_count = mock.Mock(return_value=1)
+        with mock.patch.dict("sys.modules", {"ctranslate2": fake}):
+            self.assertTrue(localspeech.cuda_available())
+        fake.get_cuda_device_count = mock.Mock(return_value=0)
+        with mock.patch.dict("sys.modules", {"ctranslate2": fake}):
+            self.assertFalse(localspeech.cuda_available())
+
+    def test_missing_ctranslate2_means_no_cuda(self):
+        with mock.patch.dict("sys.modules", {"ctranslate2": None}):
+            self.assertIsNone(localspeech._cuda_device_count())
+            self.assertFalse(localspeech.cuda_available())
+
+
+class TestEngineDevice(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="wordarc-local-device-")
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.addCleanup(self._forget_model)
+        self._fake_model("base")
+        localspeech._model = None
+        localspeech._model_name = ""
+        localspeech._model_device = ("", "")
+        localspeech._last_fallback_note = ""
+
+    @staticmethod
+    def _forget_model():
+        localspeech._model = None
+        localspeech._model_name = ""
+        localspeech._model_device = ("", "")
+        localspeech._last_fallback_note = ""
+
+    def _fake_model(self, name):
+        root = localspeech._root(name, self.root)
+        os.makedirs(root, exist_ok=True)
+        for part in localspeech.REQUIRED_FILES:
+            with open(os.path.join(root, part), "wb") as fh:
+                fh.write(b"x" * 16)
+
+    def test_cpu_machine_loads_cpu_int8_and_logs_it(self):
+        with mock.patch.object(localspeech, "cuda_available",
+                               return_value=False), \
+             mock.patch.object(localspeech, "_load_model",
+                               return_value=object()) as load:
+            with self.assertLogs("wordarc.localspeech",
+                                 level="INFO") as logs:
+                localspeech.engine("base", self.root)
+        self.assertEqual(load.call_args.args[1:], ("cpu", "int8"))
+        self.assertTrue(any("local speech device: cpu (int8)" in line
+                            for line in logs.output),
+                        f"no device line in {logs.output!r}")
+
+    def test_forced_cuda_loads_cuda_float16(self):
+        with mock.patch.object(localspeech, "cuda_available",
+                               return_value=True), \
+             mock.patch.object(localspeech, "_load_model",
+                               return_value=object()) as load:
+            localspeech.engine("base", self.root, "cuda")
+        self.assertEqual(load.call_args.args[1:], ("cuda", "float16"))
+
+    def test_missing_cuda_libraries_fall_back_to_cpu_and_say_so(self):
+        sentinel = object()
+        with mock.patch.object(localspeech, "cuda_available",
+                               return_value=True), \
+             mock.patch.object(
+                 localspeech, "_load_model",
+                 side_effect=[RuntimeError(
+                     "Unable to load any of {libcublas.so.12}"),
+                     sentinel]) as load:
+            with self.assertLogs("wordarc.localspeech",
+                                 level="WARNING") as logs:
+                found = localspeech.engine("base", self.root)
+        self.assertIs(found, sentinel)
+        self.assertEqual(load.call_count, 2)
+        self.assertEqual(load.call_args.args[1:], ("cpu", "int8"))
+        self.assertEqual(localspeech._model_device, ("cpu", "int8"))
+        self.assertIn("libcublas", localspeech.last_fallback_note())
+        self.assertTrue(any("using CPU instead" in line
+                            for line in logs.output),
+                        f"no fallback line in {logs.output!r}")
+
+    def test_out_of_memory_is_never_hidden_behind_the_cpu(self):
+        with mock.patch.object(localspeech, "cuda_available",
+                               return_value=True), \
+             mock.patch.object(
+                 localspeech, "_load_model",
+                 side_effect=RuntimeError(
+                     "CUDA out of memory. Tried to allocate 1.2 GiB")) as load:
+            with self.assertRaises(localspeech.LocalSpeechError) as ctx:
+                localspeech.engine("base", self.root)
+        self.assertIn("out of memory", str(ctx.exception).lower())
+        self.assertEqual(load.call_count, 1)
+        self.assertIsNone(localspeech._model)
+        self.assertEqual(localspeech.last_fallback_note(), "")
+
+    def test_switching_device_reloads_instead_of_reusing(self):
+        with mock.patch.object(localspeech, "cuda_available",
+                               return_value=False), \
+             mock.patch.object(localspeech, "_load_model",
+                               return_value=object()) as load:
+            localspeech.engine("base", self.root, "cpu")
+            with mock.patch.object(localspeech, "cuda_available",
+                                   return_value=True):
+                localspeech.engine("base", self.root, "cuda")
+        self.assertEqual(load.call_count, 2)
+        self.assertEqual(load.call_args.args[1:], ("cuda", "float16"))
+
+    def test_settings_device_choice_reaches_the_load(self):
+        conf = _Conf({"transcribe_engine": "local", "local_stt_model": "base",
+                      "local_stt_device": "cpu"})
+        with mock.patch.object(localspeech, "transcribe",
+                               return_value="ok") as transcribe:
+            out = localspeech.transcribe_for(conf, "whatever.wav")
+        self.assertEqual(out, "ok")
+        self.assertEqual(transcribe.call_args.kwargs["device_preference"],
+                         "cpu")
+
+
+class TestPrerequisites(unittest.TestCase):
+    def test_missing_packages_lists_what_cannot_be_imported(self):
+        def fake_spec(name):
+            return None if name == "ctranslate2" else object()
+        with mock.patch("importlib.util.find_spec", side_effect=fake_spec):
+            self.assertEqual(localspeech.missing_python_packages(),
+                             ["ctranslate2"])
+
+    def test_status_reports_driver_runtime_and_packages(self):
+        with mock.patch.object(localspeech, "missing_python_packages",
+                               return_value=[]), \
+             mock.patch.object(localspeech, "cuda_driver_present",
+                               return_value=True), \
+             mock.patch.object(localspeech, "_cuda_device_count",
+                               return_value=2):
+            status = localspeech.prerequisite_status()
+        self.assertEqual(status, {"packages_missing": [], "driver": True,
+                                  "cuda_devices": 2, "gpu_ready": True})
+
+    def test_broken_runtime_is_not_gpu_ready(self):
+        with mock.patch.object(localspeech, "missing_python_packages",
+                               return_value=[]), \
+             mock.patch.object(localspeech, "cuda_driver_present",
+                               return_value=True), \
+             mock.patch.object(localspeech, "_cuda_device_count",
+                               return_value=0):
+            status = localspeech.prerequisite_status()
+        self.assertFalse(status["gpu_ready"])
+
+    def test_install_refuses_on_frozen_builds(self):
+        with mock.patch.object(localspeech, "missing_python_packages",
+                               return_value=["faster_whisper"]), \
+             mock.patch("sys.frozen", True, create=True):
+            with self.assertRaises(localspeech.LocalSpeechError):
+                localspeech.install_missing_packages()
+
+    def test_install_is_a_noop_when_nothing_is_missing(self):
+        with mock.patch.object(localspeech, "missing_python_packages",
+                               return_value=[]):
+            self.assertEqual(localspeech.install_missing_packages(), ())
+
+
 class TestHistoryNaming(unittest.TestCase):
     def test_the_local_engine_is_named_in_the_history_row(self):
         conf = _Cfg()

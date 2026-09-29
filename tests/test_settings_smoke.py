@@ -480,6 +480,29 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertEqual(window.transcribe_engine.currentData(), "local")
         self.assertEqual(window.local_stt_model.currentData(), "small")
 
+    def test_the_device_box_offers_three_choices_and_survives_a_save(self):
+        window = self.window
+        self.assertEqual(
+            [window.local_stt_device.itemData(index)
+             for index in range(window.local_stt_device.count())],
+            ["auto", "cuda", "cpu"])
+        self.assertEqual(window.local_stt_device.currentData(), "auto")
+        window.navigate_to("settings")
+        self.app.processEvents()
+        self.assertFalse(window.device_row.isVisibleTo(window))
+        window.transcribe_engine.setCurrentIndex(
+            window.transcribe_engine.findData("local"))
+        window.local_stt_device.setCurrentIndex(
+            window.local_stt_device.findData("cpu"))
+        self.app.processEvents()
+        self.assertTrue(window.device_row.isVisibleTo(window))
+        self.assertIn("CPU", window.local_device_note.text())
+        with mock.patch.object(settings_ui.startup, "set_enabled"):
+            window._save()
+        self.assertEqual(window.conf["local_stt_device"], "cpu")
+        window._load()
+        self.assertEqual(window.local_stt_device.currentData(), "cpu")
+
     def test_the_local_box_names_every_model_and_its_cost(self):
         window = self.window
         self.assertEqual(window.local_stt_model.count(), 3)

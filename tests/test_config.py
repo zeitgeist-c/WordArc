@@ -37,6 +37,11 @@ class TestConfigLoadSave(unittest.TestCase):
         cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         cfg.CONFIG_FILE.write_text(json.dumps({"theme_mode": "neon"}), encoding="utf-8")
         self.assertEqual(cfg.Config()["theme_mode"], "dark")
+    def test_local_device_defaults_to_auto_and_bad_values_migrate(self):
+        self.assertEqual(cfg.Config()["local_stt_device"], "auto")
+        cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        cfg.CONFIG_FILE.write_text(json.dumps({"local_stt_device": "gpu"}), encoding="utf-8")
+        self.assertEqual(cfg.Config()["local_stt_device"], "auto")
     def test_save_then_load(self):
         stored = {"value": ""}
         with mock.patch.object(cfg.credential_store, "write",
