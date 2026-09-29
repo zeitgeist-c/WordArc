@@ -34,8 +34,9 @@ Frozen smoke: `WordArc-0.6.3.exe --version` → `WordArc version 0.6.3`
 (`get_best_device`, `local_stt_device`, CUDA geri düşüş notu) paketlenmiş
 PYZ bytecode içinde doğrulandı (`CArchiveReader` + kod nesnesi taraması).
 
-Yedek 2026-09-29: yerel commit + v0.6.3 etiketi tamamlandı; push yapılmadı
-(açık yetki bekleniyor).
+Yedek 2026-09-29: yerel commit + v0.6.3 etiketi tamamlandı; `origin/master` ve
+`v0.6.3` etiketi push edildi, GitHub Release açıldı (uzak sha'lar ve asset
+hash'i doğrulandı).
 
 ## 0.6.2 — Hatta İngilizce çeviri (akademik + oyun)
 
