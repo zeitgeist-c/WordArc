@@ -51,6 +51,14 @@ def name(text, case=""):
 
 
 TR = {
+    "Gemini did not finish the response ({reason}).": "Gemini yanıtı tamamlayamadı ({reason}).",
+    "No speech content remains after cleanup.": "Temizleme sonrasında konuşma içeriği kalmadı.",
+    "Controls": "Kontroller",
+    "Details": "Ayrıntılar",
+    "Audio and models": "Ses ve modeller",
+    "Text and terms": "Metin ve terimler",
+    "Use typed value": "Yazdığım değeri kullan",
+    "Text": "Metin",
     "Yes": "Evet",
     "No": "Hayır",
     "OK": "Tamam",

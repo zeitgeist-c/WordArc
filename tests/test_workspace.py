@@ -103,16 +103,25 @@ def test_searchable_device_picker_filters_and_keeps_device_identifier(window):
     combo.clear()
     combo.addItem("First long microphone", "one")
     combo.addItem("Second long microphone", "two")
+    for index in range(3):
+        combo.addItem(f"Other microphone {index}", f"other-{index}")
+    combo._cards_if_long([(1, "USB")])
+    window.show()
+    combo.setProperty("searchable", True)
+    combo.showPopup()
+    dialog = combo._picker
+    assert dialog.windowModality() == Qt.WindowModality.NonModal
     def select():
-        dialog = QApplication.activeModalWidget()
-        assert isinstance(dialog, QDialog)
         dialog.findChild(QLineEdit).setText("Second")
         rows = dialog.findChild(QListWidget)
+        assert isinstance(rows.itemDelegate(), settings_ui.DeviceCardDelegate)
+        assert rows.itemDelegate().connection_text(1) == "USB"
+        dialog.findChild(QLineEdit).setText("USB")
         assert rows.item(0).isHidden()
         assert not rows.item(1).isHidden()
         rows.itemDoubleClicked.emit(rows.item(1))
-    QTimer.singleShot(0, select)
-    combo.showPopup()
+    select()
+    QApplication.processEvents()
     assert combo.currentData() == "two"
 
 
@@ -124,12 +133,17 @@ def test_workspace_reflows_and_settings_remain_accessible(window):
     assert workspace.columns.direction() == settings_ui.QBoxLayout.Direction.LeftToRight
     window.resize(520, 400)
     QApplication.processEvents()
-    assert workspace.columns.direction() == settings_ui.QBoxLayout.Direction.TopToBottom
+    assert workspace.selector.isVisibleTo(window)
+    assert workspace.panes[0].isVisibleTo(window)
+    assert not workspace.panes[1].isVisibleTo(window)
+    workspace.selector.setCurrentIndex(1)
+    assert workspace.panes[1].isVisibleTo(window)
+    assert not workspace.panes[0].isVisibleTo(window)
     window.tabs.setCurrentIndex(3)
     QApplication.processEvents()
-    assert window.settings_section_selector.isVisibleTo(window)
-    window.settings_section_selector.setCurrentIndex(4)
-    assert window.settings_section_stack.currentIndex() == 4
+    assert window.settings_section_stack.isVisibleTo(window)
+    window.settings_section_stack.setCurrentIndex(3)
+    assert window.settings_section_menu.currentRow() == 3
 
 
 def test_last_result_is_not_persisted_when_history_is_disabled(window):
@@ -145,71 +159,164 @@ def test_file_options_stay_visible_while_instruction_is_collapsed(window):
     assert window.file_timestamps.isVisibleTo(window)
     assert window.file_cleanup.isVisibleTo(window)
     assert not window.file_cleanup_prompt.isVisibleTo(window)
-    window.tabs.widget(2).findChild(settings_ui.Disclosure).toggle.click()
+    window.file_options.setCurrentIndex(1)
     assert window.file_cleanup_prompt.isVisibleTo(window)
 
 
-def test_every_combo_opens_the_search_picker(window):
-    # Includes short lists, editable models, languages and the narrow menu.
+def test_combo_uses_compact_choices_or_search_according_to_content(window):
     combos = window.findChildren(settings_ui.QComboBox)
     assert len(combos) >= 15
     for combo in combos:
         assert isinstance(combo, settings_ui.FitsOnScreenCombo)
-        with mock.patch.object(combo, "_search_picker") as picker:
+        searchable = combo.isEditable() or combo.property("searchable") or combo.count() > 8
+        with mock.patch.object(combo, "_search_picker") as picker, \
+             mock.patch.object(settings_ui.QComboBox, "showPopup") as native:
             combo.showPopup()
-        picker.assert_called_once()
+        assert picker.call_count == int(bool(searchable))
+        assert native.call_count == int(not searchable)
+
+
+def test_picker_supports_keyboard_selection_custom_models_and_cancel(window):
+    from PyQt6.QtTest import QTest
+    window.show()
+    window.navigate_to("settings")
+    combo = window.cleanup_model
+    original = combo.currentText()
+    combo.showPopup()
+    popup = combo._picker
+    search = popup.findChild(QLineEdit)
+    search.setText("private-model-custom")
+    QTest.keyClick(search, Qt.Key.Key_Escape)
+    assert combo.currentText() == original
+    combo.showPopup()
+    search = combo._picker.findChild(QLineEdit)
+    search.setText("private-model-custom")
+    QTest.keyClick(search, Qt.Key.Key_Return)
+    assert combo.currentText() == "private-model-custom"
+    combo.showPopup()
+    search = combo._picker.findChild(QLineEdit)
+    search.setText(combo.itemText(0))
+    QTest.keyClick(search, Qt.Key.Key_Down)
+    QTest.keyClick(combo._picker.findChild(QListWidget), Qt.Key.Key_Return)
+    assert combo.currentIndex() == 0
 
 
 def test_editable_model_text_is_a_picker_target(window):
     from PyQt6.QtTest import QTest
     window.show()
     window.navigate_to("settings")
+    window.transcribe_engine.setCurrentIndex(window.transcribe_engine.findData("gemini"))
     QApplication.processEvents()
     with mock.patch.object(window.transcribe_model, "_search_picker") as picker:
         QTest.mouseClick(window.transcribe_model.lineEdit(), Qt.MouseButton.LeftButton)
     picker.assert_called_once()
 
 
-def test_expanded_dictation_can_scroll_to_its_last_control(window):
-    window.show()
-    window.resize(920, 700)
-    window.navigate_to("dictation")
-    QApplication.processEvents()
-    disclosure = window.tabs.widget(0).findChild(settings_ui.Disclosure)
-    disclosure.toggle.click()
-    for _ in range(3):
+def select_editor(window, tab, target):
+    window.tabs.setCurrentIndex(tab)
+    workspace = window.tabs.widget(tab).findChild(settings_ui.Workspace)
+    workspace.selector.setCurrentIndex(1 if tab < 2 else 0)
+    if tab == 0:
+        window.dictation_details.setCurrentIndex(2)
+    elif tab == 1:
+        window.meeting_details.setCurrentIndex(1)
+        window.meeting_advanced.setCurrentIndex(3)
+    else:
+        window.file_options.setCurrentIndex(1)
+    for _ in range(4):
         QApplication.processEvents()
-    scroll = window.tabs.widget(0).findChild(settings_ui.QScrollArea)
-    scroll.ensureWidgetVisible(window.history_limit)
-    QApplication.processEvents()
-    rect = window.history_limit.rect()
-    bottom = window.history_limit.mapTo(scroll.viewport(), rect.bottomLeft())
-    top = window.history_limit.mapTo(scroll.viewport(), rect.topLeft())
-    assert top.y() >= 0
-    assert bottom.y() <= scroll.viewport().height()
-    assert scroll.verticalScrollBar().maximum() > 0
+    return getattr(window, target)
 
 
 @pytest.mark.parametrize("tab,target", [(0, "history_limit"), (1, "meeting_prompt"), (2, "file_cleanup_prompt")])
 @pytest.mark.parametrize("size", [(1040, 760), (520, 400)])
 def test_every_advanced_editor_is_reachable_at_large_and_small_sizes(window, tab, target, size):
-    window.show()
     window.resize(*size)
-    window.tabs.setCurrentIndex(tab)
+    window.show()
+    editor = select_editor(window, tab, target)
+    # Scroll only inside the selected panel at small screen heights.
+    scroll = editor.parentWidget()
+    while scroll and not isinstance(scroll, settings_ui.QScrollArea):
+        scroll = scroll.parentWidget()
+    assert scroll is not None
+    point = editor.mapTo(scroll.widget(), editor.rect().center())
+    scroll.ensureVisible(point.x(), point.y(), 0, 0)
     QApplication.processEvents()
-    disclosure = window.tabs.widget(tab).findChild(settings_ui.Disclosure)
-    disclosure.toggle.click()
-    for _ in range(3):
-        QApplication.processEvents()
-    scroll = window.tabs.widget(tab).findChild(settings_ui.QScrollArea)
-    editor = getattr(window, target)
-    center = editor.mapTo(scroll.widget(), editor.rect().center())
-    scroll.ensureVisible(center.x(), center.y(), 0, 0)
-    QApplication.processEvents()
-    visible = editor.mapTo(scroll.viewport(), editor.rect().center())
-    assert 0 <= visible.y() <= scroll.viewport().height()
+    center = editor.mapTo(scroll.viewport(), editor.rect().center())
+    assert 0 <= center.y() <= scroll.viewport().height()
     assert editor.isVisibleTo(window)
-    disclosure.toggle.click()
-    for _ in range(3):
-        QApplication.processEvents()
-    assert not editor.isVisibleTo(window)
+    if size == (1040, 760):
+        assert scroll.verticalScrollBar().maximum() == 0
+
+
+def test_language_rebuild_preserves_selected_detail_pages(window):
+    window.dictation_details.setCurrentIndex(0)
+    window.dictation_advanced.setCurrentIndex(2)
+    window.meeting_details.setCurrentIndex(1)
+    window.meeting_advanced.setCurrentIndex(3)
+    window.file_options.setCurrentIndex(1)
+    view = settings_ui.WindowView(window)
+    fresh = settings_ui.SettingsWindow(window.conf, "wordarc toggle")
+    try:
+        view.apply(fresh)
+        assert fresh.dictation_details.currentIndex() == 0
+        assert fresh.dictation_advanced.currentIndex() == 2
+        assert fresh.meeting_details.currentIndex() == 1
+        assert fresh.meeting_advanced.currentIndex() == 3
+        assert fresh.file_options.currentIndex() == 1
+    finally:
+        fresh.close()
+
+
+@pytest.mark.parametrize("size", [(1040, 760), (920, 700)])
+@pytest.mark.parametrize("language", ["tr", "en"])
+def test_selected_desktop_forms_fit_without_page_scrolling(window, size, language):
+    from PyQt6.QtGui import QFontDatabase
+    import i18n
+    import theme
+    # Offscreen Qt has no system-font discovery. Use the actual Windows font
+    # so the check measures realistic label widths and heights.
+    for filename in ("segoeui.ttf", "segoeuib.ttf", "seguisb.ttf"):
+        QFontDatabase.addApplicationFont("C:/Windows/Fonts/" + filename)
+    old_language = i18n.language()
+    old_style = QApplication.instance().styleSheet()
+    old_ui = window.conf["ui_language"]
+    i18n.set_language(language)
+    window.conf["ui_language"] = language
+    fresh = settings_ui.SettingsWindow(window.conf, "isolated toggle")
+    try:
+        fresh.resize(*size)
+        fresh.show()
+        for mode in ("dark", "light"):
+            theme.ThemeManager.apply(mode, QApplication.instance())
+            for tab, name in enumerate(("dictation_details", "meeting_details", "file_options", "settings_section_stack")):
+                fresh.tabs.setCurrentIndex(tab)
+                panels = getattr(fresh, name)
+                for index in range(panels.count()):
+                    panels.setCurrentIndex(index)
+                    inner = fresh.dictation_advanced if tab == 0 and index == 0 else fresh.meeting_advanced if tab == 1 and index == 1 else None
+                    for detail in range(inner.count() if inner else 1):
+                        if inner:
+                            inner.setCurrentIndex(detail)
+                        for _ in range(4):
+                            QApplication.processEvents()
+                        for scroll in fresh.tabs.widget(tab).findChildren(settings_ui.QScrollArea):
+                            if scroll.isVisibleTo(fresh):
+                                if scroll.verticalScrollBar().maximum():
+                                    fresh.grab().save(f"build/layout-failure-{language}-{size[0]}.png")
+                                assert scroll.verticalScrollBar().maximum() == 0, (size, language, mode, tab, index, detail)
+                                assert scroll.horizontalScrollBar().maximum() == 0
+            fresh.tabs.setCurrentIndex(3)
+            fresh.settings_section_stack.setCurrentIndex(0)
+            fresh.transcribe_engine.setCurrentIndex(fresh.transcribe_engine.findData("local"))
+            fresh.model_setup.setCurrentIndex(0)
+            for _ in range(4):
+                QApplication.processEvents()
+            for scroll in fresh.tabs.widget(3).findChildren(settings_ui.QScrollArea):
+                if scroll.isVisibleTo(fresh):
+                    assert scroll.verticalScrollBar().maximum() == 0, (size, language, "local")
+    finally:
+        fresh.close()
+        window.conf["ui_language"] = old_ui
+        i18n.set_language(old_language)
+        QApplication.instance().setStyleSheet(old_style)

@@ -81,7 +81,8 @@ tests/            pytest paketi
 - **`Ctrl+Space` işlemiyor?** Kısayol başka uygulamada olabilir — boşaltıp `wordarc.py restart` çalıştır.
 - **Toplantıda karşı ses yok?** Sistem sesi yakalama loopback ister; Windows ses ayarlarına bak.
 - **Anahtar reddedildi?** Ayarlar'dan yeniden gir; yalnızca Credential Manager'da durur.
-- **Yerel model GPU'da mı?** Yerel motor, sürücü ve CUDA çalışması yanıt veriyorsa Nvidia GPU'yu kendi seçer (kart fark etmez, `cuda` + `float16`); yoksa CPU ile çalışır (`cpu` + `int8`). Nvidia GPU için güncel sürücü + CUDA runtime gerekir; Windows'ta AMD kartlarda yalnızca CPU desteklenir. Cihaz Ayarlar → Konuşmayı yazıya çevir → Cihaz adımından zorlanabilir.
+- **Yerel model GPU'da mı?** Yerel motor hem GPU'yu hem CUDA 12/cuBLAS ve cuDNN 9 DLL'lerinin yüklenmesini kontrol eder. Otomatik modda bunlar hazır değilse CPU (`int8`) kullanılır. Çözümleme sırasında CUDA DLL hatası çıkarsa kayıt baştan CPU'da işlenir; yarım GPU sonucu kullanılmaz. Windows'ta AMD kartlarda CPU kullanılır. Cihaz Ayarlar → Konuşmayı yazıya çevir → Cihaz adımından seçilebilir.
+- **CUDA bağımlılıkları ve paketleme:** Kaynaktan çalıştırırken `.venv\Scripts\python.exe -m pip install -r requirements-cuda.txt` ile sabitlenmiş NVIDIA DLL paketleri kurulur. GPU destekli EXE için `./build.ps1 -Python .venv/Scripts/python.exe -Cuda` kullanılır; DLL'ler pakete eklenir. NVIDIA sürücüsü ayrıca kurulu olmalıdır. CUDA bağımlılıkları yaklaşık 1,3 GB indirme gerektirir; normal CPU derlemesi bunları indirmez. DLL denetimi gerçek GPU çözümlemesinin yerine geçmez.
 
 ## Yol haritası
 

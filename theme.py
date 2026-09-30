@@ -118,6 +118,12 @@ def stylesheet(colors: Palette) -> str:
         font-weight: 700;
     }}
     QTabWidget#settingsTabs::pane {{ background: transparent; border: 0; }}
+    QTabWidget#panelTabs::pane {{ background: transparent; border: 0; }}
+    QFrame#selectionPopup {{
+        background: {colors.surface};
+        border: 1px solid {colors.border};
+        border-radius: 10px;
+    }}
     QWidget#sharedAiNote {{
         background: {colors.surface_alt};
         border: 1px solid {colors.border};
@@ -139,6 +145,11 @@ def stylesheet(colors: Palette) -> str:
         background: {colors.selected};
         color: {colors.text};
         font-weight: 600;
+    }}
+    QTabWidget#panelTabs QTabBar::tab {{
+        padding: 7px 12px;
+        margin: 0 4px 6px 0;
+        font-weight: 500;
     }}
     QLineEdit, QPlainTextEdit, QComboBox, QSpinBox, QDoubleSpinBox, QListWidget {{
         background: {colors.surface_alt};

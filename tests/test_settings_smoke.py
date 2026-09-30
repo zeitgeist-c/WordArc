@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from PyQt6.QtCore import QPoint, QRect
+from PyQt6.QtCore import QPoint, QRect, QEvent
 from PyQt6.QtGui import QFont, QFontMetrics
 from PyQt6.QtWidgets import QApplication, QComboBox
 
@@ -46,6 +46,8 @@ class TestSettingsSmoke(unittest.TestCase):
 
     def tearDown(self):
         self.window.close()
+        self.window.deleteLater()
+        self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         for patcher in reversed(self.patchers):
             patcher.stop()
         self.tmp.cleanup()
@@ -183,8 +185,8 @@ class TestSettingsSmoke(unittest.TestCase):
                         window.dictation_output):
             self.assertTrue(control.isVisibleTo(window))
         self.assertFalse(window.max_seconds.isVisibleTo(window))
-        disclosures = window.tabs.widget(0).findChildren(settings_ui.Disclosure)
-        disclosures[0].toggle.click()
+        window.dictation_details.setCurrentIndex(0)
+        window.dictation_advanced.setCurrentIndex(0)
         self.assertTrue(window.max_seconds.isVisibleTo(window))
 
     def test_header_buttons_toggle_and_persist(self):
@@ -340,7 +342,7 @@ class TestSettingsSmoke(unittest.TestCase):
                          "Names and terms", "Interface", "Startup", "Support"):
             self.assertIn(t(expected), titles)
         self.assertFalse(window.ui_language.isVisibleTo(window))
-        window.settings_section_menu.setCurrentRow(4)
+        window.settings_section_menu.setCurrentRow(3)
         self.app.processEvents()
         for control in (window.ui_language, window.corner,
                         window.start_with_windows, window.close_to_tray):
@@ -348,7 +350,7 @@ class TestSettingsSmoke(unittest.TestCase):
 
     def test_api_keys_card_layout_and_button_styles(self):
         window = self.window
-        self.assertEqual(window.gemini_keys_list.minimumHeight(), 150)
+        self.assertEqual(window.gemini_keys_list.minimumHeight(), 120)
         self.assertEqual(window.gemini_add_button.objectName(), "accentButton")
         self.assertEqual(window.gemini_remove_button.objectName(), "dangerButton")
         card = window.gemini_keys_list.parentWidget()
@@ -570,7 +572,7 @@ class TestSettingsSmoke(unittest.TestCase):
             view.apply(fresh)
             self.assertEqual(fresh.tabs.currentIndex(), window.tabs.currentIndex())
             self.assertEqual((fresh.width(), fresh.height()), (900, 620))
-            self.assertEqual(fresh.settings_section_menu.currentRow(), 4)
+            self.assertEqual(fresh.settings_section_menu.currentRow(), 3)
         finally:
             fresh.close()
             fresh.deleteLater()
@@ -913,13 +915,15 @@ class TestDropdownsStayOnScreen(unittest.TestCase):
         self.app.processEvents()
         return rect.bottom() - avail_bottom, -rect.top()
 
-    def test_small_and_large_lists_use_the_same_picker(self):
+    def test_short_lists_are_native_and_long_lists_are_searchable(self):
         for count in (2, 4, 7, 44):
             box = settings_ui.FitsOnScreenCombo()
             box.addItems([f"item {index}" for index in range(count)])
-            with mock.patch.object(box, "_search_picker") as picker:
+            with mock.patch.object(box, "_search_picker") as picker, \
+                 mock.patch.object(QComboBox, "showPopup") as native:
                 box.showPopup()
-            picker.assert_called_once_with()
+            self.assertEqual(picker.call_count, int(count > 8))
+            self.assertEqual(native.call_count, int(count <= 8))
 
     def test_every_settings_combo_is_protected(self):
         """Applied everywhere rather than patched per screenshot: which

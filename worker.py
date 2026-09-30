@@ -137,6 +137,7 @@ class Pipeline(QObject):
                             conf["cleanup_model"],
                             conf.cleanup_prompt(),
                             reasoning=conf["cleanup_reasoning"],
+                            allow_empty=True,
                         )
                 except api.Cancelled:
                     # A stop that lands while the cleanup request is in flight
@@ -154,6 +155,11 @@ class Pipeline(QObject):
                     print(f"wordarc: cleanup failed: {exc}", file=sys.stderr)
                 _log.info("cleanup took %.1fs for %d chars",
                           time.monotonic() - cleanup_started, len(raw))
+
+            if not text.strip():
+                self._discard(wav_path)
+                self.failed.emit(t("No speech content remains after cleanup."), operation_id)
+                return
 
             with _paste_lock:
                 previous = paste.read_clipboard() if should_paste and conf["restore_clipboard"] else None
