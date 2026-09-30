@@ -1,9 +1,63 @@
 # WordArc — durum
 
-Güncelleme: 2026-09-30
-Hazırlanan paket: 0.6.4 (`brand.py`)
+Güncelleme: 2026-10-01
+Hazırlanan paket: 0.6.5 (`brand.py`)
 Dal: master
-Git dönüş noktası: 4e77a89 / v0.6.3
+Git dönüş noktası: 02f2a0e / v0.6.4
+
+## 2026-10-01 — 0.6.5 sürüm kapanışı
+
+Kullanıcının bütün değişiklikleri yeni sürümde toplama talebiyle 0.6.5 hazırlandı.
+Dört ana sekme korundu; kontroller ve ayrıntılar ayrılmış panellere taşındı.
+Gelişmiş ayarlar yerel sekmelere bölündü, API/model seçimleri aramalı açılır
+panellerle düzenlendi. Dar pencerelerde panel seçimi kullanılıyor.
+
+AI temizleme, İngilizce, altyazı ve tutanak yönergeleri anlamı ve verileri
+koruyacak biçimde yenilendi; eski varsayılanların göçü kullanıcıya özel
+yönergeleri koruyor. Eksik/engellenmiş yanıtlar ve boş temizleme çıktısı
+ayrıştırıldı. CUDA DLL araması, otomatik CPU geri dönüşü ve unicodedata paket
+bağımlılığı düzeltildi. İsteğe bağlı CUDA derlemesi build.ps1 -Cuda ile yapılır.
+
+Bu teslim CPU/otomatik geri dönüş paketidir; NVIDIA runtime wheel seti ortamda
+kurulu değildir. Gerçek GPU, canlı AI kalite karşılaştırması ve gerçek mikrofon
+kaydı bu sürüm kapanışında doğrulanmış sayılmıyor. Önceki paketler korunmuştur.
+377 test geçti, 1 ağ testi atlandı; resmi derleme/import ve bağımlılık güvenlik
+kapıları geçti. Teslim EXE/BAT adları, gömülü sürüm, bağımlılıklar ve izole
+açılış paket denetiminden geçti. Teslimin 9 runtime modülü mevcut kaynakla,
+8 ortak modülü console probe ile bytecode olarak eşleşti. 0.6.5 console probe
+izole çalışma alanını açtı; base model ve sentetik sessiz WAV ile CPU
+çözümlemesi/unicodedata denetimi geçti. Kanıtlar: build/release-0.6.5*.log ve
+build/release-0.6.5-verification.json.
+
+Teslim: dist/WordArc-0.6.5.exe + dist/WordArc-0.6.5.bat.
+EXE SHA256: 43d016a8620227db65892e80cdf5171985792249da1f51ff04e71a65eef63fcf.
+Sürüm kapanışı: kapsam içi kaynak/derleme değişiklikleri yerel commit ve aynı
+commit'e v0.6.5 etiketiyle kaydedilir; harici push/release yapılmaz.
+
+## 2026-10-01 — 0.6.4 yerel yeniden derlemesi
+
+Kullanıcının gördüğü eski arayüzün nedeni: önceki düzeltmeler yalnız kaynak/test
+derlemesindeydi; dist içindeki 30 Eylül EXE'si yenilenmemişti. build.ps1 ile
+güncel kaynak dist/WordArc-0.6.4.exe ve aynı adlı BAT'a aktarıldı. Eski paket
+build/previous-delivery-2026-10-01 altında saklandı. Başlatıcı artık diğer
+WordArc süreçlerini topluca zorla kapatmıyor.
+
+377 test geçti, 1 ağ testi atlandı; derleme/import ve bağımlılık güvenlik
+kontrolleri geçti. Teslim paketinin 9 runtime modülü güncel kaynakla, bunlardan
+8'i doğrulanmış console probe ile bytecode olarak eşleşti. Yeni PanelTabs
+düzeni arşivde doğrulandı; teslim EXE'sinin izole açılışı geçti. Güncel dist
+EXE'sinden gerçek ayarlar penceresi açıldı ve çalışan süreç yolu doğrulandı.
+
+Paket SHA256: 4bab8a874a97986b28c39d5bdd9930ed85a56559ab9f2e6ec4697eb19d74595f.
+Önceki EXE SHA256: 49995e3b5916a487ac0f6ac572a00a9bbefa4ca4c3ab3be460bcff7f6e56dc02.
+Build kimliği: 2026-10-01-4bab8a874a97. Ayrıntı: build/delivery-rebuild-2026-10-01.json.
+Kaynak: HEAD 02f2a0e + çalışma ağacındaki düzeltmeler. Mevcut v0.6.4 etiketi
+önceki paketin kaydıdır; bu yeniden derlemeyi tanımlamaz. Yeni sürüm/commit/tag
+ve harici push/release yok; proje kuralındaki tmm bekleniyor.
+
+Bu paket CPU/otomatik geri dönüş yolunu içerir. CUDA runtime wheel seti bu
+ortamda kurulmadı; gerçek NVIDIA GPU ve canlı AI kalite değerlendirmesi hâlâ
+doğrulanmadı. Gerçek kayıt/GPU başarı iddiası değildir.
 
 ## 0.6.4 — 21 becerilik bakım turu + pencere dikte sadeleştirmesi
 

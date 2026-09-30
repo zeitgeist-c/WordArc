@@ -48,14 +48,14 @@ def main():
     # it, and mojibake here looks exactly like a broken model.
     env = dict(os.environ, PYTHONIOENCODING="utf-8",
                HF_HUB_DISABLE_SYMLINKS_WARNING="1")
-    run = subprocess.run([exe, models, model, audio], env=env,
+    run = subprocess.run([exe, "stt", models, model, audio], env=env,
                          capture_output=True, text=True, encoding="utf-8",
                          errors="replace", timeout=1800)
     print(run.stdout[-2500:])
     if run.stderr.strip():
         print("stderr:", run.stderr[-1500:])
 
-    if "FROZEN TRANSCRIPTION OK" in run.stdout:
+    if run.returncode == 0 and "FROZEN TRANSCRIPTION OK" in run.stdout:
         print("RESULT: the frozen bundle carries a working engine.")
         return 0
     print("RESULT: FAILED — the frozen bundle could not transcribe.")

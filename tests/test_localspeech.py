@@ -380,7 +380,8 @@ class TestDeviceSelection(unittest.TestCase):
     def test_cuda_detection_counts_devices(self):
         fake = mock.Mock()
         fake.get_cuda_device_count = mock.Mock(return_value=1)
-        with mock.patch.dict("sys.modules", {"ctranslate2": fake}):
+        with mock.patch.dict("sys.modules", {"ctranslate2": fake}), \
+             mock.patch.object(localspeech.cuda_runtime, "missing_libraries", return_value=[]):
             self.assertTrue(localspeech.cuda_available())
         fake.get_cuda_device_count = mock.Mock(return_value=0)
         with mock.patch.dict("sys.modules", {"ctranslate2": fake}):
@@ -402,6 +403,7 @@ class TestEngineDevice(unittest.TestCase):
         localspeech._model_name = ""
         localspeech._model_device = ("", "")
         localspeech._last_fallback_note = ""
+        localspeech._cuda_failed = False
 
     @staticmethod
     def _forget_model():
@@ -409,6 +411,7 @@ class TestEngineDevice(unittest.TestCase):
         localspeech._model_name = ""
         localspeech._model_device = ("", "")
         localspeech._last_fallback_note = ""
+        localspeech._cuda_failed = False
 
     def _fake_model(self, name):
         root = localspeech._root(name, self.root)
@@ -510,7 +513,8 @@ class TestPrerequisites(unittest.TestCase):
              mock.patch.object(localspeech, "cuda_driver_present",
                                return_value=True), \
              mock.patch.object(localspeech, "_cuda_device_count",
-                               return_value=2):
+                               return_value=2), \
+             mock.patch.object(localspeech.cuda_runtime, "missing_libraries", return_value=[]):
             status = localspeech.prerequisite_status()
         self.assertEqual(status, {"packages_missing": [], "driver": True,
                                   "cuda_devices": 2, "gpu_ready": True})
@@ -524,6 +528,15 @@ class TestPrerequisites(unittest.TestCase):
                                return_value=0):
             status = localspeech.prerequisite_status()
         self.assertFalse(status["gpu_ready"])
+
+    def test_detected_gpu_with_missing_cublas_is_not_ready(self):
+        with mock.patch.object(localspeech, "missing_python_packages", return_value=[]), \
+             mock.patch.object(localspeech, "cuda_driver_present", return_value=True), \
+             mock.patch.object(localspeech, "_cuda_device_count", return_value=1), \
+             mock.patch.object(localspeech.cuda_runtime, "missing_libraries",
+                               return_value=["cublas64_12.dll"]):
+            self.assertFalse(localspeech.cuda_available())
+            self.assertFalse(localspeech.prerequisite_status()["gpu_ready"])
 
     def test_install_refuses_on_frozen_builds(self):
         with mock.patch.object(localspeech, "missing_python_packages",

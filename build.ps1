@@ -1,9 +1,18 @@
-param([string]$Python = "python")
+param([string]$Python = "python", [switch]$Cuda)
 
 $ErrorActionPreference = "Stop"
 $ExpectedFfmpegVersion = "8.1.1-essentials_build-www.gyan.dev"
 $ExpectedFfmpegSha256 = "228D7A8556258DE907FDB55F36850078EBC7680B84EC30D84EA02E99BEC1D1EB"
 $Ffmpeg = Join-Path $PSScriptRoot "ffmpeg.exe"
+Set-Location -LiteralPath $PSScriptRoot
+
+if ($Cuda) {
+    # Installation is deliberate; a normal CPU build stays small.
+    & $Python -m pip install -r (Join-Path $PSScriptRoot 'requirements-cuda.txt')
+    if ($LASTEXITCODE -ne 0) { throw 'CUDA runtime installation failed.' }
+    & $Python -c "import cuda_runtime; missing = cuda_runtime.missing_libraries(); assert not missing, missing"
+    if ($LASTEXITCODE -ne 0) { throw 'CUDA runtime DLL verification failed.' }
+}
 
 if (-not (Test-Path -LiteralPath $Ffmpeg)) {
     throw "ffmpeg.exe is missing from the project root."
@@ -51,8 +60,6 @@ Move-Item -LiteralPath $RawExe -Destination $VersionedExe -Force
 $LauncherName = "WordArc-$AppVersion.bat"
 $LauncherPath = Join-Path $PSScriptRoot "dist\$LauncherName"
 $Launcher = "@echo off`r`nsetlocal`r`n" +
-    "rem Kill stale instances so the new exe starts fresh`r`n" +
-    "taskkill /F /IM `"WordArc-*.exe`" >nul 2>&1`r`n" +
     "cd /d `"%~dp0`"`r`n" +
     "start `"WordArc $AppVersion`" `"%~dp0$VersionedName`" %*`r`n"
 [IO.File]::WriteAllText($LauncherPath, $Launcher, [Text.UTF8Encoding]::new($false))

@@ -5,8 +5,11 @@
 # and useless for reading a traceback back out of it. The probe is chosen by
 # argv[1] so one build proves both.
 import os
+import sysconfig
+from pathlib import Path
 
 import PyQt6
+from PyInstaller.utils.hooks import collect_dynamic_libs
 
 _QT_TRANSLATIONS = os.path.join(os.path.dirname(PyQt6.__file__),
                                 "Qt6", "translations")
@@ -14,8 +17,11 @@ datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand'),
          ('assets/sounds', 'assets/sounds'),
          (os.path.join(_QT_TRANSLATIONS, 'qtbase_tr.qm'),
           'PyQt6/Qt6/translations')]
-binaries = []
-hiddenimports = ['soundcard', 'faster_whisper', 'ctranslate2',
+binaries = collect_dynamic_libs('ctranslate2')
+_SITE = Path(sysconfig.get_path('purelib'))
+for dll in (_SITE / 'nvidia').glob('*/bin/*.dll'):
+    binaries.append((str(dll), str(dll.parent.relative_to(_SITE))))
+hiddenimports = ['unicodedata', 'soundcard', 'faster_whisper', 'ctranslate2',
                   'onnxruntime', 'tokenizers', 'huggingface_hub',
                   'av', 'av.audio.resampler']
 

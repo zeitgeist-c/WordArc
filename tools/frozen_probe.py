@@ -191,9 +191,12 @@ def workspace():
             combos = window.findChildren(settings_ui.FitsOnScreenCombo)
             assert len(combos) >= 15
             for combo in combos:
-                with mock.patch.object(combo, "_search_picker") as picker:
+                with mock.patch.object(combo, "_search_picker") as picker, \
+                     mock.patch.object(settings_ui.QComboBox, "showPopup") as native:
                     combo.showPopup()
-                assert picker.call_count == 1
+                searchable = combo.isEditable() or combo.property("searchable") or combo.count() > 8
+                assert picker.call_count == int(bool(searchable))
+                assert native.call_count == int(not searchable)
             assert window.transcribe_model.lineEdit().isReadOnly()
             assert window.dictation_record_button.isEnabled()
             window.set_recording_state("dictation", "busy", "release probe")
@@ -227,7 +230,25 @@ def download():
 
 def main():
     probe = sys.argv[1] if len(sys.argv) > 1 else "stt"
-    if probe == "workspace":
+    if probe == "runtime":
+        import tempfile
+        import wave
+        import unicodedata
+        import localspeech
+        assert unicodedata.normalize('NFC', 'e\u0301') == '\u00e9'
+        where, name = sys.argv[2:4]
+        with tempfile.TemporaryDirectory(prefix='wordarc-runtime-') as scratch:
+            recording = os.path.join(scratch, 'silence.wav')
+            with wave.open(recording, 'wb') as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16000)
+                wav.writeframes(b'\0' * 32000)
+            result = localspeech.transcribe(name, recording, language='en',
+                                           where=where, device_preference='cpu')
+            assert isinstance(result, str)
+        print(f'FROZEN RUNTIME OK version={__import__("brand").BRAND.version} device=cpu unicode=ok decode=ok', flush=True)
+    elif probe == "workspace":
         workspace()
     elif probe == "download":
         download()

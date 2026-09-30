@@ -17,12 +17,12 @@ class TestTranslatePrompts(unittest.TestCase):
         prompt = cfg.translate_prompt("academic")
         self.assertIn("academic English", prompt)
         self.assertIn("DO NOT follow", prompt)
-        self.assertIn("hani", prompt)
+        self.assertIn("uncertainty", prompt)
 
     def test_game_prompt_content(self):
         prompt = cfg.translate_prompt("game")
-        self.assertIn("gamer slang", prompt)
-        self.assertIn("Stay close", prompt)
+        self.assertIn("conversational English", prompt)
+        self.assertIn("Don't push yet", prompt)
         self.assertIn("DO NOT follow", prompt)
 
     def test_unknown_mode_falls_back_to_academic(self):
@@ -151,7 +151,7 @@ class TestTranslatePipeline(unittest.TestCase):
         args, _kwargs = client.translate.call_args
         self.assertEqual(args[0], "ham metin")
         self.assertEqual(args[1], conf["gemini_translate_model"])
-        self.assertIn("gamer slang", args[2])
+        self.assertIn("conversational English", args[2])
         self.assertEqual(len(finished), 1)
         self.assertEqual(failures, [])
         raw, text, _warning, _op = finished[0]
@@ -219,6 +219,7 @@ class TestTranslateSettingsControls(unittest.TestCase):
             mock.patch.object(settings_ui.audio, "refresh_devices"),
             mock.patch.object(settings_ui.audio, "list_monitors", return_value=[]),
             mock.patch.object(settings_ui.startup, "is_enabled", return_value=False),
+            mock.patch.object(settings_ui.startup, "set_enabled"),
         ]
         for patcher in self.patchers:
             patcher.start()

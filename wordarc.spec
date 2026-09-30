@@ -1,7 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
+import sysconfig
+from pathlib import Path
 
 import PyQt6
+from PyInstaller.utils.hooks import collect_dynamic_libs
 
 # Qt's own strings (context menus, dialog buttons) come from this catalogue;
 # without it a Turkish interface still shows English in those places.
@@ -11,11 +14,16 @@ datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand'),
          ('assets/sounds', 'assets/sounds'),
          (os.path.join(_QT_TRANSLATIONS, 'qtbase_tr.qm'),
           'PyQt6/Qt6/translations')]
-binaries = []
+binaries = collect_dynamic_libs('ctranslate2')
+# Optional pinned NVIDIA wheels supply Windows DLLs that ordinary import
+# analysis cannot see. Preserve their directory layout for cuda_runtime.
+_SITE = Path(sysconfig.get_path('purelib'))
+for dll in (_SITE / 'nvidia').glob('*/bin/*.dll'):
+    binaries.append((str(dll), str(dll.parent.relative_to(_SITE))))
 # The local speech engine. faster_whisper pulls in ctranslate2, onnxruntime,
 # tokenizers, av and huggingface_hub, and PyInstaller's hooks miss most of them
 # because they reach for binaries at runtime rather than importing them.
-hiddenimports = ['soundcard', 'faster_whisper', 'ctranslate2',
+hiddenimports = ['unicodedata', 'soundcard', 'faster_whisper', 'ctranslate2',
                   'onnxruntime', 'tokenizers', 'huggingface_hub',
                   'av', 'av.audio.resampler']
 

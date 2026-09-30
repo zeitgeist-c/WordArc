@@ -137,6 +137,27 @@ def test_local_dictation_with_cleanup_rotates_the_cleanup_api():
     assert conf["gemini_last_used"][0] != ""
 
 
+def test_noise_only_cleanup_does_not_paste_or_change_the_clipboard():
+    conf = _dictation_conf()
+    pipeline = worker.Pipeline(conf)
+    client = mock.Mock(active_slot=0)
+    client.cleanup.return_value = ""
+    finished, failures = [], []
+    pipeline.finished.connect(lambda *args: finished.append(args))
+    pipeline.failed.connect(lambda *args: failures.append(args))
+    with mock.patch.object(worker.localspeech, "transcribe_for", return_value="eee"), \
+         mock.patch.object(worker.api, "GeminiClient", return_value=client), \
+         mock.patch.object(cfg.Config, "gemini_keys", return_value=["key"]), \
+         mock.patch.object(cfg.Config, "save"), \
+         mock.patch.object(worker.paste, "copy") as copy, \
+         mock.patch.object(worker.paste, "press") as press:
+        pipeline._work("no-such-recording.wav", 1.0, [], "op-empty", auto_paste=True)
+    assert client.cleanup.call_args.kwargs["allow_empty"] is True
+    assert not finished and failures
+    copy.assert_not_called()
+    press.assert_not_called()
+
+
 def test_stages_log_their_durations(caplog):
     conf = _dictation_conf()
     with caplog.at_level("INFO", logger="wordarc.worker"):

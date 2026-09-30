@@ -35,6 +35,7 @@ import urllib.parse
 from dataclasses import dataclass
 
 from i18n import t
+import cuda_runtime
 
 _log = logging.getLogger("wordarc.localspeech")
 
@@ -45,7 +46,7 @@ THREADS = 8
 # One place decides where the model runs; every load goes through it.
 #   Nvidia + working CUDA -> cuda + float16 (any card: GTX 10xx through RTX
 #   50xx; no per-model code, ctranslate2.get_cuda_device_count() > 0 is the
-#   whole check).
+#   initial driver check; required CUDA DLLs must also load).
 #   Otherwise (AMD card, no GPU) -> cpu + int8. On Windows an AMD card can
 #   never run the model on the GPU, so CPU is mandatory there.
 DEVICE_AUTO, DEVICE_CUDA, DEVICE_CPU = "auto", "cuda", "cpu"
@@ -66,16 +67,16 @@ REQUIRED_PACKAGES = ("faster_whisper", "ctranslate2")
 # re-raised so a genuine execution error is never hidden.
 _CUDA_LIBRARY_HINTS = ("cublas", "cudnn", "cudart", "cuda driver",
                        "cuda runtime", "cublaslt", "libcuda",
-                       "no cuda", "cuda is not available",
-                       "could not load library", "failed to load")
+                       "no cuda", "cuda is not available")
 _OOM_HINTS = ("out of memory", "out-of-memory", "cuda error 2",
-              "out of device memory")
+              "out of device memory", "alloc_failed")
 COMPUTE_TYPE = COMPUTE_CPU  # historic name for the CPU compute type
 
 
 def _cuda_device_count():
     """Usable Nvidia GPUs, or None when ctranslate2 cannot even be asked."""
     try:
+        cuda_runtime.prepare()
         import ctranslate2
     except Exception:
         return None
@@ -91,7 +92,8 @@ def _cuda_device_count():
 def cuda_available():
     """True when any Nvidia card answers through the CUDA runtime."""
     count = _cuda_device_count()
-    return count is not None and count > 0
+    return (count is not None and count > 0
+            and not cuda_runtime.missing_libraries())
 
 
 def cuda_driver_present():
@@ -126,7 +128,8 @@ def prerequisite_status():
         "driver": driver,
         "cuda_devices": devices,
         "gpu_ready": bool(devices is not None and devices > 0
-                          and not missing),
+                          and not missing
+                          and not cuda_runtime.missing_libraries()),
     }
 
 
@@ -146,7 +149,12 @@ def install_missing_packages(packages=None):
     import subprocess
     _log.info("installing local speech packages: %s", ", ".join(missing))
     try:
-        subprocess.run([sys.executable, "-m", "pip", "install", *missing],
+        # Import names (faster_whisper) are not a versioned installation
+        # contract. Use the same tested runtime set as the build instead.
+        from pathlib import Path
+        requirements = Path(__file__).with_name("requirements-lock.txt")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-r",
+                        str(requirements)],
                        capture_output=True, timeout=600, check=True)
     except Exception as exc:
         _fail("Could not install the local speech engine: {error}",
@@ -207,6 +215,7 @@ def _is_cuda_library_error(exc):
 
 # The last silent CUDA->CPU fallback, so the UI can say what happened.
 _last_fallback_note = ""
+_cuda_failed = False
 
 
 def last_fallback_note():
@@ -588,12 +597,16 @@ def engine(name, where=None, device_preference=None):
     resolves it through get_best_device(), so there is exactly one place
     that picks a device.
     """
-    global _model, _model_name, _model_device, _last_fallback_note
+    global _model, _model_name, _model_device, _last_fallback_note, _cuda_failed
     name = name or default_model()
     if _repo(name) is None:
         _fail("Unknown local model: {name}", name=name)
     cache = where or models_dir()
-    device, compute_type = get_best_device(device_preference or DEVICE_AUTO)
+    preference = device_preference or DEVICE_AUTO
+    if _cuda_failed and preference == DEVICE_AUTO:
+        device, compute_type = DEVICE_CPU, COMPUTE_CPU
+    else:
+        device, compute_type = get_best_device(preference)
     with _lock:
         if (_model is not None and _model_name == name
                 and _model_device == (device, compute_type)):
@@ -615,6 +628,7 @@ def engine(name, where=None, device_preference=None):
                 # included — is a real failure and goes up unchanged.
                 _last_fallback_note = (
                     f"CUDA load failed ({exc}); using CPU instead.")
+                _cuda_failed = True
                 _log.warning("local speech: %s", _last_fallback_note)
                 try:
                     _model = _load_model(_root(name, cache), DEVICE_CPU,
@@ -631,6 +645,9 @@ def engine(name, where=None, device_preference=None):
                   device, compute_type, name)
         _model_name = name
         _model_device = (device, compute_type)
+        if device == DEVICE_CUDA:
+            _last_fallback_note = ""
+            _cuda_failed = False
         return _model
 
 
@@ -661,20 +678,46 @@ def transcribe(name, wav_path, language="", prompt="", should_stop=None,
     if with_segments:
         options["word_timestamps"] = True
     language = None if language in ("", "auto", None) else language
-    try:
+    def decode(instance):
         # A generator, not a list: only the first window is decoded at this
         # point, and the rest happens as it is walked.
-        segments, _info = model.transcribe(audio, language=language, **options)
+        segments, _info = instance.transcribe(audio, language=language, **options)
         if with_segments:
             out = []
             for seg in segments:
                 _check_cancelled(should_stop)
                 out.append((seg.start, seg.end, seg.text.strip()))
             return out
-        return " ".join(seg.text.strip() for seg in segments).strip()
+        out = []
+        for seg in segments:
+            _check_cancelled(should_stop)
+            out.append(seg.text.strip())
+        return " ".join(out).strip()
+
+    try:
+        return decode(model)
     except LocalSpeechError:
         raise
     except Exception as exc:
+        # cuBLAS/cuDNN often load lazily during language detection or while
+        # iterating segments, after WhisperModel construction succeeded.
+        device = getattr(getattr(model, "model", None), "device", None)
+        if model is _model:
+            device = _model_device[0]
+        if device == DEVICE_CUDA and _is_cuda_library_error(exc):
+            global _last_fallback_note, _cuda_failed
+            _last_fallback_note = f"CUDA transcription failed ({exc}); using CPU instead."
+            _cuda_failed = True
+            _log.warning("local speech: %s", _last_fallback_note)
+            _check_cancelled(should_stop)
+            cpu = engine(name, where, DEVICE_CPU)
+            try:
+                # Discard partial GPU output and restart the whole recording.
+                return decode(cpu)
+            except LocalSpeechError:
+                raise
+            except Exception as cpu_exc:
+                _fail("Local transcription failed: {error}", error=cpu_exc)
         _fail("Local transcription failed: {error}", error=exc)
 
 
