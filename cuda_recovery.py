@@ -49,7 +49,7 @@ class CudaRecovery(QObject):
                 return
             self._offered = True
             answer = QMessageBox.question(
-                self.parent(), t('CUDA could not start'),
+                self.parent(), t('Vulkan could not start') if self.conf.get('local_stt_device') == 'vulkan' else t('CUDA could not start'),
                 request.reason + '\n\n' + t('Switch to CPU, save this setting and retry this recording?'),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)

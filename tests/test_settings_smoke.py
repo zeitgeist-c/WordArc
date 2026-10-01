@@ -39,6 +39,7 @@ class TestSettingsSmoke(unittest.TestCase):
             mock.patch.object(settings_ui.audio, "refresh_devices"),
             mock.patch.object(settings_ui.audio, "list_monitors", return_value=[]),
             mock.patch.object(settings_ui.startup, "is_enabled", return_value=False),
+            mock.patch.object(localspeech.vulkan_speech, "available", return_value=False),
         ]
         for patcher in self.patchers:
             patcher.start()
@@ -482,12 +483,12 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertEqual(window.transcribe_engine.currentData(), "local")
         self.assertEqual(window.local_stt_model.currentData(), "small")
 
-    def test_the_device_box_offers_three_choices_and_survives_a_save(self):
+    def test_the_device_box_offers_four_choices_and_survives_a_save(self):
         window = self.window
         self.assertEqual(
             [window.local_stt_device.itemData(index)
              for index in range(window.local_stt_device.count())],
-            ["auto", "cuda", "cpu"])
+            ["auto", "cuda", "vulkan", "cpu"])
         self.assertEqual(window.local_stt_device.currentData(), "auto")
         window.navigate_to("settings")
         self.app.processEvents()

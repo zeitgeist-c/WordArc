@@ -9,7 +9,9 @@ import cuda_runtime
 
 @pytest.fixture(autouse=True)
 def isolate_engine():
-    with mock.patch.object(stt, '_model', None), \
+    with mock.patch.object(stt.vulkan_speech, 'available', return_value=False), \
+         mock.patch.object(stt.vulkan_speech, '_failed', False), \
+         mock.patch.object(stt, '_model', None), \
          mock.patch.object(stt, '_model_name', ''), \
          mock.patch.object(stt, '_model_device', ('', '')), \
          mock.patch.object(stt, '_cuda_failed', False), \

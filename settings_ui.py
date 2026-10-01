@@ -1427,7 +1427,26 @@ class SettingsWindow(QDialog):
             self.local_remove_button.setEnabled(False)
             return
         name = self.local_stt_model.currentData()
-        current = localspeech.state(name)
+        preference = self.local_stt_device.currentData() or "auto"
+        if localspeech.model_backend(preference) == "vulkan":
+            for index in range(self.local_stt_model.count()):
+                model = self.local_stt_model.itemData(index)
+                size = localspeech.human_size(localspeech.state(model, device_preference=preference).expected)
+                self.local_stt_model.setItemText(index, f"Whisper {model} — {size} (Vulkan)")
+            if not localspeech.vulkan_speech.installed(name) and localspeech._is_installed(name):
+                self.local_device_note.setText(t("Vulkan model needs downloading; the existing CPU model remains available in Automatic mode."))
+        else:
+            for index in range(self.local_stt_model.count()):
+                model = self.local_stt_model.itemData(index)
+                label, note = localspeech.model_label(model)
+                current_model = localspeech.state(model, device_preference=preference)
+                if current_model.path.endswith(".bin"):
+                    note = localspeech.human_size(current_model.expected)
+                self.local_stt_model.setItemText(index, f"{label} — {t(note)}")
+        current = localspeech.state(name, device_preference=preference)
+        if (localspeech.model_backend(preference) != "vulkan" or
+                preference == "auto" and localspeech.vulkan_speech._failed) and current.path.endswith(".bin"):
+            self.local_device_note.setText(t("CPU (whisper.cpp model)"))
         if current.installed:
             self.local_status.setText(t(
                 "{name} is installed ({size}) and ready.",
@@ -1444,12 +1463,14 @@ class SettingsWindow(QDialog):
 
     def _download_local_model(self):
         name = self.local_stt_model.currentData()
-        if self._download_name or not name or localspeech.state(name).installed:
+        preference = self.local_stt_device.currentData() or "auto"
+        if self._download_name or not name or localspeech.state(name, device_preference=preference).installed:
             return
         # Install-time system check: missing Python packages are offered for
         # automatic install; a driver without a working CUDA runtime only
         # changes where the model will run. Nothing missing -> straight on.
-        status = localspeech.prerequisite_status()
+        status = (dict(packages_missing=[], driver=False, gpu_ready=True)
+                  if localspeech.model_backend(preference) == "vulkan" else localspeech.prerequisite_status())
         missing = list(status["packages_missing"])
         if missing:
             if not confirm_box(self, t("Install"), t(
@@ -1466,6 +1487,7 @@ class SettingsWindow(QDialog):
         self._download_name = name
         self._download_stop.clear()
         self.local_stt_model.setEnabled(False)
+        self.local_stt_device.setEnabled(False)
         self.local_download_button.setEnabled(False)
         self.local_remove_button.setEnabled(False)
         self.download_cancel.setEnabled(True)
@@ -1486,6 +1508,7 @@ class SettingsWindow(QDialog):
                     localspeech.install_missing_packages(missing)
                 localspeech.download(
                     name, should_stop=self._download_stop.is_set,
+                    device_preference=preference,
                     on_progress=lambda progress: self._deliver(
                         "_local_download_progress", progress))
                 self._deliver("_local_download_done", name, "")
@@ -1515,6 +1538,7 @@ class SettingsWindow(QDialog):
         cancelled = self._download_stop.is_set()
         self._download_name = None
         self.local_stt_model.setEnabled(True)
+        self.local_stt_device.setEnabled(True)
         self.download_cancel.setEnabled(False)
         self._refresh_local_controls()
         if error:
@@ -1534,12 +1558,13 @@ class SettingsWindow(QDialog):
         name = self.local_stt_model.currentData()
         if not name:
             return
+        preference = self.local_stt_device.currentData() or "auto"
         if not confirm_box(self, t("Remove"), t(
                 "Delete the downloaded {name} model? {size} goes back to the "
                 "disk. Nothing else is touched.", name=name,
-                size=localspeech.human_size(localspeech.state(name).size))):
+                size=localspeech.human_size(localspeech.state(name, device_preference=preference).size))):
             return
-        localspeech.remove(name)
+        localspeech.remove(name, device_preference=preference)
         self._refresh_local_controls()
 
     THEME_ORDER = ("dark", "light")
@@ -1819,9 +1844,9 @@ class SettingsWindow(QDialog):
         for label, value in localspeech.DEVICE_CHOICES:
             self.local_stt_device.addItem(t(label), value)
         self.local_stt_device.setToolTip(t(
-            "Automatic uses the Nvidia GPU when its driver and CUDA runtime "
-            "answer, otherwise the CPU. Forcing Nvidia GPU fails with a clear "
-            "message when CUDA is missing instead of silently using the CPU."))
+            "Automatic uses NVIDIA CUDA, then AMD Vulkan, then CPU. "
+            "AMD Vulkan needs a separate model download. An explicit GPU "
+            "choice asks before switching to CPU after a failure."))
         self.local_stt_device.currentIndexChanged.connect(
             self._refresh_local_controls)
         self.local_download_button = QPushButton(t("Download"))

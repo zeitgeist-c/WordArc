@@ -7,6 +7,10 @@ $Ffmpeg = Join-Path $PSScriptRoot "ffmpeg.exe"
 Set-Location -LiteralPath $PSScriptRoot
 
 if ($Cuda -and $CpuOnly) { throw 'Choose CUDA or CPU-only, not both.' }
+& $Python -m pip install -r (Join-Path $PSScriptRoot 'requirements-native-build.txt')
+if ($LASTEXITCODE -ne 0) { throw 'Vulkan build tool installation failed.' }
+& $Python (Join-Path $PSScriptRoot 'tools\build_vulkan.py')
+if ($LASTEXITCODE -ne 0) { throw 'Vulkan runtime build/verification failed.' }
 if (-not $CpuOnly) {
     # Standard deliveries include CUDA libraries; the driver stays external.
     & $Python -m pip install -r (Join-Path $PSScriptRoot 'requirements-cuda.txt')

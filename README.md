@@ -81,7 +81,8 @@ tests/            pytest suite
 - **Nothing happens on `Ctrl+Space`?** Another app may own the hotkey — change or free it, then `wordarc.py restart`.
 - **Meeting has no counterpart audio?** System-audio capture needs loopback; check Windows sound settings.
 - **Key rejected?** Re-enter it in Settings; it is stored only in Credential Manager.
-- **Local model on GPU?** The local engine picks the Nvidia GPU on its own when the driver and the CUDA runtime answer (any card, `cuda` + `float16`); otherwise it runs on the CPU (`cpu` + `int8`). An Nvidia GPU needs a current driver + CUDA runtime; on Windows, AMD cards are CPU-only. The device can be forced in Settings → Speech to text → Device.
+- **Local model on GPU?** Automatic selects NVIDIA CUDA, then AMD Vulkan, then CPU. Since 0.6.9, AMD uses a bundled whisper.cpp Vulkan engine and a separate GGML model download. Existing CPU/CUDA weights remain intact and work on CPU until the AMD model is downloaded. The standard EXE carries both native engines, their Visual C++ runtime DLLs and NVIDIA CUDA libraries; GPU drivers remain external. No Vulkan SDK/ROCm installation is needed on the user's machine. Select the device and download its model in Settings → Speech to text.
+- **GPU recovery:** Automatic retries the same recording on CPU after a Vulkan failure. An explicit AMD/NVIDIA choice asks for consent before saving CPU and retrying. A separate Vulkan-free CPU native payload can use already downloaded GGML weights without another model download. Audio stays local. See [AMD investigation and acceptance](docs/amd-vulkan-0.6.9.md); real NVIDIA hardware acceptance remains separate.
 
 ## Roadmap
 

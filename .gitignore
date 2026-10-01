@@ -13,3 +13,4 @@ sbom.json
 
 # Generated model/audit cache, not application data
 .cache/
+native/whisper-vulkan/

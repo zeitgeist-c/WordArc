@@ -364,6 +364,9 @@ class TestDeviceSelection(unittest.TestCase):
                 localspeech.get_best_device("cuda")
 
     def test_auto_picks_cuda_when_there_and_cpu_otherwise(self):
+        patcher = mock.patch.object(localspeech.vulkan_speech, "available", return_value=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         with mock.patch.object(localspeech, "cuda_available",
                                return_value=True):
             self.assertEqual(localspeech.get_best_device("auto"),

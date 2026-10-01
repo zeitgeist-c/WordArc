@@ -18,6 +18,9 @@ datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand'),
          (os.path.join(_QT_TRANSLATIONS, 'qtbase_tr.qm'),
           'PyQt6/Qt6/translations')]
 binaries = collect_dynamic_libs('ctranslate2')
+from tools.build_vulkan import verify as verify_vulkan
+assert verify_vulkan(), 'Build/verify the Vulkan payload before packaging'
+datas.append(('native/whisper-vulkan', 'native/whisper-vulkan'))
 _SITE = Path(sysconfig.get_path('purelib'))
 for dll in list((_SITE / 'nvidia').glob('*/bin/*.dll')) + list((_SITE / 'nvidia').glob('*/lib/*.dll')):
     binaries.append((str(dll), str(dll.parent.relative_to(_SITE))))

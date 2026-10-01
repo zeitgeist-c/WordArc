@@ -51,6 +51,18 @@ def name(text, case=""):
 
 
 TR = {
+    "CPU (whisper.cpp model)": "CPU (whisper.cpp modeli)",
+    "Vulkan model needs downloading; the existing CPU model remains available in Automatic mode.": "Vulkan modeli indirilmeli; Otomatik modda mevcut CPU modeli kullanılmaya devam eder.",
+    "AMD GPU (Vulkan)": "AMD ekran kartı (Vulkan)",
+    "Vulkan could not start": "Vulkan başlatılamadı",
+    "No usable AMD Vulkan device was found. Check the AMD driver.": "Kullanılabilir AMD Vulkan cihazı bulunamadı. AMD ekran kartı sürücüsünü kontrol edin.",
+    "The Vulkan engine is missing from the package. Reinstall WordArc.": "Vulkan motoru pakette eksik. WordArc'ı yeniden kurun.",
+    "The Vulkan model {name} is not installed yet. Download it in Settings.": "Vulkan için {name} modeli henüz kurulu değil. Ayarlar'dan indirin.",
+    "Vulkan reads 16 kHz, 16-bit WAV audio.": "Vulkan motoru 16 kHz, 16 bit WAV kaydı okur.",
+    "Vulkan transcription failed: {error}": "Vulkan yazıya çevirme hatası: {error}",
+    "Vulkan did not initialize a GPU backend.": "Vulkan motoru GPU üzerinde başlatılamadı.",
+    "Vulkan failed; using CPU for this session: {error}": "Vulkan çalışmadı; bu oturumda CPU kullanılıyor: {error}",
+    "Automatic uses NVIDIA CUDA, then AMD Vulkan, then CPU. AMD Vulkan needs a separate model download. An explicit GPU choice asks before switching to CPU after a failure.": "Otomatik seçim önce NVIDIA CUDA'yı, ardından AMD Vulkan'ı, ardından CPU'yu kullanır. AMD Vulkan için model ayrıca indirilir. GPU elle seçildiğinde hata sonrası CPU'ya geçmeden önce onay sorulur.",
     "CUDA could not start": "CUDA başlatılamadı",
     "Switch to CPU, save this setting and retry this recording?": "CPU'ya geçilsin, bu ayar kaydedilsin ve bu kayıt yeniden işlensin mi?",
     "CUDA libraries are missing or cannot load (packaging/dependency problem): {libraries}": "CUDA kitaplıkları eksik veya yüklenemiyor (paketleme/bağımlılık sorunu): {libraries}",
