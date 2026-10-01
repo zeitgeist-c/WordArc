@@ -1,9 +1,32 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-01
-Hazırlanan paket: 0.6.5 (`brand.py`)
+Hazırlanan paket: 0.6.6 (`brand.py`)
 Dal: master
-Git dönüş noktası: 02f2a0e / v0.6.4
+Git dönüş noktası: fb224ed / v0.6.5
+
+## 2026-10-01 — 0.6.6 seçim listesi düzeltmesi
+
+Kullanıcı kısa açılır listelerin boş görünmesini ve seçilememesini bildirdi.
+Kök neden: Qt stylesheet içindeki desteklenmeyen max-height: 70vh kuralı.
+Gerçek Qt ölçümünde liste yüksekliği 2 px, viewport 0 px oldu. Kural kaldırıldı;
+aynı dört seçenekli liste 102 px, viewport 100 px olarak açıldı. Ekran sınırına
+yerleşim mevcut FitsOnScreenCombo tarafından korunuyor.
+
+Yeni test iki temada 2/4/7 seçenekli gerçek açılır listelerin bütün satırlarının
+görünürlüğünü ve fareyle seçimi doğruluyor. Eski kural yeniden enjekte edilince
+6/6 test başarısız; düzeltmeyle 6/6 başarılı. Kaynak ve EXE/BAT 0.6.6 olarak
+hazırlandı; önceki sürüm paketleri korunuyor.
+
+383 test geçti, 1 ağ testi atlandı; resmi import/güvenlik/paket kapıları geçti.
+0.6.6 frozen probe içinde iki temada altı gerçek liste açıldı; bütün seçenekler
+göründü ve fareyle seçim başarılı oldu. Ekran görüntüleri:
+build/release-0.6.6-shots/choices-*.png. Teslimin 9 runtime modülü kaynakla,
+8 ortak modülü frozen probe ile eşleşti; teslim EXE'sinin izole açılışı geçti.
+Kanıt: build/release-0.6.6*.log ve build/release-0.6.6-verification.json.
+Teslim: dist/WordArc-0.6.6.exe + dist/WordArc-0.6.6.bat.
+SHA256: 598ee987311c40c5f445db24fd59bac0124277ba31b7acb596ca4cf01eba259a.
+Kapsam içi değişiklikler yerel commit ve v0.6.6 etiketiyle kaydedilir; push yok.
 
 ## 2026-10-01 — 0.6.5 sürüm kapanışı
 

@@ -209,6 +209,32 @@ def workspace():
             window.close()
             assert not cfg.CONFIG_FILE.exists()
             assert not cfg.HISTORY_FILE.exists()
+    from PyQt6.QtTest import QTest
+    for mode in ("dark", "light"):
+        theme.ThemeManager.apply(mode, app)
+        for count in (2, 4, 7):
+            box = settings_ui.FitsOnScreenCombo()
+            box.addItems(["Türkçe", "English", "Oyun İngilizcesi",
+                          "Akademik İngilizce", "Français", "Deutsch", "Español"][:count])
+            box.resize(460, 38)
+            box.show()
+            try:
+                box.showPopup()
+                app.processEvents()
+                view = box.view()
+                viewport = view.viewport()
+                for row in range(count):
+                    rect = view.visualRect(view.model().index(row, 0))
+                    assert viewport.rect().contains(rect.center()), (mode, count, row)
+                assert view.window().grab().save(str(out / f"choices-{mode}-{count}.png"))
+                target = view.visualRect(view.model().index(1, 0)).center()
+                QTest.mouseClick(viewport, Qt.MouseButton.LeftButton, pos=target)
+                app.processEvents()
+                assert box.currentIndex() == 1
+            finally:
+                box.hidePopup()
+                box.close()
+    print("FROZEN CHOICES OK themes=2 lists=6 mouse-selection=ok", flush=True)
     print(f"FROZEN WORKSPACE OK version={BRAND.version} frozen={getattr(sys, 'frozen', False)}", flush=True)
 
 
