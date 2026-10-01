@@ -195,8 +195,8 @@ def workspace():
                      mock.patch.object(settings_ui.QComboBox, "showPopup") as native:
                     combo.showPopup()
                 searchable = combo.isEditable() or combo.property("searchable") or combo.count() > 8
-                assert picker.call_count == int(bool(searchable))
-                assert native.call_count == int(not searchable)
+                assert picker.call_count == int(bool(combo.count() or combo.isEditable()))
+                assert native.call_count == 0
             assert window.transcribe_model.lineEdit().isReadOnly()
             assert window.dictation_record_button.isEnabled()
             window.set_recording_state("dictation", "busy", "release probe")
@@ -212,29 +212,41 @@ def workspace():
     from PyQt6.QtTest import QTest
     for mode in ("dark", "light"):
         theme.ThemeManager.apply(mode, app)
-        for count in (2, 4, 7):
+        for count in (2, 4, 7, 44):
             box = settings_ui.FitsOnScreenCombo()
-            box.addItems(["Türkçe", "English", "Oyun İngilizcesi",
-                          "Akademik İngilizce", "Français", "Deutsch", "Español"][:count])
+            if count == 44:
+                box.setEditable(True)
+                box.addItems([f'gemini-test-{index:02}' for index in range(44)])
+            else:
+                box.addItems(["Türkçe", "English", "Oyun İngilizcesi",
+                              "Akademik İngilizce", "Français", "Deutsch", "Español"][:count])
             box.resize(460, 38)
             box.show()
             try:
-                box.showPopup()
+                target = box.lineEdit() if box.isEditable() else box
+                QTest.mouseClick(target, Qt.MouseButton.LeftButton)
                 app.processEvents()
-                view = box.view()
+                QTest.qWait(80)
+                assert box._picker.isVisible(), (mode, count)
+                view = box._picker_rows
                 viewport = view.viewport()
-                for row in range(count):
+                for row in range(min(count, 6)):
                     rect = view.visualRect(view.model().index(row, 0))
                     assert viewport.rect().contains(rect.center()), (mode, count, row)
-                assert view.window().grab().save(str(out / f"choices-{mode}-{count}.png"))
-                target = view.visualRect(view.model().index(1, 0)).center()
+                assert box._picker.grab().save(str(out / f"choices-{mode}-{count}.png"))
+                if count == 44:
+                    box._picker_search.setText('gemini-test-43')
+                    app.processEvents()
+                    target = view.visualItemRect(view.item(43)).center()
+                else:
+                    target = view.visualRect(view.model().index(1, 0)).center()
                 QTest.mouseClick(viewport, Qt.MouseButton.LeftButton, pos=target)
                 app.processEvents()
-                assert box.currentIndex() == 1
+                assert box.currentIndex() == (43 if count == 44 else 1)
             finally:
                 box.hidePopup()
                 box.close()
-    print("FROZEN CHOICES OK themes=2 lists=6 mouse-selection=ok", flush=True)
+    print("FROZEN CHOICES OK themes=2 lists=8 models=44 mouse-selection=ok", flush=True)
     print(f"FROZEN WORKSPACE OK version={BRAND.version} frozen={getattr(sys, 'frozen', False)}", flush=True)
 
 
