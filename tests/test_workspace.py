@@ -172,8 +172,8 @@ def test_combo_uses_compact_choices_or_search_according_to_content(window):
         with mock.patch.object(combo, "_search_picker") as picker, \
              mock.patch.object(settings_ui.QComboBox, "showPopup") as native:
             combo.showPopup()
-        assert picker.call_count == int(bool(searchable))
-        assert native.call_count == int(not searchable)
+        assert picker.call_count == int(combo.count() > 0)
+        assert native.call_count == 0
 
 
 def test_picker_supports_keyboard_selection_custom_models_and_cancel(window):
@@ -209,6 +209,7 @@ def test_editable_model_text_is_a_picker_target(window):
     QApplication.processEvents()
     with mock.patch.object(window.transcribe_model, "_search_picker") as picker:
         QTest.mouseClick(window.transcribe_model.lineEdit(), Qt.MouseButton.LeftButton)
+        QApplication.processEvents()
     picker.assert_called_once()
 
 

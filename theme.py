@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from PyQt6.QtGui import QColor, QPalette
+from brand import brand_asset
 
 
 class ThemeMode(str, Enum):
@@ -169,6 +170,7 @@ def stylesheet(colors: Palette) -> str:
     }}
     QComboBox, QSpinBox, QDoubleSpinBox {{ min-height: 22px; }}
     QComboBox::drop-down {{ border: 0; width: 24px; }}
+    QComboBox::down-arrow {{ image: url("{brand_asset('chevron-down.svg').as_posix()}"); width: 16px; height: 16px; }}
     QComboBox QAbstractItemView {{
         background: {colors.surface_alt};
         border: 1px solid {colors.border};

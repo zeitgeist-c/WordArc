@@ -915,15 +915,15 @@ class TestDropdownsStayOnScreen(unittest.TestCase):
         self.app.processEvents()
         return rect.bottom() - avail_bottom, -rect.top()
 
-    def test_short_lists_are_native_and_long_lists_are_searchable(self):
+    def test_all_lists_use_the_same_picker(self):
         for count in (2, 4, 7, 44):
             box = settings_ui.FitsOnScreenCombo()
             box.addItems([f"item {index}" for index in range(count)])
             with mock.patch.object(box, "_search_picker") as picker, \
                  mock.patch.object(QComboBox, "showPopup") as native:
                 box.showPopup()
-            self.assertEqual(picker.call_count, int(count > 8))
-            self.assertEqual(native.call_count, int(count <= 8))
+            self.assertEqual(picker.call_count, 1)
+            self.assertEqual(native.call_count, 0)
 
     def test_every_settings_combo_is_protected(self):
         """Applied everywhere rather than patched per screenshot: which

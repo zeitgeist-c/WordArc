@@ -1,9 +1,47 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-01
-Hazırlanan paket: 0.6.7 (`brand.py`)
+Hazırlanan paket: 0.6.8 (`brand.py`)
 Dal: master
-Git dönüş noktası: 2133492 / v0.6.6
+Git dönüş noktası: ce60ae9 / v0.6.7
+
+## 2026-10-01 — 0.6.8 ortak seçim penceresi ve model listesi
+
+Kullanıcı 44 model yüklenmesine karşın liste açılmadığını ve kısa motor
+listesinde yalnız bir seçenek göründüğünü bildirdi. Model listesi veri
+kaybından değil açılan pencerenin hemen kapanmasından görünmüyordu.
+Gerçek Windows/Qt tıklamasıyla 44 satır mevcutken popup visible=False
+yeniden üretildi. Pencereye henüz bağlanmamış görünür custom düğmesi ayrı
+top-level Windows penceresi oluşturup odağı çalıyordu. Arama alanı/liste/custom
+düğmesi oluşturulduğu anda popup parent'ına bağlandı; tıklama tamamlandıktan
+sonra açılış yapıldı. Aynı gerçek fare denemesinde visible=True elde edildi.
+
+Kısa/uzun tüm seçimler ortak, ekran içine yerleşen Qt.Popup kullanıyor; kısa
+listede arama gizli, uzun/model listesinde arama açık. Native QComboBox
+açılışı kullanılmıyor. Fareyle alan/ok ve klavye aynı yola girer; alanlarda
+görünür açılış oku eklendi. Veri kimlikleri ve özel model metinleri korunuyor.
+35 ilgili test geçti; native Windows/Qt kaynak denemesinde iki temada 8 liste
+(2/4/7/44 seçenek), model araması ve son modeli seçme başarılı oldu.
+
+Kaynakta 0.6.8, önceki CUDA/runtime/AI/arayüz düzeltmeleri korunuyor.
+Canlı API model çekme ve gerçek GPU kabulü bu ortamda doğrulanmış sayılmaz.
+
+Resmi sürüm kontrolü: 397 test geçti, 1 ağ testi atlandı; import/güvenlik ve
+teslim EXE açılış/isim/sürüm/CUDA DLL arşiv kapıları geçti. Frozen 0.6.8 probe
+iki temada 8 listeyi gerçek fareyle açtı; 44 modellik listede arama ve son
+modeli seçme geçti. 11 CUDA DLL'si yine sadece bundle içinden yüklendi.
+Teslimin 10 runtime modülü kaynakla, 9 ortak modülü frozen probe ile eşleşti.
+Açılış oku SVG'si arşivde mevcut. Kanıtlar build/release-0.6.8*.log,
+build/release-0.6.8-verification.json ve build/release-0.6.8-shots içindedir.
+
+Teslim: dist/WordArc-0.6.8.exe + dist/WordArc-0.6.8.bat.
+EXE: 1.545.650.069 bayt; SHA256:
+36b7a3a27b8c2d2acc041015e5845cde18d6884ab444ac4d06c6460c659cb5fa.
+Kapsam içi kaynak/derleme değişiklikleri yerel commit ve v0.6.8 etiketiyle
+kaydedilir; harici push/release yapılmaz. Önceki teslimler korunmuştur.
+İlk commit/tag girişimi otomatik incelemede tmm eksikliğiyle reddedildi;
+kullanıcı daha sonra doğrudan "tmm — yerel commit ve etiketi oluştur" onayı
+verdi. Yerel sürüm kaydı bu onayla tamamlanır; harici yayın kapsam dışıdır.
 
 ## 2026-10-01 — 0.6.7 gömülü CUDA runtime ve onaylı CPU geçişi
 

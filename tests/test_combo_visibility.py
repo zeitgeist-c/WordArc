@@ -12,7 +12,7 @@ import theme
 
 @pytest.mark.parametrize('mode', [theme.ThemeMode.DARK, theme.ThemeMode.LIGHT])
 @pytest.mark.parametrize('count', [2, 4, 7])
-def test_styled_native_choices_are_visible_and_clickable(mode, count):
+def test_styled_choices_are_visible_and_clickable(mode, count):
     app = QApplication.instance() or QApplication([])
     combo = settings_ui.FitsOnScreenCombo()
     combo.setStyleSheet(theme.stylesheet(theme.palette(mode)))
@@ -21,9 +21,11 @@ def test_styled_native_choices_are_visible_and_clickable(mode, count):
     combo.resize(460, 38)
     combo.show()
     try:
-        combo.showPopup()
+        QTest.mouseClick(combo, Qt.MouseButton.LeftButton)
         app.processEvents()
-        view = combo.view()
+        QTest.qWait(30)
+        assert combo._picker.isVisible()
+        view = combo._picker_rows
         viewport = view.viewport()
         assert viewport.height() > 0
         for row in range(count):

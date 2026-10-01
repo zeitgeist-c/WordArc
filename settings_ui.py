@@ -495,19 +495,11 @@ class DeviceCardDelegate(QStyledItemDelegate):
 
 
 class FitsOnScreenCombo(QComboBox):
-    """A combo whose popup stays on the screen, whichever way that takes.
+    """One anchored picker for every choice, with search for long/model lists.
 
-    Qt opens a dropdown below its box and, when there is not enough room, clips
-    the overflow off the bottom of the screen instead of opening upward or
-    scrolling. On a short screen — or a window whose last row sits near the
-    bottom edge — that reads as a list whose final item is sliced in half, and
-    there is no Qt setting that changes it. The popup is a plain window, so
-    this places it itself, after Qt has chosen a size, and opens it upward when
-    downward does not fit.
-
-    Used for every combo rather than only the ones that broke in a screenshot:
-    which one breaks depends on where the window is and how tall the screen is,
-    and neither is knowable until the click.
+    Mouse release opens it after the originating click has finished. Children
+    belong to the popup before being shown, so no temporary top-level control
+    can steal Windows focus and immediately close the list.
     """
 
     def _cards_if_long(self, subs):
@@ -588,23 +580,36 @@ class FitsOnScreenCombo(QComboBox):
                 return True
         if watched is self.lineEdit() and event.type() == QEvent.Type.MouseButtonPress:
             if event.button() == Qt.MouseButton.LeftButton:
-                self.showPopup()
+                return True
+        if watched is self.lineEdit() and event.type() == QEvent.Type.MouseButtonRelease:
+            if event.button() == Qt.MouseButton.LeftButton:
+                QTimer.singleShot(0, self.showPopup)
                 return True
         return super().eventFilter(watched, event)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.showPopup()
             event.accept()
         else:
             super().mousePressEvent(event)
 
-    def showPopup(self):
-        if self.isEditable() or self.property("searchable") or self.count() > 8:
-            self._search_picker()
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.rect().contains(event.position().toPoint()):
+                QTimer.singleShot(0, self.showPopup)
+            event.accept()
         else:
-            super().showPopup()
-            self._open_where_it_fits()
+            super().mouseReleaseEvent(event)
+
+    def showPopup(self):
+        if self.isEnabled() and (self.count() or self.isEditable()):
+            self._search_picker()
+
+    def hidePopup(self):
+        popup = getattr(self, '_picker', None)
+        if popup is not None:
+            popup.close()
+        super().hidePopup()
 
     def _search_picker(self):
         if getattr(self, "_picker", None) is not None:
@@ -616,10 +621,12 @@ class FitsOnScreenCombo(QComboBox):
         dialog.setWindowTitle(t("Select"))
         screen = (self.screen() or QGuiApplication.primaryScreen()).availableGeometry()
         layout = QVBoxLayout(dialog)
-        search = QLineEdit()
+        search = QLineEdit(dialog)
         search.setPlaceholderText(t("Search…"))
         search.setClearButtonEnabled(True)
-        rows = QListWidget()
+        searchable = self.isEditable() or bool(self.property('searchable')) or self.count() > 8
+        search.setVisible(searchable)
+        rows = QListWidget(dialog)
         self._picker_search = search
         self._picker_rows = rows
         search.installEventFilter(self)
@@ -648,7 +655,7 @@ class FitsOnScreenCombo(QComboBox):
             if item is not None and not item.isHidden():
                 self.setCurrentIndex(item.data(Qt.ItemDataRole.UserRole))
                 dialog.close()
-        custom = QPushButton(t("Use typed value"))
+        custom = QPushButton(t("Use typed value"), dialog)
         custom.setVisible(self.isEditable())
         def use_custom():
             if search.text().strip():
@@ -662,6 +669,7 @@ class FitsOnScreenCombo(QComboBox):
                 choose()
         rows.itemDoubleClicked.connect(lambda _: choose())
         rows.itemClicked.connect(lambda _: choose())
+        rows.itemActivated.connect(lambda _: choose())
         search.returnPressed.connect(accept_search)
         QShortcut(QKeySequence(Qt.Key.Key_Escape), dialog, activated=dialog.close)
         enter = QShortcut(QKeySequence(Qt.Key.Key_Return), rows, activated=choose)
@@ -671,7 +679,8 @@ class FitsOnScreenCombo(QComboBox):
         layout.addWidget(custom)
         row_height = max(34, rows.fontMetrics().height() + 18, *(rows.sizeHintForRow(i) for i in range(rows.count())))
         width = min(max(self.width(), 320), screen.width() - 16)
-        height = min(340, row_height * max(2, min(self.count(), 6)) + 64 + (44 if self.isEditable() else 0))
+        visible_rows = min(self.count(), 6 if searchable else 8)
+        height = min(440, row_height * visible_rows + 32 + (48 if searchable else 0) + (44 if self.isEditable() else 0))
         anchor = self.mapToGlobal(QPoint(0, self.height()))
         above = self.mapToGlobal(QPoint(0, 0)).y() - screen.top()
         below = screen.bottom() - anchor.y() + 1
@@ -686,7 +695,10 @@ class FitsOnScreenCombo(QComboBox):
                 self._picker = None
         dialog.destroyed.connect(released)
         dialog.show()
-        search.setFocus()
+        if searchable:
+            search.setFocus()
+        else:
+            rows.setFocus()
 
     def _open_where_it_fits(self):
         """Move the popup so the whole list is on the screen, shrinking it to
@@ -754,11 +766,12 @@ class FitsOnScreenCombo(QComboBox):
         # Qt decides this one for itself and does not consult the screen, so a
         # keyboard-opened list lands in the same clipped place the mouse-opened
         # one did. Routed through the same placement for the same reason.
-        super().keyPressEvent(event)
-        if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down,
-                           Qt.Key.Key_Return, Qt.Key.Key_Enter,
-                           Qt.Key.Key_Space):
-            self._reposition_popup()
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space,
+                           Qt.Key.Key_Down, Qt.Key.Key_Up, Qt.Key.Key_F4):
+            self.showPopup()
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
     def _reposition_popup(self):
         """Slide an already-open popup back onto the screen.
