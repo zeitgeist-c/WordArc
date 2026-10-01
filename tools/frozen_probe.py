@@ -274,6 +274,16 @@ def main():
                                            where=where, device_preference='cpu')
             assert isinstance(result, str)
         print(f'FROZEN RUNTIME OK version={__import__("brand").BRAND.version} device=cpu unicode=ok decode=ok', flush=True)
+    elif probe == "cuda":
+        import cuda_runtime
+        from pathlib import Path
+        missing = cuda_runtime.missing_libraries()
+        assert not missing, missing
+        bundle = Path(sys._MEIPASS).resolve()
+        for name, library in cuda_runtime._libraries.items():
+            path = Path(library._name).resolve()
+            assert path.is_relative_to(bundle), (name, path)
+        print(f'FROZEN CUDA DLLS OK count={len(cuda_runtime.LIBRARIES)} all-from-bundle=True', flush=True)
     elif probe == "workspace":
         workspace()
     elif probe == "download":

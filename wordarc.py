@@ -36,6 +36,7 @@ import diagnostics  # noqa: E402
 import hotkey  # noqa: E402
 import meeting  # noqa: E402
 import localspeech  # noqa: E402
+from cuda_recovery import CudaRecovery  # noqa: E402
 import operation  # noqa: E402
 import brand_migration  # noqa: E402
 import theme  # noqa: E402
@@ -109,6 +110,7 @@ class WordArc:
     def __init__(self, app, conf=None):
         self.app = app
         self.conf = conf or cfg.Config()
+        self.cuda_recovery = CudaRecovery(self.conf)
         self.state = IDLE
         self.dictation_operation = operation.OperationController()
         self.meeting_operation = operation.OperationController()

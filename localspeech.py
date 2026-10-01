@@ -175,9 +175,16 @@ def get_best_device(preference=DEVICE_AUTO):
     if want == DEVICE_CUDA:
         if cuda_available():
             return DEVICE_CUDA, COMPUTE_CUDA
-        _fail("Nvidia GPU was requested, but no usable CUDA device was "
-              "found. Check the driver and the CUDA runtime, or switch the "
-              "device back to Automatic.")
+        missing = cuda_runtime.missing_libraries()
+        if missing:
+            raise CudaUnavailable(t("CUDA libraries are missing or cannot load (packaging/dependency problem): {libraries}",
+                                    libraries=', '.join(missing)))
+        try:
+            import ctranslate2
+            count = ctranslate2.get_cuda_device_count()
+        except Exception as exc:
+            raise CudaUnavailable(t("CTranslate2 CUDA initialization failed: {error}", error=exc)) from exc
+        raise CudaUnavailable(t("No usable NVIDIA GPU/driver was found (CUDA devices: {count}).", count=count))
     if cuda_available():
         return DEVICE_CUDA, COMPUTE_CUDA
     return DEVICE_CPU, COMPUTE_CPU
@@ -256,6 +263,10 @@ _model_device = ("", "")
 
 class LocalSpeechError(Exception):
     """Anything that keeps the local engine from answering."""
+
+
+class CudaUnavailable(LocalSpeechError):
+    """An explicit CUDA request needs user consent before switching to CPU."""
 
 
 class Cancelled(LocalSpeechError):
@@ -616,11 +627,15 @@ def engine(name, where=None, device_preference=None):
                   "in Settings.", name=name)
         try:
             _model = _load_model(_root(name, cache), device, compute_type)
-        except ImportError:
+        except ImportError as exc:
             _model, _model_name, _model_device = None, "", ("", "")
-            _fail("The local speech engine is missing. Reinstall WordArc to "
-                  "get it back.")
+            if device == DEVICE_CUDA:
+                raise CudaUnavailable(t("CTranslate2/local engine could not load: {error}", error=exc)) from exc
+            _fail("CTranslate2/local engine could not load: {error}", error=exc)
         except Exception as exc:  # ctranslate2 raises bare RuntimeError
+            if device == DEVICE_CUDA and preference == DEVICE_CUDA:
+                _model, _model_name, _model_device = None, "", ("", "")
+                raise CudaUnavailable(t("CUDA initialization failed: {error}", error=exc)) from exc
             if device == DEVICE_CUDA and _is_cuda_library_error(exc):
                 # The CUDA libraries (cuBLAS/cuDNN/runtime) are missing, not
                 # the GPU: run on the CPU and say so in the log instead of
@@ -704,6 +719,8 @@ def transcribe(name, wav_path, language="", prompt="", should_stop=None,
         device = getattr(getattr(model, "model", None), "device", None)
         if model is _model:
             device = _model_device[0]
+        if device == DEVICE_CUDA and device_preference == DEVICE_CUDA:
+            raise CudaUnavailable(t("CUDA transcription failed: {error}", error=exc)) from exc
         if device == DEVICE_CUDA and _is_cuda_library_error(exc):
             global _last_fallback_note, _cuda_failed
             _last_fallback_note = f"CUDA transcription failed ({exc}); using CPU instead."
@@ -764,9 +781,20 @@ def transcribe_for(conf, wav_path, language="", prompt="", should_stop=None,
     name = conf.get("local_stt_model") or default_model()
     device_preference = conf.get("local_stt_device") or DEVICE_AUTO
     try:
+        previous = getattr(conf, '_cuda_failure', None)
+        if device_preference == DEVICE_CUDA and previous is not None:
+            raise previous
         return transcribe(name, wav_path, language, prompt, should_stop,
                           with_segments, device_preference=device_preference)
     except Cancelled:
+        raise
+    except CudaUnavailable as exc:
+        conf._cuda_failure = exc
+        recovery = getattr(conf, '_cuda_recovery', None)
+        if recovery is not None and recovery(str(exc), should_stop):
+            _check_cancelled(should_stop)
+            return transcribe(name, wav_path, language, prompt, should_stop,
+                              with_segments, device_preference=DEVICE_CPU)
         raise
     except LocalSpeechError as exc:
         _log.warning("local engine could not answer (%s); not sending the "

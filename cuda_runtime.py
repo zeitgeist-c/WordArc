@@ -5,7 +5,7 @@ import os
 import sys
 import threading
 
-LIBRARIES = ("cublasLt64_12.dll", "cublas64_12.dll", "cudnn64_9.dll",
+LIBRARIES = ("cudart64_12.dll", "cublasLt64_12.dll", "cublas64_12.dll", "cudnn64_9.dll",
              "cudnn_ops64_9.dll", "cudnn_cnn64_9.dll",
              "cudnn_adv64_9.dll", "cudnn_graph64_9.dll",
              "cudnn_engines_precompiled64_9.dll",
@@ -71,7 +71,9 @@ def missing_libraries():
             if name in _libraries:
                 continue
             try:
-                _libraries[name] = ctypes.WinDLL(name)
+                candidate = next((path / name for path in search_directories()
+                                  if (path / name).is_file()), None)
+                _libraries[name] = ctypes.WinDLL(str(candidate) if candidate else name)
             except OSError:
                 missing.append(name)
     return missing

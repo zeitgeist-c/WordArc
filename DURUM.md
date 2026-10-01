@@ -1,9 +1,52 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-01
-Hazırlanan paket: 0.6.6 (`brand.py`)
+Hazırlanan paket: 0.6.7 (`brand.py`)
 Dal: master
-Git dönüş noktası: fb224ed / v0.6.5
+Git dönüş noktası: 2133492 / v0.6.6
+
+## 2026-10-01 — 0.6.7 gömülü CUDA runtime ve onaylı CPU geçişi
+
+Kullanıcı RTX 5060 / sürücü 596.36 / nvidia-smi CUDA 13.2 bildirimiyle,
+önceki EXE'nin cublas64_12.dll hatasını iletti. Bu makine farklıdır:
+/Users/usert log yolu ve nvidia-smi burada yok; hedef GPU testi yapılamaz.
+
+Standart build.ps1 teslimi artık requirements-cuda.txt NVIDIA wheel setini
+kurup doğrular; cublas, CUDA runtime, NVRTC ve cuDNN DLL'leri iki spec'te
+bin/lib düzeni korunarak eklenir. cuda_runtime sys._MEIPASS ve EXE yanını
+arar; mevcut DLL'yi tam yoluyla yükler. Paket denetiminin --cuda kapısı
+gerekli DLL'lerin gerçekten teslim EXE arşivinde bulunduğunu doğrular.
+
+Açık CUDA seçiminde eksik DLL, CTranslate2 yüklenme nedeni ve GPU/sürücü
+yokluğu ayrı raporlanır. Başlatma/çözümleme hatası sessiz CPU geçişi yapmaz.
+Ortak GUI onay hizmeti dikte/toplantı/dosyada bir kez CPU geçişini teklif eder;
+onayda ayarı kaydeder ve aynı kaydı CPU ile yeniden işler. Redde aynı oturumda
+GPU başlatma ve uyarı döngüsü tekrarlanmaz. Kaydetme başarısızsa ayar geri alınır.
+Otomatik modun CUDA hatasında sessiz CPU geri dönüşü korunmuştur.
+
+Hedef GPU kabulü açık: temiz RTX 5060 ortamında large-v3-turbo gerçek kayıt
+cuda/float16 ile tamamlanmalı ve nvidia-smi süreç kanıtı alınmalıdır.
+
+Standart derlemenin ilk DLL adı kapısında cublasLt büyük/küçük harf karşılaştırma
+hatası saptanıp düzeltildi; mevcut aynı EXE üzerinde --cuda kapısı tekrar geçti.
+Paket adı/gömülü sürüm/modüller ve teslim EXE izole açılışı doğrulandı.
+Frozen probe 11 CUDA DLL'sini sys._MEIPASS içinden yükledi; harici Python
+DLL'si kullanılmadığı tam dosya yollarıyla doğrulandı. Aynı probe CPU/base
+sessiz WAV çözümlemesini ve arayüz/seçim testlerini geçti.
+Teslimin 10 runtime modülü kaynakla, 9 ortak modülü frozen probe ile eşleşti.
+CUDA wheel setinin ayrı güvenlik denetiminde bilinen açık bulunmadı.
+
+Teslim: dist/WordArc-0.6.7.exe + dist/WordArc-0.6.7.bat.
+EXE: 1.545.649.495 bayt; SHA256:
+4ec3135524037939ad48991490e3c6b5445596492cbe83af358f49b5713b7802.
+Kanıtlar: build/release-0.6.7-{package,cuda,workspace,runtime,cuda-audit}.log
+ve build/release-0.6.7-verification.json. İlk derleme 390 test/1 atlama;
+ardından GUI thread/cancel için 2 test daha eklendi, ilgili 9 onay testi geçti.
+Hedef kabul adımları docs/cuda-acceptance-0.6.7.md içindedir.
+Son resmi kontrol: 392 test geçti, 1 ağ testi atlandı; import ve güvenlik
+kapıları geçti. Teslimin wordarc giriş betiği de mevcut kaynakla bytecode
+olarak eşleşti. Kapsam içi kaynak/derleme kayıtları yerel commit ve v0.6.7
+etiketinde tutulur; harici push/release yapılmaz. GPU kabulü hâlâ açıktır.
 
 ## 2026-10-01 — 0.6.6 seçim listesi düzeltmesi
 

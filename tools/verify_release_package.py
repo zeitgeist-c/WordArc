@@ -30,6 +30,11 @@ def main():
     reader = CArchiveReader(str(exe))
     assert any(Path(name).name.lower() == 'unicodedata.pyd' for name in reader.toc), 'missing unicodedata extension'
     assert any(Path(name).name.lower() == 'ctranslate2.dll' for name in reader.toc), 'missing CTranslate2 runtime'
+    if '--cuda' in sys.argv:
+        import cuda_runtime
+        bundled = {Path(name.replace('\\', '/')).name.lower() for name in reader.toc}
+        missing = {name.lower() for name in cuda_runtime.LIBRARIES} - bundled
+        assert not missing, f'missing bundled CUDA DLLs: {sorted(missing)}'
     assert not any(Path(name).name.lower() in {"icuuc.dll", "icuin.dll"} for name in reader.toc), "OS ICU shadowed"
     archive = reader.open_embedded_archive("PYZ.pyz")
     assert BRAND.version in list(constants(archive.extract("brand"))), "wrong embedded version"

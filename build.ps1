@@ -1,4 +1,4 @@
-param([string]$Python = "python", [switch]$Cuda)
+param([string]$Python = "python", [switch]$Cuda, [switch]$CpuOnly)
 
 $ErrorActionPreference = "Stop"
 $ExpectedFfmpegVersion = "8.1.1-essentials_build-www.gyan.dev"
@@ -6,8 +6,9 @@ $ExpectedFfmpegSha256 = "228D7A8556258DE907FDB55F36850078EBC7680B84EC30D84EA02E9
 $Ffmpeg = Join-Path $PSScriptRoot "ffmpeg.exe"
 Set-Location -LiteralPath $PSScriptRoot
 
-if ($Cuda) {
-    # Installation is deliberate; a normal CPU build stays small.
+if ($Cuda -and $CpuOnly) { throw 'Choose CUDA or CPU-only, not both.' }
+if (-not $CpuOnly) {
+    # Standard deliveries include CUDA libraries; the driver stays external.
     & $Python -m pip install -r (Join-Path $PSScriptRoot 'requirements-cuda.txt')
     if ($LASTEXITCODE -ne 0) { throw 'CUDA runtime installation failed.' }
     & $Python -c "import cuda_runtime; missing = cuda_runtime.missing_libraries(); assert not missing, missing"
@@ -63,6 +64,8 @@ $Launcher = "@echo off`r`nsetlocal`r`n" +
     "cd /d `"%~dp0`"`r`n" +
     "start `"WordArc $AppVersion`" `"%~dp0$VersionedName`" %*`r`n"
 [IO.File]::WriteAllText($LauncherPath, $Launcher, [Text.UTF8Encoding]::new($false))
-& $Python (Join-Path $PSScriptRoot "tools\verify_release_package.py")
+$VerificationArgs = @()
+if (-not $CpuOnly) { $VerificationArgs = @('--cuda') }
+& $Python (Join-Path $PSScriptRoot "tools\verify_release_package.py") @VerificationArgs
 if ($LASTEXITCODE -ne 0) { throw "Release package verification failed." }
 Write-Host "Build completed: dist\$VersionedName + $LauncherName" -ForegroundColor Green

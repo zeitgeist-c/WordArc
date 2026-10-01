@@ -15,10 +15,10 @@ datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand'),
          (os.path.join(_QT_TRANSLATIONS, 'qtbase_tr.qm'),
           'PyQt6/Qt6/translations')]
 binaries = collect_dynamic_libs('ctranslate2')
-# Optional pinned NVIDIA wheels supply Windows DLLs that ordinary import
+# Pinned NVIDIA wheels supply Windows DLLs that ordinary import
 # analysis cannot see. Preserve their directory layout for cuda_runtime.
 _SITE = Path(sysconfig.get_path('purelib'))
-for dll in (_SITE / 'nvidia').glob('*/bin/*.dll'):
+for dll in list((_SITE / 'nvidia').glob('*/bin/*.dll')) + list((_SITE / 'nvidia').glob('*/lib/*.dll')):
     binaries.append((str(dll), str(dll.parent.relative_to(_SITE))))
 # The local speech engine. faster_whisper pulls in ctranslate2, onnxruntime,
 # tokenizers, av and huggingface_hub, and PyInstaller's hooks miss most of them
