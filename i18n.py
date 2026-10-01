@@ -51,6 +51,14 @@ def name(text, case=""):
 
 
 TR = {
+    "CUDA could not start": "CUDA başlatılamadı",
+    "Switch to CPU, save this setting and retry this recording?": "CPU'ya geçilsin, bu ayar kaydedilsin ve bu kayıt yeniden işlensin mi?",
+    "CUDA libraries are missing or cannot load (packaging/dependency problem): {libraries}": "CUDA kitaplıkları eksik veya yüklenemiyor (paketleme/bağımlılık sorunu): {libraries}",
+    "CTranslate2 CUDA initialization failed: {error}": "CTranslate2 CUDA başlatma hatası: {error}",
+    "No usable NVIDIA GPU/driver was found (CUDA devices: {count}).": "Kullanılabilir NVIDIA GPU/sürücü bulunamadı (CUDA cihazı: {count}).",
+    "CTranslate2/local engine could not load: {error}": "CTranslate2/yerel motor yüklenemedi: {error}",
+    "CUDA initialization failed: {error}": "CUDA başlatılamadı: {error}",
+    "CUDA transcription failed: {error}": "CUDA yazıya çevirme hatası: {error}",
     "Gemini did not finish the response ({reason}).": "Gemini yanıtı tamamlayamadı ({reason}).",
     "No speech content remains after cleanup.": "Temizleme sonrasında konuşma içeriği kalmadı.",
     "Controls": "Kontroller",

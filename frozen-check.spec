@@ -19,7 +19,7 @@ datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand'),
           'PyQt6/Qt6/translations')]
 binaries = collect_dynamic_libs('ctranslate2')
 _SITE = Path(sysconfig.get_path('purelib'))
-for dll in (_SITE / 'nvidia').glob('*/bin/*.dll'):
+for dll in list((_SITE / 'nvidia').glob('*/bin/*.dll')) + list((_SITE / 'nvidia').glob('*/lib/*.dll')):
     binaries.append((str(dll), str(dll.parent.relative_to(_SITE))))
 hiddenimports = ['unicodedata', 'soundcard', 'faster_whisper', 'ctranslate2',
                   'onnxruntime', 'tokenizers', 'huggingface_hub',

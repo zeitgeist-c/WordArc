@@ -851,6 +851,12 @@ class SettingsWindow(QDialog):
                  meetings=None, ask_command=None, parent=None):
         super().__init__(parent)
         self.conf = conf
+        if not hasattr(conf, '_cuda_recovery'):
+            from cuda_recovery import CudaRecovery
+            self.cuda_recovery = CudaRecovery(conf)
+        else:
+            self.cuda_recovery = conf._cuda_recovery.__self__
+        self.cuda_recovery.changed.connect(self._cuda_changed)
         self._download_stop = threading.Event()
         self._download_name = None
         self.launch_command = launch_command
@@ -2064,6 +2070,10 @@ class SettingsWindow(QDialog):
         # Everything above is more than one screenful; let it scroll rather than
         # squeezing the prompt box down to nothing.
         return page
+
+    def _cuda_changed(self):
+        if hasattr(self, 'local_stt_device'):
+            self.local_stt_device.setCurrentIndex(self.local_stt_device.findData('cpu'))
 
     def _settings_tab(self):
         """Shared AI and application sections built straight into one tab.

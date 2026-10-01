@@ -81,8 +81,8 @@ tests/            pytest paketi
 - **`Ctrl+Space` işlemiyor?** Kısayol başka uygulamada olabilir — boşaltıp `wordarc.py restart` çalıştır.
 - **Toplantıda karşı ses yok?** Sistem sesi yakalama loopback ister; Windows ses ayarlarına bak.
 - **Anahtar reddedildi?** Ayarlar'dan yeniden gir; yalnızca Credential Manager'da durur.
-- **Yerel model GPU'da mı?** Yerel motor hem GPU'yu hem CUDA 12/cuBLAS ve cuDNN 9 DLL'lerinin yüklenmesini kontrol eder. Otomatik modda bunlar hazır değilse CPU (`int8`) kullanılır. Çözümleme sırasında CUDA DLL hatası çıkarsa kayıt baştan CPU'da işlenir; yarım GPU sonucu kullanılmaz. Windows'ta AMD kartlarda CPU kullanılır. Cihaz Ayarlar → Konuşmayı yazıya çevir → Cihaz adımından seçilebilir.
-- **CUDA bağımlılıkları ve paketleme:** Kaynaktan çalıştırırken `.venv\Scripts\python.exe -m pip install -r requirements-cuda.txt` ile sabitlenmiş NVIDIA DLL paketleri kurulur. GPU destekli EXE için `./build.ps1 -Python .venv/Scripts/python.exe -Cuda` kullanılır; DLL'ler pakete eklenir. NVIDIA sürücüsü ayrıca kurulu olmalıdır. CUDA bağımlılıkları yaklaşık 1,3 GB indirme gerektirir; normal CPU derlemesi bunları indirmez. DLL denetimi gerçek GPU çözümlemesinin yerine geçmez.
+- **Yerel model GPU'da mı?** Yerel motor GPU'yu ve CUDA 12/cuBLAS/cuDNN 9 DLL'lerini kontrol eder. Otomatik modda CUDA kullanılamazsa CPU (`int8`) seçilir; geç çözümleme hatasında kayıt baştan CPU'da işlenir. Cihaz=Nvidia GPU seçiliyken başlatma/çözümleme başarısızsa neden gösterilir ve CPU geçişi bir kez sorulur. Onayla ayar kaydedilir, aynı kayıt CPU'da yeniden işlenir. Redde ayar korunur. Cihaz Ayarlar → Ses ve modeller bölümünden seçilir.
+- **CUDA bağımlılıkları ve paketleme:** Kaynaktan çalıştırırken `.venv\Scripts\python.exe -m pip install -r requirements-cuda.txt` kullanılır. Standart `./build.ps1 -Python .venv/Scripts/python.exe` derlemesi NVIDIA CUDA runtime/cuBLAS/NVRTC/cuDNN kitaplıklarını kurar, EXE'ye ekler ve arşivde doğrular. NVIDIA sürücüsü ayrıca kurulu olmalıdır. İlk indirme yaklaşık 1,4 GB'dır. DLL denetimi gerçek GPU çözümlemesinin yerine geçmez; [GPU kabul adımları](docs/cuda-acceptance-0.6.7.md) ayrı uygulanır.
 
 ## Yol haritası
 
