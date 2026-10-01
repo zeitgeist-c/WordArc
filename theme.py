@@ -179,12 +179,8 @@ def stylesheet(colors: Palette) -> str:
            makes it taller than the place Qt chose for it — and the difference
            is pushed past the screen edge instead of being scrolled. The rows
            below already carry the breathing room. */
-        /* And a ceiling, for the other half of the same problem: a popup that
-           does not fit above or below its box opens where it was told to and
-           loses its last row off the bottom of the screen. Scrolling would show
-           it, but a list you have to scroll to finish is a list nobody reads to
-           the end, so it is capped at what the screen can hold. */
-        max-height: 70vh;
+        /* Screen bounds are handled by FitsOnScreenCombo. Qt stylesheets do
+           not support viewport units; a vh ceiling collapses this view. */
         selection-background-color: {colors.selected};
         selection-color: {colors.text};
     }}
