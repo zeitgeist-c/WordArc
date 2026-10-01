@@ -15,6 +15,11 @@ datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand'),
          (os.path.join(_QT_TRANSLATIONS, 'qtbase_tr.qm'),
           'PyQt6/Qt6/translations')]
 binaries = collect_dynamic_libs('ctranslate2')
+# Native process isolation: carry the verified payload as data so PyInstaller
+# does not flatten its DLL layout or replace its local CRT dependencies.
+from tools.build_vulkan import verify as verify_vulkan
+assert verify_vulkan(), 'Build/verify the Vulkan payload before packaging'
+datas.append(('native/whisper-vulkan', 'native/whisper-vulkan'))
 # Pinned NVIDIA wheels supply Windows DLLs that ordinary import
 # analysis cannot see. Preserve their directory layout for cuda_runtime.
 _SITE = Path(sysconfig.get_path('purelib'))

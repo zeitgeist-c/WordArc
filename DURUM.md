@@ -1,9 +1,62 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-01
-Hazırlanan paket: 0.6.8 (`brand.py`)
+Hazırlanan paket: 0.6.9 (`brand.py`)
 Dal: master
-Git dönüş noktası: ce60ae9 / v0.6.7
+Git dönüş noktası: 0386d6c / v0.6.8
+
+## 2026-10-01 — 0.6.9 AMD/Vulkan ve bağımsız CPU kurtarması
+
+Kullanıcı RX 6650 XT ve Ryzen 7 7700 ile AMD GPU hızlandırması istedi.
+Resmi Vulkan/Whisper/AMD kaynakları incelendi; gerçek ggml backend bu
+bilgisayarda RX 6650 XT'yi yaklaşık 8 GB bellekle gördü. CUDA için mevcut
+faster-whisper/CTranslate2 akışı korunur; AMD için whisper.cpp 1.9.2/Vulkan
+ayrı süreçte eklenir. Motor, ggml DLL'leri ve Visual C++ runtime pakettedir.
+CPU kurtarması, Vulkan'a bağlanmayan ayrı native payload kullanır.
+
+Otomatik öncelik NVIDIA CUDA / AMD Vulkan / CPU. GGML modelleri ayrı ve
+checksum/revision doğrulamasıyla indirilir; önceki CT2 modelleri korunur.
+Vulkan modeli yokken eski CPU modeli çalışır. GPU sürücüsü yokken yalnız
+GGML modeli kuruluysa da CPU çalışır. Elle AMD seçiminde bir kez CPU onayı,
+ayar kaydı ve aynı kaydı tekrar işleme vardır; otomatik mod GPU hatasında
+CPU'ya döner. Ses buluta düşürülmez. İptalde yalnız başlatılan child kapatılır.
+
+Resmi 11 saniyelik JFK örneği / large-v3-turbo / üç tekrar ortancası:
+RX 6650 XT 3,52 sn; Ryzen 7 7700 mevcut CPU motoru 5,63 sn. Bu örnekte yaklaşık
+1,60 kat hızlanma; bütün metinler aynı. Model açılışı dahil, dosya önbelleği
+sıcak; CPU'nun oturum model cache'iyle kısa ardışık dikte oranı farklı olabilir.
+Türkçe mikrofon/uzun toplantı kalitesi ve başka temiz Windows kurulumu açık.
+RTX 5060 üzerinde gerçek CUDA kabulü bu makinede yapılmış değildir.
+
+410 test geçti, 1 ağ testi atlandı; import, pip check ve runtime güvenlik
+denetimi temiz. Paket arşiv kapısı güncel kaynak bytecode'u, native manifest
+hashlerini, Vulkan'dan bağımsız CPU importlarını ve CUDA DLL'lerini denetler.
+Teslim EXE'si büyük-v3-turbo resmi örnek sesini hem RX 6650 XT/Vulkan hem
+Vulkan'dan bağımsız GGML CPU yolunda gerçek olarak tamamladı; metinler aynı.
+Kanıt: build/release-0.6.9-gpu-cpu.json. GPU'nun CPU'ya düşmediği ve GPU
+ağırlık tamponu/backendinin kullanıldığı doğrulandı. Kaynak bytecode'u, 33
+native dosyanın hashleri, CPU importları ve CUDA DLL arşiv denetimi geçti.
+İlk paket kabul çalıştırmasında GPU keşfi/çözümleme toplamı 12,95 sn, CPU
+9,69 sn oldu; bu değerler iç motorun üç tekrarlı ölçümüyle aynı sınırı ölçmez.
+Bu kontrollerde LOCALAPPDATA ve sürücü önbelleği yeni temp dizinindeydi.
+Normal mevcut sürücü önbelleğini kullanan aynı teslim EXE'si GPU çözümlemesini
+4,04 sn'de tamamladı; kanıt build/release-0.6.9-gpu-normal-cache.json.
+İlk sürücü/shader hazırlığı ek süre alabilir; GPU her kayıtta daha hızlıdır
+iddiası yoktur.
+
+AMD modeli doğrulanmış test kopyasından kullanıcı model klasörüne eklendi:
+%LOCALAPPDATA%/WordArc/whisper/whisper.cpp/ggml-large-v3-turbo.bin.
+1.624.555.275 bayt; SHA256:
+1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69.
+Eski modeller, config ve çalışan kullanıcı oturumu korunur. Vulkan SDK/ROCm
+ve runtime DLL'lerini kullanıcı ayrıca indirmez; AMD sürücüsü kurulu olmalıdır.
+
+Teslim: dist/WordArc-0.6.9.exe ve dist/WordArc-0.6.9.bat.
+EXE: 1.582.635.897 bayt; SHA256:
+cd9e6c068d668dfa475794f458e77b5dbc43f5147b94ef40a575bf1e23b2f6d4.
+Kaynak/derleme/test değişiklikleri yerel sürüm commit'i ve v0.6.9 ile kaydedilir;
+harici push/release yapılmaz. Önceki teslim sürümleri korunur.
+Araştırma/ölçüm: docs/amd-vulkan-0.6.9.md; build/amd-benchmark-0.6.9.json.
 
 ## 2026-10-01 — 0.6.8 ortak seçim penceresi ve model listesi
 

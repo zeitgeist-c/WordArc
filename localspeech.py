@@ -36,6 +36,7 @@ from dataclasses import dataclass
 
 from i18n import t
 import cuda_runtime
+import vulkan_speech
 
 _log = logging.getLogger("wordarc.localspeech")
 
@@ -47,12 +48,12 @@ THREADS = 8
 #   Nvidia + working CUDA -> cuda + float16 (any card: GTX 10xx through RTX
 #   50xx; no per-model code, ctranslate2.get_cuda_device_count() > 0 is the
 #   initial driver check; required CUDA DLLs must also load).
-#   Otherwise (AMD card, no GPU) -> cpu + int8. On Windows an AMD card can
-#   never run the model on the GPU, so CPU is mandatory there.
-DEVICE_AUTO, DEVICE_CUDA, DEVICE_CPU = "auto", "cuda", "cpu"
+#   AMD + working bundled Vulkan -> whisper.cpp; otherwise cpu + int8.
+DEVICE_AUTO, DEVICE_CUDA, DEVICE_CPU, DEVICE_VULKAN = "auto", "cuda", "cpu", "vulkan"
 DEVICE_CHOICES = (
     ("Automatic", DEVICE_AUTO),
     ("Nvidia GPU", DEVICE_CUDA),
+    ("AMD GPU (Vulkan)", DEVICE_VULKAN),
     ("CPU", DEVICE_CPU),
 )
 COMPUTE_CPU = "int8"
@@ -172,6 +173,10 @@ def get_best_device(preference=DEVICE_AUTO):
     want = (preference or DEVICE_AUTO).lower()
     if want == DEVICE_CPU:
         return DEVICE_CPU, COMPUTE_CPU
+    if want == DEVICE_VULKAN:
+        if vulkan_speech.best_device() is not None:
+            return DEVICE_VULKAN, "float16"
+        raise VulkanUnavailable(t("No usable AMD Vulkan device was found. Check the AMD driver."))
     if want == DEVICE_CUDA:
         if cuda_available():
             return DEVICE_CUDA, COMPUTE_CUDA
@@ -187,6 +192,8 @@ def get_best_device(preference=DEVICE_AUTO):
         raise CudaUnavailable(t("No usable NVIDIA GPU/driver was found (CUDA devices: {count}).", count=count))
     if cuda_available():
         return DEVICE_CUDA, COMPUTE_CUDA
+    if vulkan_speech.available():
+        return DEVICE_VULKAN, "float16"
     return DEVICE_CPU, COMPUTE_CPU
 
 
@@ -195,9 +202,11 @@ def describe_device(preference=DEVICE_AUTO):
     try:
         device, compute = get_best_device(preference)
     except LocalSpeechError as exc:
-        return f"CUDA unavailable ({exc})"
+        return str(exc)
     if device == DEVICE_CUDA:
         return f"Nvidia GPU (cuda, {compute})"
+    if device == DEVICE_VULKAN:
+        return f"{vulkan_speech.best_device()['name']} (Vulkan, whisper.cpp)"
     return f"CPU ({device}, {compute})"
 
 
@@ -226,7 +235,7 @@ _cuda_failed = False
 
 
 def last_fallback_note():
-    return _last_fallback_note
+    return vulkan_speech._failure_note or _last_fallback_note
 
 # The three sizes, and what each is for. Measured on the machine this was
 # written on (16 threads, no GPU) on Turkish dictation: base read a noisy take
@@ -267,6 +276,10 @@ class LocalSpeechError(Exception):
 
 class CudaUnavailable(LocalSpeechError):
     """An explicit CUDA request needs user consent before switching to CPU."""
+
+
+class VulkanUnavailable(CudaUnavailable):
+    """Share the existing GUI consent broker for explicit AMD GPU failures."""
 
 
 class Cancelled(LocalSpeechError):
@@ -385,10 +398,17 @@ def _expected_size(name):
     return EXPECTED_SIZES.get(name, 0)
 
 
-def state(name, where=None):
+def state(name, where=None, device_preference=None):
     """What Settings shows: on disk or not, and how much room it takes."""
     if _repo(name) is None:
         return ModelState(name, False, 0)
+    if (model_backend(device_preference) == DEVICE_VULKAN or
+            ((device_preference == DEVICE_CPU or device_preference == DEVICE_AUTO and not cuda_available()) and not _is_installed(name, where)
+             and vulkan_speech.installed(name, where))):
+        path = vulkan_speech.model_path(name, where)
+        installed = vulkan_speech.installed(name, where)
+        return ModelState(name, installed, path.stat().st_size if installed else 0,
+                          vulkan_speech.MODEL_SIZES[name], str(path))
     if not _is_installed(name, where):
         return ModelState(name, False, 0, _expected_size(name))
     return ModelState(name, True, _dir_size(_root(name, where)),
@@ -397,7 +417,21 @@ def state(name, where=None):
 
 def installed_size(where=None):
     """Bytes the installed models take, for the settings summary."""
-    return sum(state(name, where).size for name in model_names())
+    return sum(state(name, where).size for name in model_names()) + _dir_size(vulkan_speech.model_root(where))
+
+
+def model_backend(preference=None):
+    """Storage format selected for Settings; omitted preference preserves CT2 API."""
+    if preference is None:
+        return DEVICE_CPU
+    if preference == DEVICE_VULKAN:
+        return DEVICE_VULKAN
+    if preference == DEVICE_AUTO and not cuda_available() and vulkan_speech.available():
+        return DEVICE_VULKAN
+    # Keep downloaded GGML available after a session fallback on AMD.
+    if preference == DEVICE_AUTO and vulkan_speech._failed:
+        return DEVICE_VULKAN
+    return DEVICE_CPU
 
 
 def _fail(message, **kwargs):
@@ -459,7 +493,9 @@ def _valid_download(path, row):
     return digest.hexdigest() == expected
 
 
-def download(name, where=None, should_stop=None, on_progress=None):
+def download(name, where=None, should_stop=None, on_progress=None, device_preference=None):
+    if model_backend(device_preference) == DEVICE_VULKAN:
+        return vulkan_speech.download(name, where, should_stop, on_progress)
     # A closed window's worker may still be unwinding an HTTP read. A new
     # window must not append to the same part until that worker has stopped.
     while not _download_lock.acquire(timeout=0.1):
@@ -471,13 +507,15 @@ def download(name, where=None, should_stop=None, on_progress=None):
         _download_lock.release()
 
 
-def _download_model(name, where=None, should_stop=None, on_progress=None):
+def _download_model(name, where=None, should_stop=None, on_progress=None, backend=None):
     """Stream verified files with byte progress, cancellation and resumable parts."""
     if _repo(name) is None:
         _fail("Unknown local model: {name}", name=name)
-    if _is_installed(name, where):
+    using_vulkan = backend == DEVICE_VULKAN
+    is_installed = lambda: vulkan_speech.installed(name, where) if using_vulkan else _is_installed(name, where)
+    if is_installed():
         return 0
-    root = _root(name, where)
+    root = str(vulkan_speech.model_root(where)) if using_vulkan else _root(name, where)
     os.makedirs(root, exist_ok=True)
     started = time.monotonic()
     received = 0
@@ -494,7 +532,17 @@ def _download_model(name, where=None, should_stop=None, on_progress=None):
     try:
         _check_cancelled(should_stop)
         report(phase="connecting", force=True)
-        repo, revision, files = _download_manifest(name)
+        if using_vulkan:
+            repo = vulkan_speech.MODEL_REPO
+            with _download_open(f"https://huggingface.co/api/models/{repo}?blobs=true") as response:
+                manifest = json.load(response)
+            revision = manifest["sha"]
+            files = [row for row in manifest["siblings"]
+                     if row["rfilename"] == vulkan_speech.MODEL_FILES[name]]
+            if len(files) != 1 or not files[0].get("lfs", {}).get("sha256"):
+                raise ValueError("Vulkan model metadata/checksum is missing")
+        else:
+            repo, revision, files = _download_manifest(name)
         total = sum(row["size"] for row in files)
         for row in files:
             _check_cancelled(should_stop)
@@ -559,7 +607,7 @@ def _download_model(name, where=None, should_stop=None, on_progress=None):
                         _check_cancelled(should_stop)
                         time.sleep(0.1)
             report(filename, force=True)
-        if not _is_installed(name, where):
+        if not is_installed():
             _fail("The local model downloaded incompletely. Try again.")
         report(phase="complete", force=True)
         return _dir_size(root)
@@ -573,8 +621,18 @@ def _download_model(name, where=None, should_stop=None, on_progress=None):
         _fail("Could not download the local model: {error}", error=str(exc))
 
 
-def remove(name, where=None):
+def remove(name, where=None, device_preference=None):
     """Delete a model from disk. True when something was there."""
+    if (model_backend(device_preference) == DEVICE_VULKAN or
+            ((device_preference == DEVICE_CPU or device_preference == DEVICE_AUTO and not cuda_available()) and not _is_installed(name, where)
+             and vulkan_speech.installed(name, where))):
+        if name not in vulkan_speech.MODEL_FILES:
+            return False
+        path = vulkan_speech.model_path(name, where)
+        if path.is_file():
+            path.unlink()
+            return True
+        return False
     root = _root(name, where)
     if not root or not os.path.isdir(root):
         return False
@@ -618,6 +676,10 @@ def engine(name, where=None, device_preference=None):
         device, compute_type = DEVICE_CPU, COMPUTE_CPU
     else:
         device, compute_type = get_best_device(preference)
+    if device == DEVICE_VULKAN:
+        # This function owns the CTranslate2 cache; Vulkan uses an isolated
+        # native process through transcribe(), never a CT2 Vulkan device.
+        device, compute_type = DEVICE_CPU, COMPUTE_CPU
     with _lock:
         if (_model is not None and _model_name == name
                 and _model_device == (device, compute_type)):
@@ -675,6 +737,41 @@ def transcribe(name, wav_path, language="", prompt="", should_stop=None,
     asks for [(start, end, text)] instead of a single string, which the callers
     that lay out a timeline need and the dictation path does not.
     """
+    preference = device_preference or DEVICE_AUTO
+    name = name or default_model()
+    if _repo(name) is None:
+        _fail("Unknown local model: {name}", name=name)
+    use_vulkan = (preference == DEVICE_VULKAN or
+                  (preference == DEVICE_AUTO and not cuda_available() and
+                   (vulkan_speech.available() or vulkan_speech._failed)))
+    if (preference == DEVICE_AUTO and use_vulkan and
+            not vulkan_speech.installed(name, where) and _is_installed(name, where)):
+        # Upgrading an AMD PC must not break its already-working CPU model.
+        use_vulkan = False
+        device_preference = DEVICE_CPU
+    # A saved CPU choice can use an already downloaded GGML model, so recovery
+    # never needs a second multi-GB download in order to retry the same audio.
+    ggml_cpu = ((preference == DEVICE_CPU or (preference == DEVICE_AUTO and not cuda_available() and not use_vulkan))
+                and not _is_installed(name or default_model(), where)
+                and vulkan_speech.installed(name or default_model(), where))
+    if use_vulkan or ggml_cpu:
+        name = name or default_model()
+        gpu = use_vulkan and (preference == DEVICE_VULKAN or not vulkan_speech._failed)
+        try:
+            return vulkan_speech.transcribe(name, wav_path, language, prompt, should_stop,
+                                           with_segments, where, use_gpu=gpu)
+        except vulkan_speech.VulkanError as exc:
+            if preference == DEVICE_VULKAN:
+                raise VulkanUnavailable(str(exc)) from exc
+            if not gpu:
+                _fail("Local transcription failed: {error}", error=exc)
+            vulkan_speech.fail(str(exc))
+            _check_cancelled(should_stop)
+            try:
+                return vulkan_speech.transcribe(name, wav_path, language, prompt, should_stop,
+                                               with_segments, where, use_gpu=False)
+            except vulkan_speech.VulkanError as cpu_exc:
+                _fail("Local transcription failed: {error}", error=cpu_exc)
     model = engine(name, where, device_preference)
     audio = _read_wav(wav_path)
     # A zero-length take makes Whisper answer with something invented, which is
@@ -782,7 +879,8 @@ def transcribe_for(conf, wav_path, language="", prompt="", should_stop=None,
     device_preference = conf.get("local_stt_device") or DEVICE_AUTO
     try:
         previous = getattr(conf, '_cuda_failure', None)
-        if device_preference == DEVICE_CUDA and previous is not None:
+        if (device_preference in (DEVICE_CUDA, DEVICE_VULKAN) and previous is not None
+                and getattr(conf, '_cuda_failure_device', device_preference) == device_preference):
             raise previous
         return transcribe(name, wav_path, language, prompt, should_stop,
                           with_segments, device_preference=device_preference)
@@ -790,6 +888,7 @@ def transcribe_for(conf, wav_path, language="", prompt="", should_stop=None,
         raise
     except CudaUnavailable as exc:
         conf._cuda_failure = exc
+        conf._cuda_failure_device = device_preference
         recovery = getattr(conf, '_cuda_recovery', None)
         if recovery is not None and recovery(str(exc), should_stop):
             _check_cancelled(should_stop)

@@ -788,6 +788,9 @@ def _should_open_settings(command, has_api_keys, tray_available):
 
 
 def main():
+    if "--local-stt-check" in sys.argv:
+        from local_stt_diagnostic import run
+        return run(sys.argv[sys.argv.index("--local-stt-check") + 1:])
     # Windows otherwise labels source-mode launches as pythonw.exe and shows
     # Python's icon in the taskbar even though Qt has a WordArc window icon.
     set_windows_app_id()
