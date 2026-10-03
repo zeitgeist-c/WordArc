@@ -28,9 +28,14 @@ def test_theme_normalization_and_all_modes_apply():
             != app.palette().color(QPalette.ColorRole.WindowText))
     assert theme.ThemeManager.apply("light", app) == theme.ThemeMode.LIGHT
     assert app.property("wordarcTheme") == "light"
+    # Switching to a retired value still repolishes once (dark fallback),
+    # then re-applying the same resolved mode is a no-op.
     resolved = theme.ThemeManager.apply("system", app)
     assert resolved in (theme.ThemeMode.DARK, theme.ThemeMode.LIGHT)
     assert app.styleSheet()
+    before = app.styleSheet()
+    theme.ThemeManager.apply(resolved.value, app)
+    assert app.styleSheet() == before
 
 
 def test_scrollbar_cards_and_button_variants_are_styled():

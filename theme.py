@@ -351,6 +351,8 @@ class ThemeManager:
     selected_mode = ThemeMode.DARK
     resolved_mode = ThemeMode.DARK
     _app = None
+    _applied_app = None
+    _applied_mode = None
 
     @classmethod
     def apply(cls, mode, app=None):
@@ -359,11 +361,17 @@ class ThemeManager:
         cls._app = app or cls._app
         colors = palette(cls.resolved_mode)
         if cls._app is not None:
-            cls._app.setStyle("Fusion")
-            cls._app.setProperty("wordarcBaseStyle", "Fusion")
-            cls._app.setPalette(qt_palette(colors))
-            cls._app.setStyleSheet(stylesheet(colors))
-            cls._app.setProperty("wordarcTheme", cls.resolved_mode.value)
+            # A save re-applies the unchanged mode: rebuilding a ~14KB
+            # stylesheet and repolishing every widget then costs ~38ms with
+            # the window open. Only the first apply per (mode, app) pays it.
+            if cls._applied_app is not cls._app or cls._applied_mode != cls.resolved_mode.value:
+                cls._app.setStyle("Fusion")
+                cls._app.setProperty("wordarcBaseStyle", "Fusion")
+                cls._app.setPalette(qt_palette(colors))
+                cls._app.setStyleSheet(stylesheet(colors))
+                cls._app.setProperty("wordarcTheme", cls.resolved_mode.value)
+                cls._applied_app = cls._app
+                cls._applied_mode = cls.resolved_mode.value
         try:
             import overlay
             overlay.set_theme(colors)

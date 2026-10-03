@@ -207,10 +207,17 @@ class TestHistory(unittest.TestCase):
     def test_trim(self):
         for i in range(5):
             cfg.append_history({"ts": str(i), "text": str(i)})
-        cfg.trim_history(2)
+        self.assertTrue(cfg.trim_history(2))
         rows = cfg.read_history()
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]["text"], "3")
+    def test_trim_returns_false_without_rewriting(self):
+        for i in range(2):
+            cfg.append_history({"ts": str(i), "text": str(i)})
+        before = cfg.HISTORY_FILE.read_bytes()
+        self.assertFalse(cfg.trim_history(5))
+        self.assertEqual(cfg.HISTORY_FILE.read_bytes(), before)
+        self.assertFalse(cfg.trim_history(0))
     def test_concurrent_appends_do_not_lose_rows(self):
         threads = [threading.Thread(
             target=cfg.append_history,

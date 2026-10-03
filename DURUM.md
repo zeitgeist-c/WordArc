@@ -1,9 +1,31 @@
 # WordArc — durum
 
-Güncelleme: 2026-10-01
-Hazırlanan paket: 0.6.9 (`brand.py`)
+Güncelleme: 2026-10-03
+Hazırlanan paket: 0.6.10 (`brand.py`)
 Dal: master
-Git dönüş noktası: 0386d6c / v0.6.8
+Git dönüş noktası: 86bbea6 / v0.6.9
+
+## 2026-10-03 — 0.6.10 kaydet yavaşlığı düzeltmeleri
+
+Kullanıcı Kaydet'in çok uzun sürdüğünü bildirdi. Darboğaz + performans
+akışıyla `_save()` hot path'i profillendi: 3 tur 64ms ölçümde %76
+`credential_store.write_all` çıktı; anahtarlık değişmemişken bile her
+kaydetmede ~20 Credential Manager çağrısı yapılıyordu.
+
+- `write_all` kayıtlı değer aynıysa yazmıyor (0 yazı/silme; x5 0,11ms).
+- `trim_history` satır düşünce True dönüyor; `_save` yalnız o zaman
+  dosyaya ve listeye dokunuyor.
+- `ThemeManager.apply` aynı modda stil yenilemiyor (aynı mod x5 0,12ms;
+  pencere açıkken ölçülen 37,6ms maliyet kalktı, mod değişimi aynı).
+- Testler: credential erken-çıkış/değişim, trim bool, tema no-op.
+- Resmi kapılar (pytest + compileall + import + audit + SBOM) ve paket
+  arşiv kapısı build içinde geçti.
+
+Teslim: dist/WordArc-0.6.10.exe ve dist/WordArc-0.6.10.bat.
+EXE: 1.581.288.475 bayt; SHA256:
+a58974fe1a5f544f3fc96684be637fbb66047134604c95d4c6b8ed06fa370fbf.
+Kaynak/sürüm/test değişiklikleri yerel sürüm commit'i ve v0.6.10 ile
+kaydedilir; push/release yedek yetkisiyle yapılır. Önceki teslimler korunur.
 
 ## 2026-10-01 — 0.6.9 AMD/Vulkan ve bağımsız CPU kurtarması
 
