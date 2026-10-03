@@ -883,18 +883,21 @@ def _write_history(lines):
 
 
 def trim_history(limit):
-    """Drop the oldest entries once the file passes `limit` rows. 0 means keep all."""
+    """Drop the oldest entries once the file passes `limit` rows. 0 means keep all.
+
+    Returns True when rows were dropped (the file was rewritten)."""
     if not limit or limit < 0:
-        return
+        return False
     with _history_lock:
         try:
             with open(HISTORY_FILE, encoding="utf-8") as fh:
                 lines = fh.readlines()
         except OSError:
-            return
+            return False
         if len(lines) <= limit:
-            return
+            return False
         _write_history(lines[-limit:])
+        return True
 
 
 def _row_key(row):

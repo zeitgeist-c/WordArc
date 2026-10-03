@@ -123,7 +123,11 @@ def read_all():
 
 
 def write_all(secrets):
-    """Replace the ordered keyring, restoring the old values on failure."""
+    """Replace the ordered keyring, restoring the old values on failure.
+
+    Returns True when slots were written, False when the stored values
+    already matched (no Credential Manager writes issued).
+    """
     normalized = []
     for value in secrets:
         secret = str(value or "").strip()
@@ -134,6 +138,8 @@ def write_all(secrets):
 
     previous = [read_target(target) for target in TARGETS]
     desired = normalized + [""] * (len(TARGETS) - len(normalized))
+    if [(value or "").strip() for value in previous] == desired:
+        return False
     try:
         for target, secret in zip(TARGETS, desired):
             if secret:
@@ -143,6 +149,7 @@ def write_all(secrets):
         verified = [read_target(target) for target in TARGETS]
         if verified != desired:
             raise CredentialError("Gemini API keys could not be verified")
+        return True
     except Exception as exc:
         for target, secret in zip(TARGETS, previous):
             try:

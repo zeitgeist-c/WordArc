@@ -67,3 +67,35 @@ def test_write_all_rolls_back_every_slot_after_partial_failure():
 def test_write_all_rejects_more_than_five_keys():
     with pytest.raises(credential_store.CredentialError):
         credential_store.write_all([str(index) for index in range(6)])
+
+
+def test_write_all_skips_credential_writes_when_nothing_changed():
+    state = {target: ("one" if index == 0 else "two" if index == 1 else "")
+             for index, target in enumerate(credential_store.TARGETS)}
+    with mock.patch.object(credential_store, "read_target",
+                           side_effect=lambda target: state[target]), \
+         mock.patch.object(credential_store, "write_target") as write_target, \
+         mock.patch.object(credential_store, "delete_target") as delete_target:
+        assert credential_store.write_all(["one", "two"]) is False
+    write_target.assert_not_called()
+    delete_target.assert_not_called()
+
+
+def test_write_all_writes_when_keys_changed():
+    state = {target: "" for target in credential_store.TARGETS}
+    state[credential_store.TARGETS[0]] = "old"
+
+    def write(target, secret):
+        state[target] = secret
+
+    def delete(target):
+        state[target] = ""
+
+    with mock.patch.object(credential_store, "read_target",
+                           side_effect=lambda target: state[target]), \
+         mock.patch.object(credential_store, "write_target", side_effect=write), \
+         mock.patch.object(credential_store, "delete_target", side_effect=delete):
+        assert credential_store.write_all(["new"]) is True
+    assert [state[target] for target in credential_store.TARGETS] == [
+        "new", "", "", "", "",
+    ]

@@ -2548,11 +2548,17 @@ class SettingsWindow(QDialog):
             warn_box(self, t("Error"), str(exc))
             return
         # A lowered limit should bite now, not on the next dictation.
-        try:
-            cfg.trim_history(conf["history_limit"])
-        except OSError as exc:
-            print(f"wordarc: could not trim the history ({exc})")
-        self._load_history()  # the trim may just have dropped rows from the list
+        # The trim and the repaint run only when rows were actually
+        # dropped, so an unchanged save touches neither disk nor list.
+        history_limit = conf["history_limit"]
+        if conf["history_enabled"] and history_limit:
+            try:
+                dropped = cfg.trim_history(history_limit)
+            except OSError as exc:
+                print(f"wordarc: could not trim the history ({exc})")
+            else:
+                if dropped:
+                    self._load_history()
         self.applied.emit()
         if i18n.language() != language_before:
             # The box on the Settings tab changes the language the same way the
