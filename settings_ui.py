@@ -1384,8 +1384,14 @@ class SettingsWindow(QDialog):
             transcribe=self._engine_summary(),
             cleanup=self.cleanup_model.currentText(),
         )
-        for label in self._shared_ai_labels:
-            label.setText(summary)
+        for label in list(getattr(self, "_shared_ai_labels", [])):
+            try:
+                label.setText(summary)
+            except RuntimeError:
+                # The note was rebuilt under this list (a language change
+                # swaps the pages out): a deleted label is dropped instead
+                # of taking the update down with it.
+                self._shared_ai_labels.remove(label)
 
     def _engine_summary(self):
         """One short phrase naming the engine that would answer now."""

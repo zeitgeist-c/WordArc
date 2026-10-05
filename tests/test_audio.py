@@ -417,5 +417,76 @@ class TestStaleStreams(unittest.TestCase):
             self.assertTrue(audio.refresh_devices())
 
 
+class TestMicFailureDiagnostics(unittest.TestCase):
+    """A microphone that will not open must say why, not just that it did not.
+
+    The frozen app once reported only "Mikrofon açılamadı." while the log
+    stayed silent about the PortAudio reason, so a busy or vanished device
+    could not be told apart from a broken one.
+    """
+
+    def _start_failing(self, recorder, target, first, second=None):
+        errors = []
+        recorder.failed.connect(errors.append)
+        outcomes = [first] if second is None else [first, second]
+
+        def opener(**kwargs):
+            outcome = outcomes.pop(0) if len(outcomes) > 1 else outcomes[0]
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+        with mock.patch.object(audio, "_match_input_device",
+                               return_value=7 if target else None), \
+             mock.patch.object(audio, "_open_portaudio_stream",
+                               side_effect=opener):
+            with self.assertLogs("wordarc.audio", level="WARNING") as logs:
+                recorder.start(target)
+        return errors, "\n".join(logs.output)
+
+    def test_saved_mic_failure_logs_reason_and_reports_it(self):
+        recorder = audio.Recorder()
+        errors, logged = self._start_failing(
+            recorder, "sd:0:Ghost Mic",
+            OSError("Device unavailable"), OSError("Device unavailable"))
+        self.assertFalse(recorder.active)
+        self.assertTrue(errors)
+        self.assertIn("Device unavailable", errors[0])
+        self.assertIn("did not open", logged)
+        self.assertIn("Device unavailable", logged)
+
+    def test_default_mic_failure_logs_reason(self):
+        recorder = audio.Recorder()
+        errors, logged = self._start_failing(
+            recorder, "", OSError("Invalid sample rate"))
+        self.assertFalse(recorder.active)
+        self.assertIn("Invalid sample rate", errors[0])
+        self.assertIn("Invalid sample rate", logged)
+
+    def test_meeting_mic_failure_logs_reason_and_reports_it(self):
+        recorder = audio.MeetingRecorder()
+        fd, path = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        os.unlink(path)
+        errors = []
+        recorder.failed.connect(errors.append)
+        with mock.patch.object(audio, "_match_input_device",
+                               return_value=7), \
+             mock.patch.object(audio, "_match_loopback_device",
+                               return_value=None), \
+             mock.patch.object(audio, "_open_portaudio_stream",
+                               side_effect=[OSError("Device unavailable"),
+                                             OSError("Device unavailable")]):
+            with self.assertLogs("wordarc.audio", level="WARNING") as logs:
+                recorder.start(path, mic_target="sd:0:Ghost Mic")
+        try:
+            self.assertFalse(recorder.active)
+            self.assertTrue(errors)
+            self.assertIn("Device unavailable", errors[0])
+            self.assertIn("Device unavailable", "\n".join(logs.output))
+        finally:
+            recorder.cancel()
+
+
 if __name__ == "__main__":
     unittest.main()

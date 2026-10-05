@@ -142,6 +142,13 @@ def write_wav(pcm, rate=RATE, channels=CHANNELS, width=SAMPLE_WIDTH):
     return path
 
 
+def _short_error(exc):
+    """One log- and UI-safe line naming a PortAudio failure."""
+    detail = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
+    name = type(exc).__name__
+    return f"{name}: {detail}" if detail else name
+
+
 class _CaptureBase:
     """Common meter/stop plumbing shared by the two recorders."""
     def __init__(self):
@@ -185,21 +192,29 @@ class Recorder(QObject, _CaptureBase):
         self._max_bytes = int(max_seconds * RATE * SAMPLE_WIDTH * CHANNELS)
         try:
             self._open_stream()
-        except Exception:
+        except Exception as exc:
             self._stream = None
+            reason = _short_error(exc)
             if target:
                 # The saved microphone is still listed but no longer opens (a
                 # disconnected Bluetooth headset keeps a dead entry behind):
                 # dictate through the default input instead of failing the take.
-                _log.warning("saved microphone %r did not open; falling back "
-                             "to the default input", target)
+                _log.warning("saved microphone %r did not open "
+                             "(%s); falling back to the default input",
+                             target, reason)
                 try:
                     self._device = None
                     self._open_stream()
-                except Exception:
+                except Exception as fallback_exc:
                     self._stream = None
+                    reason = _short_error(fallback_exc)
+                    _log.warning("default microphone did not open either "
+                                 "(%s)", reason)
+            else:
+                _log.warning("default microphone did not open (%s)", reason)
             if self._stream is None:
-                self.failed.emit(t("Could not open the microphone."))
+                self.failed.emit(
+                    t("Could not open the microphone: {error}", error=reason))
 
     def _open_stream(self):
         self._stream = _open_portaudio_stream(
@@ -309,25 +324,34 @@ class MeetingRecorder(QObject, _CaptureBase):
                 samplerate=RATE, channels=1, dtype="int16",
                 blocksize=CHUNK_FRAMES, device=mic_dev,
                 callback=lambda d, f, ti, s: self._mic_cb(d, f, ti, s))
-        except Exception:
+        except Exception as exc:
             self._mic_stream = None
+            reason = _short_error(exc)
             if mic_target:
                 # The saved microphone is still listed but no longer opens
                 # (a disconnected Bluetooth headset): fall back to the default
                 # input for this run instead of losing the whole meeting.
-                _log.warning("saved meeting microphone %r did not open; "
-                             "falling back to the default input", mic_target)
+                _log.warning("saved meeting microphone %r did not open "
+                             "(%s); falling back to the default input",
+                             mic_target, reason)
                 try:
                     self._mic_stream = _open_portaudio_stream(
                         samplerate=RATE, channels=1, dtype="int16",
                         blocksize=CHUNK_FRAMES, device=None,
                         callback=lambda d, f, ti, s: self._mic_cb(d, f, ti, s))
-                except Exception:
+                except Exception as fallback_exc:
                     self._mic_stream = None
+                    reason = _short_error(fallback_exc)
+                    _log.warning("default meeting microphone did not open "
+                                 "either (%s)", reason)
+            else:
+                _log.warning("default meeting microphone did not open (%s)",
+                             reason)
             if self._mic_stream is None:
                 self._cleanup_file()
                 self._remove_partial()
-                self.failed.emit(t("Could not open the microphone."))
+                self.failed.emit(
+                    t("Could not open the microphone: {error}", error=reason))
                 return
         if sys_dev is None:
             try:

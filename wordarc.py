@@ -53,6 +53,29 @@ SERVER_NAME = BRAND.ipc_name(getpass.getuser())
 LEGACY_SERVER_NAME = BRAND.legacy_ipc_name(getpass.getuser())
 SERVER_NAMES = (SERVER_NAME, LEGACY_SERVER_NAME)
 
+# Flag the replacement process carries after an in-app restart. The old
+# instance is still quitting while the child boots, so the child must not
+# hand a command to it (it would talk to the dying instance and exit,
+# leaving nothing running) and must not replay the launch command either.
+RESTART_FLAG = "--restarted"
+
+# One-shot commands a restarted child must never replay: booting straight
+# into one would make the fresh instance act on a stale request — or exit
+# outright, which is what a restart looked like when it silently killed
+# the app instead of reloading it.
+_ONE_SHOT_COMMANDS = frozenset((
+    "toggle", "cancel", "settings", "restart", "quit", "start", "stop",
+    "background", "ask", "ask-reset", "ask-cancel", "meeting",
+    "meeting-cancel",
+))
+
+
+def _restart_args(argv):
+    """Argv for the replacement process: flags kept, commands dropped."""
+    kept = [a for a in argv[1:]
+            if a.startswith("-") and a != RESTART_FLAG]
+    return kept + [RESTART_FLAG]
+
 # The socket check in main() loses a race when two launches land in the same
 # instant: neither finds the other's socket, and both go on to serve. A named
 # mutex decides the owner instead. "Local\" keeps it to this logon session, the
@@ -577,7 +600,7 @@ class WordArc:
             self.settings_window.set_recording_state("dictation", IDLE, message)
 
     def _report(self, message, overlay):
-        logging.getLogger("wordarc.ui").warning("operation reported an error")
+        logging.getLogger("wordarc.ui").warning("operation error: %s", message)
         first_line = message.strip().splitlines()[0]
         overlay.show_error(first_line)
         if len(message) > len(first_line):
@@ -713,7 +736,13 @@ class WordArc:
                           "meeting": self.conf["meeting_shortcut"]})
 
     def restart(self):
-        """Replace this process with a fresh one, picking up code and settings."""
+        """Replace this process with a fresh one, picking up code and settings.
+
+        The child boots with no launch command: replaying the parent's
+        (e.g. "restart" itself) made the replacement hand the command to the
+        still-quitting old instance and exit, so the restart closed the app
+        instead of reloading it.
+        """
         if self.settings_window is not None:
             self.settings_window.close()
         self.shutdown()
@@ -721,12 +750,14 @@ class WordArc:
             QLocalServer.removeServer(name)
         # Hand the instance over before the replacement starts.
         _release_instance_mutex()
+        child_args = _restart_args(sys.argv)
         if getattr(sys, "frozen", False):
             # Paketlenmiş onefile exe'de __file__ geçici _MEI klasörünü gösterir;
             # yeni süreç yalnız exe + kullanıcı argümanlarıyla başlatılmalı.
-            subprocess.Popen([sys.executable] + sys.argv[1:])
+            subprocess.Popen([sys.executable] + child_args)
         else:
-            subprocess.Popen([sys.executable, os.path.realpath(__file__)] + sys.argv[1:])
+            subprocess.Popen([sys.executable, os.path.realpath(__file__)]
+                             + child_args)
         self.app.quit()
 
     def shutdown(self):
@@ -806,6 +837,10 @@ def main():
         migration = brand_migration.MigrationResult(
             warnings=(f"migration failed: {type(exc).__name__}",))
     diagnostics.setup()
+    logging.getLogger("wordarc.startup").info(
+        "starting WordArc v%s (%s) argv=%r", BRAND.version,
+        "frozen" if getattr(sys, "frozen", False) else "source",
+        sys.argv[1:])
     try:
         startup.ensure_current_command()
     except startup.StartupError as exc:
@@ -822,6 +857,12 @@ def main():
         return 0
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     command = args[0] if args else ""
+    restarted = RESTART_FLAG in sys.argv
+    if restarted:
+        # A replacement booting while the old instance quits: never hand a
+        # command to it, and never replay a stale launch command — boot
+        # normally instead.
+        command = ""
 
 
     if command and command not in ("toggle", "cancel", "settings", "restart",
@@ -840,7 +881,9 @@ def main():
     app.setQuitOnLastWindowClosed(False)
 
     # No command and an instance already running: bring its settings forward.
-    if send_command(command or "settings"):
+    # A restarted replacement skips this: the old instance is still quitting,
+    # and handing it a command would make the child exit instead of booting.
+    if not restarted and send_command(command or "settings"):
         return 0
 
     if command in ("cancel", "quit", "stop", "restart", "meeting-cancel",

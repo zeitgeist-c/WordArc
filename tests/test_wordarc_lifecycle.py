@@ -273,3 +273,53 @@ def test_open_settings_puts_the_window_back_where_it_was_before_showing():
     view.apply.assert_called_once_with(window)
     assert controller._settings_view is None, "the state outlived the open"
     window.show.assert_called_once_with()
+
+
+def test_restart_args_drop_one_shot_commands_and_mark_the_child():
+    assert wordarc._restart_args(["wordarc.py", "toggle"]) == ["--restarted"]
+    assert wordarc._restart_args(["wordarc.py", "restart"]) == ["--restarted"]
+    assert wordarc._restart_args(["wordarc.py"]) == ["--restarted"]
+    assert wordarc._restart_args(["wordarc.py", "--local-stt-check", "x"]) == [
+        "--local-stt-check", "--restarted"]
+    # An old flag never piles up over several restarts.
+    assert wordarc._restart_args(["wordarc.py", "--restarted"]) == [
+        "--restarted"]
+
+
+def _restart_controller():
+    controller = wordarc.WordArc.__new__(wordarc.WordArc)
+    controller.settings_window = None
+    controller.shutdown = mock.Mock()
+    controller.app = mock.Mock()
+    return controller
+
+
+def test_restart_boots_the_child_without_a_launch_command():
+    """Replaying the parent's command made the child talk to the dying
+    instance and exit, so a restart closed the app instead of reloading it."""
+    controller = _restart_controller()
+    with mock.patch.object(wordarc, "_release_instance_mutex"), \
+         mock.patch.object(wordarc, "QLocalServer"), \
+         mock.patch.object(wordarc.subprocess, "Popen") as popen, \
+         mock.patch.object(wordarc.sys, "argv", ["wordarc.py", "toggle"]):
+        controller.restart()
+    popen.assert_called_once()
+    cmd = popen.call_args[0][0]
+    assert cmd[0] == wordarc.sys.executable
+    assert "toggle" not in cmd
+    assert cmd[-1] == wordarc.RESTART_FLAG
+    controller.app.quit.assert_called_once_with()
+
+
+def test_restart_uses_the_exe_itself_when_frozen():
+    controller = _restart_controller()
+    with mock.patch.object(wordarc, "_release_instance_mutex"), \
+         mock.patch.object(wordarc, "QLocalServer"), \
+         mock.patch.object(wordarc.subprocess, "Popen") as popen, \
+         mock.patch.object(wordarc.sys, "argv", ["WordArc.exe"]), \
+         mock.patch.object(wordarc.sys, "frozen", True, create=True):
+        controller.restart()
+    popen.assert_called_once()
+    cmd = popen.call_args[0][0]
+    assert cmd[0] == wordarc.sys.executable
+    assert len(cmd) == 2 and cmd[1] == wordarc.RESTART_FLAG

@@ -131,6 +131,7 @@ TR = {
 
     # --- audio / paste errors -----------------------------------------
     "Could not open the microphone.": "Mikrofon açılamadı.",
+    "Could not open the microphone: {error}": "Mikrofon açılamadı: {error}",
     "The sound device stopped responding.": "Ses aygıtı yanıt vermeyi durdurdu.",
     "Could not start recording: {error}": "Kayıt başlatılamadı: {error}",
     "Could not start the system loopback": "Sistem ses döngüsü başlatılamadı",
