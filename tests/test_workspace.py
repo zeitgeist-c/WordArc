@@ -36,6 +36,22 @@ def test_record_start_requires_successful_save_but_stop_does_not(window):
     calls.assert_called_once_with("dictation")
 
 
+def test_record_start_saves_quietly_but_the_save_button_confirms(window):
+    """The "saved" banner belongs to the Save button, not to record-start."""
+    calls = mock.Mock()
+    window.recording_requested.connect(calls)
+    with mock.patch.object(settings_ui.startup, "set_enabled"), \
+         mock.patch.object(settings_ui.sounds, "play") as chime, \
+         mock.patch.object(window, "_save",
+                           wraps=window._save) as save, \
+         mock.patch.object(window.save_banner, "show_saved") as banner:
+        window._request_recording("dictation")
+    save.assert_called_once_with(quiet=True)
+    banner.assert_not_called()
+    chime.assert_not_called()
+    calls.assert_called_once_with("dictation")
+
+
 def test_busy_recording_cannot_be_started_again(window):
     calls = mock.Mock()
     window.recording_requested.connect(calls)

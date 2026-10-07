@@ -85,6 +85,7 @@ TR = {
 
     # --- tray ---------------------------------------------------------
     "Start recording": "Kaydı başlat",
+    "Starting WordArc…": "WordArc açılıyor…",
     "Stop and transcribe": "Kaydı bitir ve yaz",
     "Working…": "İşleniyor…",
     "Cancel": "İptal",

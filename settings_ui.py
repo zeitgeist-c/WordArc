@@ -1070,7 +1070,10 @@ class SettingsWindow(QDialog):
         state = getattr(self, kind + "_runtime_state")
         if state in ("busy", "working"):
             return
-        if state == "idle" and not self._save():
+        # The settings still go to disk first (the take must use what is on
+        # screen), but quietly: the "saved" banner belongs to the Save
+        # button, not to every press of "start recording".
+        if state == "idle" and not self._save(quiet=True):
             return
         self.recording_requested.emit(kind)
 
@@ -2464,7 +2467,13 @@ class SettingsWindow(QDialog):
         self._load_history()
         self._load_minutes()
 
-    def _save(self):
+    def _save(self, quiet=False):
+        """Write the window to disk; True when the caller may proceed.
+
+        Only the Save button confirms ("Ayarlar kaydedildi" + chime). The
+        "start recording" path saves quietly so the take uses what is on
+        screen — a failure still blocks it, loudly, through warn_box.
+        """
         conf = self.conf
         language_before = i18n.language()
         # Theme and header language apply on click and persist at once;
@@ -2575,7 +2584,8 @@ class SettingsWindow(QDialog):
             # this window is replaced by the rebuild.
             QTimer.singleShot(0, self.language_changed.emit)
             return True
-        self._confirm_saved()
+        if not quiet:
+            self._confirm_saved()
         return True
 
     def _confirm_saved(self):

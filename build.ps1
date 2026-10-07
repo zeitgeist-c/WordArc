@@ -66,6 +66,8 @@ $LauncherName = "WordArc-$AppVersion.bat"
 $LauncherPath = Join-Path $PSScriptRoot "dist\$LauncherName"
 $Launcher = "@echo off`r`nsetlocal`r`n" +
     "cd /d `"%~dp0`"`r`n" +
+    "rem Tek seferde tek acilis: ilk ornek paketi cozerken ikinci tik ayni isi bastan baslatip diski kitlemesin.`r`n" +
+    "if `"%~1`"==`"`" tasklist /FI `"IMAGENAME eq $VersionedName`" 2>nul | findstr /I `"$VersionedName`" >nul && exit /b 0`r`n" +
     "start `"WordArc $AppVersion`" `"%~dp0$VersionedName`" %*`r`n"
 [IO.File]::WriteAllText($LauncherPath, $Launcher, [Text.UTF8Encoding]::new($false))
 $VerificationArgs = @()

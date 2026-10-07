@@ -4,7 +4,6 @@ CUDA/CPU keep faster-whisper. GGML weights live in a separate directory;
 the same GGML model can also run on the CPU after a Vulkan failure.
 """
 from __future__ import annotations
-import functools
 import json
 import logging
 import os
@@ -41,21 +40,32 @@ def process_options(directory=None):
     env = dict(os.environ)
     env.pop("GGML_VK_VISIBLE_DEVICES", None)
     env.pop("WHISPER_DEVICE", None)
+    # Steam/RTSS/EOS overlays register implicit Vulkan layers that hook
+    # every VkInstance, including this headless compute child. Under a
+    # running game they can stall device init; there is nothing to overlay
+    # here, so keep them out of every native child (probe and transcribe).
+    env["VK_LOADER_LAYERS_DISABLE"] = "~implicit~"
     directory = directory or runtime_dir()
     env["PATH"] = str(directory) + os.pathsep + os.path.join(env.get("SystemRoot", "C:\\Windows"), "System32")
     return dict(env=env, cwd=str(directory),
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
-@functools.lru_cache(maxsize=1)
-def devices():
-    """The actual Vulkan backend's device order, not Windows registry remnants."""
+_devices_cache: tuple = ()
+_devices_cache_time = 0.0
+_DEVICES_CACHE_TTL = 300.0  # successes only; a failed probe never sticks
+_PROBE_ATTEMPTS = 2
+_PROBE_TIMEOUT = 15
+
+
+def _probe_once():
+    """One probe run; () when the backend did not answer this time."""
     exe = runtime_dir() / "wordarc-vulkan-probe.exe"
     if not exe.is_file():
         return ()
     try:
-        result = subprocess.run([str(exe)], capture_output=True, timeout=15,
-                                **process_options())
+        result = subprocess.run([str(exe)], capture_output=True,
+                                timeout=_PROBE_TIMEOUT, **process_options())
         if result.returncode:
             _log.warning("Vulkan probe failed: %s", result.stderr.decode("utf-8", "replace")[-1500:])
             return ()
@@ -67,6 +77,25 @@ def devices():
     except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
         _log.warning("Vulkan probe unavailable: %s", exc)
         return ()
+
+
+def devices(refresh=False):
+    """The actual Vulkan backend's device order, not Windows registry remnants.
+
+    A failed probe is retried on the next call instead of poisoning the
+    whole session: only successful results are cached.
+    """
+    global _devices_cache, _devices_cache_time
+    if (not refresh and _devices_cache
+            and time.monotonic() - _devices_cache_time < _DEVICES_CACHE_TTL):
+        return _devices_cache
+    for _ in range(_PROBE_ATTEMPTS):
+        rows = _probe_once()
+        if rows:
+            _devices_cache = rows
+            _devices_cache_time = time.monotonic()
+            return rows
+    return ()
 
 
 def best_device():
