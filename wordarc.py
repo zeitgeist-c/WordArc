@@ -24,10 +24,10 @@ from brand import BRAND, set_windows_app_id
 
 __version__ = BRAND.version
 
-from PyQt6.QtCore import QTimer, QElapsedTimer  # noqa: E402
-from PyQt6.QtGui import QAction, QIcon  # noqa: E402
+from PyQt6.QtCore import QTimer, QElapsedTimer, Qt  # noqa: E402
+from PyQt6.QtGui import QAction, QIcon, QPixmap, QColor  # noqa: E402
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket  # noqa: E402
-from PyQt6.QtWidgets import (QApplication, QMenu,
+from PyQt6.QtWidgets import (QApplication, QMenu, QSplashScreen,
                              QSystemTrayIcon)  # noqa: E402
 
 import audio  # noqa: E402
@@ -798,6 +798,35 @@ def meeting_command():
     return f'"{sys.executable}" "{os.path.realpath(__file__)}" meeting'
 
 
+def _startup_splash(app):
+    """A first pixel while the windowed app finishes starting.
+
+    The onefile bundle spends most of its start unpacking before any Python
+    runs, so this only covers the tail: imports are done, the tray and the
+    settings window are not yet up. It still answers the question a second
+    double-click asks — did the first one land? — next to the launcher guard
+    that keeps that click from unpacking the bundle all over again.
+    """
+    try:
+        pixmap = QPixmap(str(brand_asset("wordarc.ico")))
+    except Exception:
+        return None
+    if pixmap.isNull():
+        return None
+    if pixmap.width() < 200:
+        pixmap = pixmap.scaled(
+            256, 256, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation)
+    splash = QSplashScreen(pixmap, Qt.WindowType.WindowStaysOnTopHint)
+    splash.showMessage(
+        t("Starting WordArc…"),
+        Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
+        QColor("white"))
+    splash.show()
+    app.processEvents()
+    return splash
+
+
 def send_command(command, timeout=800):
     """Hand a command to the running instance; False when there is none."""
     for name in SERVER_NAMES:
@@ -894,6 +923,8 @@ def main():
     if not _acquire_instance_mutex():
         return 0
 
+    splash = _startup_splash(app)
+
     tray_available = QSystemTrayIcon.isSystemTrayAvailable()
     if not tray_available:
         print("wordarc: no system tray found, running anyway")
@@ -953,6 +984,8 @@ def main():
     elif command == "meeting":
         QTimer.singleShot(0, wordarc.toggle_meeting)
 
+    if splash is not None:
+        splash.close()
     return app.exec()
 
 

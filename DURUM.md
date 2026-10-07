@@ -1,9 +1,45 @@
 # WordArc — durum
 
-Güncelleme: 2026-10-03
-Hazırlanan paket: 0.6.10 (`brand.py`)
+Güncelleme: 2026-10-07
+Hazırlanan paket: 0.6.11 (`brand.py`)
 Dal: master
-Git dönüş noktası: 86bbea6 / v0.6.9
+Git dönüş noktası: 6fdd71b / v0.6.10
+
+## 2026-10-07 — 0.6.11 Vulkan yoklama dayanıklılığı + açılış WIP'i
+
+Kullanıcı oyun oynarken kart çalışmasına karşın program "Vulkan
+bulunamadı" dedi. Logda 18:06'da paketlenmiş yoklamanın 15 sn'de zaman
+aşımına uğradığı, boş sonucun `lru_cache`'te oturum boyu yapışıp kaldığı
+görüldü; 19:12'de CPU'ya düşüldü (10,9 sn ses 43,8 sn'de yazıldı).
+Kart/sürücü sağlamdı (`vulkaninfo` + elle yoklama RX 6650 XT'yi ~8 GB
+ile buldu). Tetikleyici: Steam + RTSS implicit Vulkan katmanları ve oyun
+yükü altında cihaz açılışının kilitlenmesi.
+
+- `vulkan_speech.devices()`: `lru_cache` kalktı; yalnız başarılı sonuç
+  5 dk önbellekte, boş sonuç bir sonraki çağrıda yeniden deneniyor
+  (çağrı başına 2 deneme).
+- `process_options()`: native alt süreçlerde
+  `VK_LOADER_LAYERS_DISABLE=~implicit~`; overlay kancaları yoklama ve
+  yazı-döküm çocuklarına girmiyor.
+- WIP (kullanıcı onayıyla dahil): açılış splash'i ("WordArc
+  açılıyor…"), kayda basışta sessiz ayar kaydı (banner+ses yalnız
+  Kaydet düğmesinde), launcher tek-açılış guard'ı.
+- Testler: 421 geçti, 1 atlandı; pip audit temiz; SBOM üretildi.
+
+Teslim EXE kabulü (izole scratch, resmi JFK örneği, large-v3-turbo):
+Vulkan RX 6650 XT fallbacksuz çalıştı, CPU çıktısıyla birebir aynı
+metin. Kanıt: build/release-0.6.11-gpu-cpu.json.
+Not: build içindeki ilk paket kapısında `--version` 30 sn'yi aştı
+(1,5 GB link sonrası ilk açılış + tarama yükü); pakette sorun yok —
+elle koşu ve bağımsız kapı yeşil.
+
+Teslim: dist/WordArc-0.6.11.exe ve dist/WordArc-0.6.11.bat.
+EXE: 1.581.292.593 bayt; SHA256:
+aa30b1a6aa68262137a0a24f12f330aad4df14c48f3a303e4c31269e93627c9c.
+Kaynak/sürüm/test değişiklikleri yerel sürüm commit'i ve v0.6.11 ile
+kaydedilir; push/release yedek yetkisiyle yapılır. Önceki teslimler korunur.
+Kapanış talimatı: tepsiden Çık, bat ile aç, sürümü Ayarlar'dan veya
+`--version` ile doğrula.
 
 ## 2026-10-03 — 0.6.10 kaydet yavaşlığı düzeltmeleri
 
