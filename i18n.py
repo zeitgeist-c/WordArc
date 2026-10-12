@@ -846,6 +846,8 @@ TR.update({
 
 TR.update({
     "Academic English": "Akademik İngilizce",
+    "Checking local speech device…": "Yerel ses aygıtı kontrol ediliyor…",
+    "Could not check the local speech device.": "Yerel ses aygıtı kontrol edilemedi.",
     "Game English": "Oyun İngilizcesi",
     "Translating…": "Çevriliyor…",
     "Translate dictation to English": "Dikteyi İngilizceye çevir",

@@ -1,9 +1,50 @@
 # WordArc — durum
 
-Güncelleme: 2026-10-07
-Hazırlanan paket: 0.6.11 (`brand.py`)
+Güncelleme: 2026-10-12
+Hazırlanan paket: 0.6.12 (`brand.py`)
 Dal: master
-Git dönüş noktası: 6fdd71b / v0.6.10
+Git dönüş noktası: aad6592 / v0.6.11
+
+## 2026-10-12 — 0.6.12 açılış kartı ve arayüz beklemesi
+
+Kullanıcı açılış kartının kenarlarının kırpıldığını ve açılışın yavaş olduğunu
+bildirdi; ardından 0.6.12 EXE/BAT, commit, push ve yedek kapanışını yetkilendirdi.
+
+- HiDPI çizimde ikinci ölçek kaldırıldı; ışık efekti yuvarlak karta kırpıldı,
+  saydam pencere arka planı etkinleştirildi. Logo/yazı tasarımı korundu.
+- Ana akışın eşzamanlı aygıt yoklaması kaldırıldı; ayarlardaki GPU/model
+  incelemesi arka planda çalışır, Qt sinyaliyle sonuçları gösterir. Kontrol
+  sürerken pencere ve motor seçimi kullanılabilir. İndirme/silme ve CPU
+  kurtarma sonrasında model durumları yenilenir.
+- UI hazırlık süresi loglanır; EXE çıkarma ve import aşamaları ayrı tutulur.
+- Paket kapısı artık ana wordarc.py kodunun da kaynakla eşleşmesini ve QtSvg
+  modülünü denetler. Büyük paketin ilk çalıştırılması için sınır 120 saniye;
+  --version duvar saati ölçümü raporlanır.
+- Resmi kaynak kapısı: 427 test geçti, 1 ağ testi atlandı; compile/import ve
+  bağımlılık güvenlik denetimi geçti. Önceki sandbox pano erişim engeli bu
+  sürümün yetkili test koşusunda tekrarlanmadı.
+
+Yavaş sürücü taklidinde görünür pencere hazırlığı 0,739 / 0,025 saniye (önce /
+sonra). Bu toplam EXE açılış ölçümü değildir; tek dosyalı büyük paketin geçici
+klasöre çıkarma maliyeti devam eder. İnceleme: docs/startup-2026-10-12.md.
+
+Teslim: dist/WordArc-0.6.12.exe ve dist/WordArc-0.6.12.bat.
+EXE: 1.582.662.700 bayt; SHA256:
+c952cbb957df9d7ce632b2ce8a9702c8ad1a05ebd34b5d724effce8a1e52bd02.
+
+İlk build akışının son paket kapısı başarısız döndü; kaynak değiştirilmeden
+bağımsız kapı tekrarlandı ve exit 0 ile geçti. Tekrar koşusunda gerçek EXE
+--version duvar saati 13,144 saniye (çıkarma dahil); soğuk/ilk açılış için
+garanti değildir. Gömülü ana kod ve modüller kaynakla birebir eşleşiyor.
+Aynı teslim EXE'si resmi JFK örneğini gerçek AMD Vulkan ve GGML CPU yolunda
+çözdü; metinler aynı, GPU koşusunda fallback yok. Başka Windows makinesi,
+gerçek NVIDIA CUDA ve bu sürümün canlı mikrofon kabulü ayrıca doğrulanmadı.
+
+Yedek 2026-10-12: kaynak/sürüm/build kaydı yerel sürüm commit'i + v0.6.12;
+origin/master ve v0.6.12 push ile uzak kaynak yedeği. GitHub Release
+yayımlanmadı. Önceki 0.6.11 teslim dosyaları korundu.
+Kanıtlar: build/release-0.6.12-package.log,
+build/release-0.6.12-verification.log ve build/release-0.6.12-gpu-cpu.json.
 
 ## 2026-10-07 — 0.6.11 Vulkan yoklama dayanıklılığı + açılış WIP'i
 

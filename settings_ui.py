@@ -859,6 +859,7 @@ class SettingsWindow(QDialog):
     _local_download_done = pyqtSignal(str, str)
     _local_download_progress = pyqtSignal(object)
     _test_done = pyqtSignal(bool, str)
+    _local_inspected = pyqtSignal(str, object)
 
     def __init__(self, conf, launch_command, meeting_command=None,
                  meetings=None, ask_command=None, parent=None):
@@ -872,6 +873,9 @@ class SettingsWindow(QDialog):
         self.cuda_recovery.changed.connect(self._cuda_changed)
         self._download_stop = threading.Event()
         self._download_name = None
+        self._local_snapshots = {}
+        self._local_pending = set()
+        self._local_inspected.connect(self._on_local_inspected)
         self.launch_command = launch_command
         self.meeting_command = meeting_command or launch_command
         self.meetings = meetings
@@ -1413,20 +1417,37 @@ class SettingsWindow(QDialog):
         self.transcribe_status.setVisible(not local)
         self.local_row.setVisible(local)
         self.local_status.setVisible(local)
+        if hasattr(self, "local_privacy_note"):
+            self.local_privacy_note.setVisible(local)
+            enabled = hasattr(self, "cleanup_enabled") and self.cleanup_enabled.isChecked()
+            self.local_privacy_note.setText(t("Audio stays on this computer. Cleanup sends the text to Gemini when enabled." if enabled else "Audio stays on this computer. Cleanup is off; the raw transcript is used."))
         if hasattr(self, "device_row"):
             self.device_row.setVisible(local)
             self.local_device_note.setVisible(local)
             if local and hasattr(self, "local_stt_device"):
                 preference = self.local_stt_device.currentData() or "auto"
-                note = localspeech.describe_device(preference)
+                snapshot = self._local_snapshots.get(preference)
+                if snapshot is None:
+                    self.local_device_note.setText(t("Checking local speech device…"))
+                    self.local_status.setText(t("Checking local speech device…"))
+                    self.local_download_button.setEnabled(False)
+                    self.local_remove_button.setEnabled(False)
+                    if preference not in self._local_pending:
+                        self._local_pending.add(preference)
+                        threading.Thread(target=self._inspect_local,
+                                         args=(preference,), daemon=True).start()
+                    return
+                if isinstance(snapshot, str):
+                    self.local_device_note.setText(snapshot)
+                    self.local_status.setText(snapshot)
+                    self.local_download_button.setEnabled(False)
+                    self.local_remove_button.setEnabled(False)
+                    return
+                note = snapshot["note"]
                 fallback = localspeech.last_fallback_note()
                 if fallback:
                     note = f"{note} — {fallback}"
                 self.local_device_note.setText(note)
-        if hasattr(self, "local_privacy_note"):
-            self.local_privacy_note.setVisible(local)
-            enabled = hasattr(self, "cleanup_enabled") and self.cleanup_enabled.isChecked()
-            self.local_privacy_note.setText(t("Audio stays on this computer. Cleanup sends the text to Gemini when enabled." if enabled else "Audio stays on this computer. Cleanup is off; the raw transcript is used."))
         if self._download_name:
             self.local_download_button.setEnabled(False)
             self.local_remove_button.setEnabled(False)
@@ -1437,23 +1458,23 @@ class SettingsWindow(QDialog):
             return
         name = self.local_stt_model.currentData()
         preference = self.local_stt_device.currentData() or "auto"
-        if localspeech.model_backend(preference) == "vulkan":
+        if snapshot["backend"] == "vulkan":
             for index in range(self.local_stt_model.count()):
                 model = self.local_stt_model.itemData(index)
-                size = localspeech.human_size(localspeech.state(model, device_preference=preference).expected)
+                size = localspeech.human_size(snapshot["states"][model].expected)
                 self.local_stt_model.setItemText(index, f"Whisper {model} — {size} (Vulkan)")
-            if not localspeech.vulkan_speech.installed(name) and localspeech._is_installed(name):
+            if name in snapshot["cpu_only"]:
                 self.local_device_note.setText(t("Vulkan model needs downloading; the existing CPU model remains available in Automatic mode."))
         else:
             for index in range(self.local_stt_model.count()):
                 model = self.local_stt_model.itemData(index)
                 label, note = localspeech.model_label(model)
-                current_model = localspeech.state(model, device_preference=preference)
+                current_model = snapshot["states"][model]
                 if current_model.path.endswith(".bin"):
                     note = localspeech.human_size(current_model.expected)
                 self.local_stt_model.setItemText(index, f"{label} — {t(note)}")
-        current = localspeech.state(name, device_preference=preference)
-        if (localspeech.model_backend(preference) != "vulkan" or
+        current = snapshot["states"][name]
+        if (snapshot["backend"] != "vulkan" or
                 preference == "auto" and localspeech.vulkan_speech._failed) and current.path.endswith(".bin"):
             self.local_device_note.setText(t("CPU (whisper.cpp model)"))
         if current.installed:
@@ -1470,7 +1491,46 @@ class SettingsWindow(QDialog):
         self.local_download_button.setEnabled(True)
         self.local_remove_button.setEnabled(False)
 
+    def _inspect_local(self, preference):
+        """No widgets here: driver probes and filesystem inspection may block."""
+        try:
+            names = localspeech.model_names()
+            try:
+                resolved = localspeech.get_best_device(preference)
+                note = localspeech.describe_device(preference, resolved=resolved)
+                storage_preference = resolved[0]
+            except localspeech.LocalSpeechError as exc:
+                note = str(exc)
+                storage_preference = preference if preference != "auto" else "cpu"
+            # Failed auto Vulkan sessions still keep GGML models visible.
+            if preference == "auto" and localspeech.vulkan_speech._failed:
+                storage_preference = "vulkan"
+            snapshot = dict(
+                note=note,
+                backend="vulkan" if storage_preference == "vulkan" else "cpu",
+                states={name: localspeech.state(name, device_preference=storage_preference)
+                        for name in names},
+                cpu_only={name for name in names
+                          if not localspeech.vulkan_speech.installed(name)
+                          and localspeech._is_installed(name)})
+        except Exception as exc:
+            logging.getLogger("wordarc.settings").warning(
+                "local device inspection failed: %s", type(exc).__name__)
+            snapshot = t("Could not check the local speech device.")
+        try:
+            self._local_inspected.emit(preference, snapshot)
+        except RuntimeError:
+            pass  # window was deleted while the driver was answering
+
+    def _on_local_inspected(self, preference, snapshot):
+        self._local_pending.discard(preference)
+        self._local_snapshots[preference] = snapshot
+        self._refresh_local_controls()
+        if getattr(self, "_local_status_error", ""):
+            self.local_status.setText(self._local_status_error)
+
     def _download_local_model(self):
+        self._local_status_error = ""
         name = self.local_stt_model.currentData()
         preference = self.local_stt_device.currentData() or "auto"
         if self._download_name or not name or localspeech.state(name, device_preference=preference).installed:
@@ -1549,9 +1609,11 @@ class SettingsWindow(QDialog):
         self.local_stt_model.setEnabled(True)
         self.local_stt_device.setEnabled(True)
         self.download_cancel.setEnabled(False)
+        self._local_snapshots.clear()
         self._refresh_local_controls()
         if error:
             message = t("Download stopped. Press Download to resume.") if cancelled else t("Could not download {name}: {error}", name=name, error=error)
+            self._local_status_error = message
             self.local_status.setText(message)
             self.download_title.setText(message)
             self.download_title.setToolTip(message)
@@ -1574,6 +1636,7 @@ class SettingsWindow(QDialog):
                 size=localspeech.human_size(localspeech.state(name, device_preference=preference).size))):
             return
         localspeech.remove(name, device_preference=preference)
+        self._local_snapshots.clear()
         self._refresh_local_controls()
 
     THEME_ORDER = ("dark", "light")
@@ -2119,6 +2182,7 @@ class SettingsWindow(QDialog):
         return page
 
     def _cuda_changed(self):
+        self._local_snapshots.clear()
         if hasattr(self, 'local_stt_device'):
             self.local_stt_device.setCurrentIndex(self.local_stt_device.findData('cpu'))
 

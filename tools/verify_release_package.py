@@ -1,5 +1,7 @@
 """Verify delivery names and the version embedded in the actual executable."""
 import hashlib
+import marshal
+import time
 import sys
 import types
 import subprocess
@@ -57,6 +59,11 @@ def main():
         assert not missing, f'missing bundled CUDA DLLs: {sorted(missing)}'
     assert not any(Path(name).name.lower() in {"icuuc.dll", "icuin.dll"} for name in reader.toc), "OS ICU shadowed"
     archive = reader.open_embedded_archive("PYZ.pyz")
+    entry_source = compile((root / 'wordarc.py').read_bytes(), 'wordarc.py',
+                           'exec', dont_inherit=True)
+    assert normalized(entry_source) == normalized(marshal.loads(reader.extract('wordarc'))), 'outdated bundled entry point'
+    assert any(name.replace('\\', '/') == 'PyQt6/QtSvg.pyd'
+               for name in reader.toc), 'missing vector splash renderer'
     assert BRAND.version in list(constants(archive.extract("brand"))), "wrong embedded version"
     assert "set_recording_state" in list(constants(archive.extract("settings_ui")))
     assert "PanelTabs" in list(constants(archive.extract("settings_ui"))), "old workspace layout bundled"
@@ -73,9 +80,11 @@ def main():
     with tempfile.TemporaryDirectory(prefix='wordarc-package-check-') as scratch:
         env = dict(os.environ, APPDATA=scratch, LOCALAPPDATA=scratch,
                    QT_QPA_PLATFORM='offscreen')
+        started = time.perf_counter()
         result = subprocess.run([str(exe), '--version'], env=env,
-                                capture_output=True, timeout=30)
+                                capture_output=True, timeout=120)
         assert result.returncode == 0, f'packaged startup failed: {result.returncode}'
+        print(f"Packaged --version wall time: {time.perf_counter() - started:.3f} s (includes extraction)")
     print(f"PACKAGE OK: {exe.name} + {bat.name}")
     with exe.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()

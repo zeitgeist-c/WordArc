@@ -24,8 +24,10 @@ from brand import BRAND, set_windows_app_id
 
 __version__ = BRAND.version
 
-from PyQt6.QtCore import QTimer, QElapsedTimer, Qt  # noqa: E402
-from PyQt6.QtGui import QAction, QIcon, QPixmap, QColor  # noqa: E402
+from PyQt6.QtCore import QTimer, QElapsedTimer, Qt, QRectF  # noqa: E402
+from PyQt6.QtGui import (QAction, QBrush, QColor, QFont, QIcon,  # noqa: E402
+                         QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
+                         QRadialGradient)
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket  # noqa: E402
 from PyQt6.QtWidgets import (QApplication, QMenu, QSplashScreen,
                              QSystemTrayIcon)  # noqa: E402
@@ -798,6 +800,70 @@ def meeting_command():
     return f'"{sys.executable}" "{os.path.realpath(__file__)}" meeting'
 
 
+SPLASH_WIDTH, SPLASH_HEIGHT = 460, 268
+
+
+def _splash_pixmap(dpr):
+    """Modern launch card painted from vector assets, HiDPI-crisp.
+
+    Everything is drawn in logical pixels on a dpr-scaled pixmap, so a
+    125/150% display gets a sharp card instead of an upscaled 256 px icon.
+    Raises on missing assets; the caller degrades to no splash.
+    """
+    width, height = SPLASH_WIDTH, SPLASH_HEIGHT
+    pixmap = QPixmap(round(width * dpr), round(height * dpr))
+    pixmap.setDevicePixelRatio(dpr)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    paint = QPainter(pixmap)
+    try:
+        paint.setRenderHints(
+            QPainter.RenderHint.Antialiasing
+            | QPainter.RenderHint.TextAntialiasing
+            | QPainter.RenderHint.SmoothPixmapTransform)
+        _paint_splash_card(paint, width, height)
+    finally:
+        paint.end()
+    return pixmap
+
+
+def _paint_splash_card(paint, width, height):
+    from PyQt6.QtSvg import QSvgRenderer
+
+    card = QPainterPath()
+    card.addRoundedRect(QRectF(1, 1, width - 2, height - 2), 24, 24)
+    paint.setClipPath(card)
+    background = QLinearGradient(22, height - 28, width - 20, 20)
+    background.setColorAt(0, QColor("#161C2E"))
+    background.setColorAt(1, QColor("#090C12"))
+    paint.setPen(QPen(QColor(255, 255, 255, 33), 1))
+    paint.setBrush(QBrush(background))
+    paint.drawRoundedRect(1, 1, width - 2, height - 2, 24, 24)
+    glow = QRadialGradient(width - 90, 20, 150)
+    glow.setColorAt(0, QColor(139, 92, 246, 89))
+    glow.setColorAt(0.45, QColor(34, 211, 238, 31))
+    glow.setColorAt(1, QColor(34, 211, 238, 0))
+    paint.setPen(Qt.PenStyle.NoPen)
+    paint.setBrush(QBrush(glow))
+    paint.drawRect(0, 0, width, height)
+    mark = QSvgRenderer(str(brand_asset("wordarc-mark.svg")))
+    mark.render(paint, QRectF(36, (height - 104) / 2, 104, 104))
+    name_font = QFont("Segoe UI")
+    name_font.setWeight(QFont.Weight.Bold)
+    name_font.setPixelSize(42)
+    paint.setFont(name_font)
+    paint.setPen(QColor("#F3F6FC"))
+    paint.drawText(QRectF(164, 92, 270, 64),
+                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                   "WordArc")
+    version_font = QFont("Segoe UI")
+    version_font.setPixelSize(13)
+    paint.setFont(version_font)
+    paint.setPen(QColor("#8B93A7"))
+    paint.drawText(QRectF(164, 158, 270, 24),
+                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                   BRAND.version)
+
+
 def _startup_splash(app):
     """A first pixel while the windowed app finishes starting.
 
@@ -805,19 +871,18 @@ def _startup_splash(app):
     runs, so this only covers the tail: imports are done, the tray and the
     settings window are not yet up. It still answers the question a second
     double-click asks — did the first one land? — next to the launcher guard
-    that keeps that click from unpacking the bundle all over again.
+    that keeps that click from unpacking the bundle all over again. The card
+    is painted from vector assets at the screen's native pixel ratio, so it
+    stays sharp on scaled displays; any failure degrades to no splash.
     """
     try:
-        pixmap = QPixmap(str(brand_asset("wordarc.ico")))
+        screen = app.primaryScreen()
+        dpr = screen.devicePixelRatio() if screen is not None else 1.0
+        pixmap = _splash_pixmap(dpr)
     except Exception:
         return None
-    if pixmap.isNull():
-        return None
-    if pixmap.width() < 200:
-        pixmap = pixmap.scaled(
-            256, 256, Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation)
     splash = QSplashScreen(pixmap, Qt.WindowType.WindowStaysOnTopHint)
+    splash.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
     splash.showMessage(
         t("Starting WordArc…"),
         Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
@@ -851,6 +916,8 @@ def main():
     if "--local-stt-check" in sys.argv:
         from local_stt_diagnostic import run
         return run(sys.argv[sys.argv.index("--local-stt-check") + 1:])
+    startup_timer = QElapsedTimer()
+    startup_timer.start()
     # Windows otherwise labels source-mode launches as pythonw.exe and shows
     # Python's icon in the taskbar even though Qt has a WordArc window icon.
     set_windows_app_id()
@@ -930,8 +997,11 @@ def main():
         print("wordarc: no system tray found, running anyway")
 
     conf = cfg.Config()
-    localspeech.log_startup_device(conf.get("local_stt_device") or "auto",
-                                   conf.get("transcribe_engine") == "local")
+    # Device discovery can wait on a GPU driver for tens of seconds. Settings
+    # resolves it in a worker; startup must not probe on the GUI thread.
+    logging.getLogger("wordarc.startup").info(
+        "speech engine=%s device preference=%s (discovery deferred)",
+        conf.get("transcribe_engine"), conf.get("local_stt_device") or "auto")
     install_qt_translator(app, i18n.language())
     theme.ThemeManager.apply(conf["theme_mode"], app)
     wordarc = WordArc(app, conf)
@@ -986,6 +1056,9 @@ def main():
 
     if splash is not None:
         splash.close()
+    logging.getLogger("wordarc.startup").info(
+        "UI ready in %d ms (excludes bundle extraction and imports)",
+        startup_timer.elapsed())
     return app.exec()
 
 
