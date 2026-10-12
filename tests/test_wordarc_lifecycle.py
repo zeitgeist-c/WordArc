@@ -2,6 +2,7 @@ from unittest import mock
 
 import os
 import uuid
+import pytest
 
 import wordarc
 
@@ -323,3 +324,35 @@ def test_restart_uses_the_exe_itself_when_frozen():
     cmd = popen.call_args[0][0]
     assert cmd[0] == wordarc.sys.executable
     assert len(cmd) == 2 and cmd[1] == wordarc.RESTART_FLAG
+
+
+def test_startup_splash_renders_vector_card():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    app = wordarc.QApplication.instance() or wordarc.QApplication([])
+    splash = wordarc._startup_splash(app)
+    assert splash is not None
+    pixmap = splash.pixmap()
+    assert not pixmap.isNull()
+    assert (pixmap.width(), pixmap.height()) == (
+        wordarc.SPLASH_WIDTH, wordarc.SPLASH_HEIGHT)
+    image = pixmap.toImage()
+    assert image.pixelColor(4, 4).alpha() < 50  # rounded corner stays clear
+    card = image.pixelColor(300, 210)
+    assert card.alpha() > 200 and card.lightness() < 120  # dark card body
+    splash.close()
+
+
+@pytest.mark.parametrize("dpr", [1.0, 1.25, 1.5, 2.0])
+def test_splash_keeps_all_four_corners_clear_at_display_scale(dpr):
+    app = wordarc.QApplication.instance() or wordarc.QApplication([])
+    pixmap = wordarc._splash_pixmap(dpr)
+    assert pixmap.deviceIndependentSize().width() == wordarc.SPLASH_WIDTH
+    image = pixmap.toImage()
+    width, height = image.width(), image.height()
+    for x, y in [(2, 2), (width - 3, 2), (2, height - 3),
+                 (width - 3, height - 3)]:
+        assert image.pixelColor(x, y).alpha() == 0
+    # The right and bottom edges must exist inside the canvas, not be cropped
+    # away by a second application of the display scale.
+    assert image.pixelColor(width - round(4 * dpr), height // 2).alpha() > 200
+    assert image.pixelColor(width // 2, height - round(4 * dpr)).alpha() > 200

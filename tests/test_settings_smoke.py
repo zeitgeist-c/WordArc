@@ -2,11 +2,13 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pathlib
+import time
+import threading
 import tempfile
 import unittest
 from unittest import mock
 
-from PyQt6.QtCore import QPoint, QRect, QEvent
+from PyQt6.QtCore import QPoint, QRect, QEvent, QTimer
 from PyQt6.QtGui import QFont, QFontMetrics
 from PyQt6.QtWidgets import QApplication, QComboBox
 
@@ -46,12 +48,20 @@ class TestSettingsSmoke(unittest.TestCase):
         self.window = settings_ui.SettingsWindow(cfg.Config(), "wordarc toggle")
 
     def tearDown(self):
+        self.wait_local_inspection()
         self.window.close()
         self.window.deleteLater()
         self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         for patcher in reversed(self.patchers):
             patcher.stop()
         self.tmp.cleanup()
+
+    def wait_local_inspection(self):
+        deadline = time.monotonic() + 5
+        while self.window._local_pending and time.monotonic() < deadline:
+            self.app.processEvents()
+            time.sleep(0.005)
+        self.assertFalse(self.window._local_pending)
 
     def test_settings_construct_with_secure_defaults(self):
         window = self.window
@@ -63,6 +73,7 @@ class TestSettingsSmoke(unittest.TestCase):
             "dictation", "history", "meeting", "minutes",
             "audio_file", "settings", "shared_ai", "application",
         ))
+
         self.assertEqual(window.tabs.currentIndex(), 0)
         self.assertFalse(window.history_enabled.isChecked())
         self.assertFalse(window.start_with_windows.isChecked())
@@ -74,6 +85,35 @@ class TestSettingsSmoke(unittest.TestCase):
         window.header_theme.click()
         self.assertEqual(window.conf["theme_mode"], "light")
         self.assertEqual(self.app.property("wordarcTheme"), "light")
+
+
+    def test_slow_driver_probe_keeps_window_and_event_loop_responsive(self):
+        entered, release = threading.Event(), threading.Event()
+        threads = []
+        def slow_probe(_preference):
+            threads.append(threading.get_ident())
+            entered.set()
+            release.wait(3)
+            return "cpu", "int8"
+        ticks = []
+        with mock.patch.object(localspeech, "get_best_device", side_effect=slow_probe):
+            try:
+                self.window.transcribe_engine.setCurrentIndex(
+                    self.window.transcribe_engine.findData("local"))
+                self.assertTrue(entered.wait(1))
+                QTimer.singleShot(0, lambda: ticks.append(True))
+                self.app.processEvents()
+                self.assertEqual(ticks, [True])
+                self.assertNotEqual(threads[0], threading.get_ident())
+                self.assertFalse(self.window.local_download_button.isEnabled())
+                # Changing engine while the driver is pending stays usable.
+                self.window.transcribe_engine.setCurrentIndex(
+                    self.window.transcribe_engine.findData("cloud"))
+                self.app.processEvents()
+                self.assertFalse(self.window.local_row.isVisibleTo(self.window))
+            finally:
+                release.set()
+                self.wait_local_inspection()
 
     def test_navigation_selects_exact_page(self):
         window = self.window
@@ -450,6 +490,7 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertFalse(window.cloud_row.isVisibleTo(window))
         self.assertFalse(window.transcribe_model.isVisibleTo(window))
         # Nothing is downloaded in a test run, so the button is offered.
+        self.wait_local_inspection()
         self.assertTrue(window.local_download_button.isEnabled())
         self.assertFalse(window.local_remove_button.isEnabled())
 
@@ -459,6 +500,7 @@ class TestSettingsSmoke(unittest.TestCase):
         window.navigate_to("settings")
         window.transcribe_engine.setCurrentIndex(
             window.transcribe_engine.findData("local"))
+        self.wait_local_inspection()
         for index in range(window.local_stt_model.count()):
             name = window.local_stt_model.itemData(index)
             shown = localspeech.human_size(localspeech.state(name).expected)
@@ -499,6 +541,7 @@ class TestSettingsSmoke(unittest.TestCase):
             window.local_stt_device.findData("cpu"))
         self.app.processEvents()
         self.assertTrue(window.device_row.isVisibleTo(window))
+        self.wait_local_inspection()
         self.assertIn("CPU", window.local_device_note.text())
         with mock.patch.object(settings_ui.startup, "set_enabled"):
             window._save()

@@ -197,10 +197,10 @@ def get_best_device(preference=DEVICE_AUTO):
     return DEVICE_CPU, COMPUTE_CPU
 
 
-def describe_device(preference=DEVICE_AUTO):
+def describe_device(preference=DEVICE_AUTO, *, resolved=None):
     """Short human line naming the resolved device, for Settings and logs."""
     try:
-        device, compute = get_best_device(preference)
+        device, compute = resolved if resolved is not None else get_best_device(preference)
     except LocalSpeechError as exc:
         return str(exc)
     if device == DEVICE_CUDA:

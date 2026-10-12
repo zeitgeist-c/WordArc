@@ -94,6 +94,7 @@ def test_failure_message_is_preserved_and_progress_is_displayed():
         assert window._download_stop.is_set()
         window._download_stop.clear()
         window._on_local_download_done("base", "network detail")
+        fixture.wait_local_inspection()
         assert "network detail" in window.local_status.text()
         assert window.local_download_button.isEnabled()
         window._download_name = "base"
