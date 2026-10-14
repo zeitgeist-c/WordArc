@@ -57,6 +57,34 @@ class LiveSession:
         self.text = ""
         self.limit_hit = threading.Event()
         self.done = threading.Event()
+        self.setup_ok = threading.Event()
+
+    @classmethod
+    def open_with_keys(cls, keys, mode="SMART", socket_factory=None,
+                       should_stop=None):
+        """Sırayla anahtar dene; kurulumu kabul edeni döndür.
+
+        Bir oturum tek anahtar kullanır: kimlik hatası ortada değil,
+        açılışta belli olur, o yüzden failover burada, kayıt başlamadan.
+        """
+        last_error = ""
+        tried = 0
+        for key in keys or []:
+            if should_stop is not None and should_stop():
+                raise LiveError(t("Stopped."))
+            if not (key or "").strip():
+                continue
+            tried += 1
+            session = cls(api_key=key, mode=mode)
+            session.open(socket_factory=socket_factory)
+            while not session.done.is_set():
+                if session.setup_ok.wait(0.2):
+                    return session
+            session.cancel()
+            last_error = session.error or last_error
+        if tried == 0:
+            raise LiveError(t("Gemini API key is empty. Add it in Settings."))
+        raise LiveError(last_error or t("Live transcription failed."))
 
     def _setup_message(self):
         return {
@@ -109,6 +137,7 @@ class LiveSession:
             setup = self._next_message(15)
             if setup is None or "setupComplete" not in setup:
                 raise LiveError(_failure(setup, self._key))
+            self.setup_ok.set()
             self._opened = _now()
             pending = bytearray()
             ending = False
