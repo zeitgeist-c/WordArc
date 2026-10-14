@@ -85,7 +85,8 @@ def test_failure_message_is_preserved_and_progress_is_displayed():
     fixture.setUp()
     window = fixture.window
     try:
-        window.transcribe_engine.setCurrentIndex(1)
+        window.transcribe_engine.setCurrentIndex(
+            window.transcribe_engine.findData("local"))
         window._download_name = "base"
         window._on_local_download_progress(localspeech.DownloadProgress("base", 50, 100, 10, 5, "model.bin"))
         assert window.download_bar.value() == 500
