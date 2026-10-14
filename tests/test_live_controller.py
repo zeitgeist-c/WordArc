@@ -45,6 +45,7 @@ def _live_controller(**conf_overrides):
     controller.live_timer = mock.Mock()
     controller._live_opener = None
     controller._live_finisher = None
+    controller._finishing_session = None
     controller.live_keys = []
     controller.live_start_slot = 0
     return controller
@@ -114,6 +115,7 @@ def test_live_open_failure_reports_error_and_idles():
 def test_live_poll_shows_preview_and_auto_stops_at_limit():
     controller = _live_controller()
     controller.state = wordarc.RECORDING
+    controller.dictation_operation.begin()
     session = mock.Mock()
     session.preview.return_value = "merhaba"
     session.limit_hit.is_set.return_value = False
@@ -124,3 +126,84 @@ def test_live_poll_shows_preview_and_auto_stops_at_limit():
     with mock.patch.object(controller, "stop") as stop:
         controller._live_poll()
         stop.assert_called_once_with()
+
+
+def test_live_stop_finishes_and_delivers_transcript():
+    controller = _live_controller()
+    controller.state = wordarc.RECORDING
+    controller.dictation_operation.begin()
+    session = mock.Mock()
+    session.finish.return_value = "canlı yazı"
+    session.key_index = 1
+    controller.live_session = session
+    controller.live_keys = ["k1", "k2"]
+    controller.live_start_slot = 0
+    controller.live_streamer.stop.return_value = (2.0, [0.1, 0.2])
+    with mock.patch.object(wordarc.threading, "Thread", _InlineThread):
+        controller.stop()
+    session.finish.assert_called_once_with()
+    controller.pipeline.run_transcript.assert_called_once_with(
+        "canlı yazı", 2.0, [0.1, 0.2],
+        controller.dictation_operation.operation_id, start_slot=0)
+    controller.conf.record_api_success.assert_called_once_with(1, 2)
+    assert controller.live_session is None
+
+
+def test_live_stop_short_recording_cancels_without_delivery():
+    controller = _live_controller()
+    controller.state = wordarc.RECORDING
+    controller.dictation_operation.begin()
+    session = mock.Mock()
+    session.key_index = 0
+    controller.live_session = session
+    controller.live_keys = ["k1", "k2"]
+    controller.live_start_slot = 0
+    controller.live_streamer.stop.return_value = None
+    controller.stop()
+    session.cancel.assert_called_once_with()
+    controller.pipeline.run_transcript.assert_not_called()
+    controller.conf.record_api_attempt.assert_called_once_with(0, 2)
+    assert controller.live_session is None
+
+
+def test_live_stop_while_connecting_discards_late_session():
+    controller = _live_controller()
+    controller.state = wordarc.RECORDING
+    controller.dictation_operation.begin()
+    controller._live_opener = mock.Mock()
+    controller.stop()
+    assert controller.state == wordarc.IDLE
+    assert controller._live_opener is None
+    late = mock.Mock()
+    controller._on_live_opened(late)
+    late.cancel.assert_called_once_with()
+    assert controller.live_session is None
+
+
+def test_tick_auto_stops_when_live_limit_hit():
+    controller = _live_controller()
+    controller.state = wordarc.RECORDING
+    controller.elapsed.elapsed.return_value = 1000
+    session = mock.Mock()
+    session.limit_hit.is_set.return_value = True
+    controller.live_session = session
+    with mock.patch.object(controller, "stop") as stop:
+        controller._tick()
+        stop.assert_called_once_with()
+
+
+def test_live_finish_failure_records_attempt_and_reports():
+    controller = _live_controller()
+    controller.state = wordarc.BUSY
+    controller.dictation_operation.begin()
+    controller.dictation_operation.transition(operation.State.PROCESSING)
+    session = mock.Mock()
+    session.key_index = 0
+    controller._finishing_session = session
+    controller.live_keys = ["k1", "k2"]
+    controller.live_start_slot = 0
+    controller._on_live_failed("no speech",
+                               controller.dictation_operation.operation_id)
+    controller.conf.record_api_attempt.assert_called_once_with(0, 2)
+    controller.overlay.show_error.assert_called()
+    assert controller.state == wordarc.IDLE

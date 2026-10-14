@@ -58,6 +58,7 @@ class LiveSession:
         self.limit_hit = threading.Event()
         self.done = threading.Event()
         self.setup_ok = threading.Event()
+        self.key_index = -1
 
     @classmethod
     def open_with_keys(cls, keys, mode="SMART", socket_factory=None,
@@ -69,7 +70,7 @@ class LiveSession:
         """
         last_error = ""
         tried = 0
-        for key in keys or []:
+        for index, key in enumerate(keys or []):
             if should_stop is not None and should_stop():
                 raise LiveError(t("Stopped."))
             if not (key or "").strip():
@@ -79,6 +80,7 @@ class LiveSession:
             session.open(socket_factory=socket_factory)
             while not session.done.is_set():
                 if session.setup_ok.wait(0.2):
+                    session.key_index = index
                     return session
             session.cancel()
             last_error = session.error or last_error

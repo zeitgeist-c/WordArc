@@ -63,34 +63,37 @@ class Pipeline(QObject):
         self._stop.set()
 
     def run_transcript(self, raw, duration, rms_values=(), operation_id="",
-                       auto_paste=None):
+                       auto_paste=None, start_slot=None):
         """Deliver already-transcribed text through cleanup → paste → history.
 
         The live engine hands over text, not a recording, so transcription
         is skipped; everything after it runs exactly as for a file job.
+        ``start_slot`` lets the caller keep one rotation claim across the
+        live session and the cleanup that follows it.
         """
         if self.busy:
             return
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._work_text,
-            args=(raw, duration, list(rms_values), operation_id, auto_paste),
+            args=(raw, duration, list(rms_values), operation_id, auto_paste,
+                  start_slot),
             daemon=True,
         )
         self._thread.start()
 
     def _work_text(self, raw, duration, rms_values, operation_id,
-                   auto_paste=None):
+                   auto_paste=None, start_slot=None):
         client, keys, uses_cloud = None, [], False
         try:
             client, keys, uses_cloud, started = self._begin_job(
-                operation_id, t("Cleaning up…"))
+                operation_id, t("Cleaning up…"), start_slot=start_slot)
             self._deliver(raw, None, duration, rms_values, operation_id,
                           auto_paste, client, keys, uses_cloud, started)
         except Exception as exc:
             self._fail(exc, uses_cloud, client, keys, operation_id)
 
-    def _begin_job(self, operation_id, stage_message):
+    def _begin_job(self, operation_id, stage_message, start_slot=None):
         """Claim an API slot and build the failover client for one job."""
         conf = self.conf
         started = time.monotonic()
@@ -101,7 +104,10 @@ class Pipeline(QObject):
         uses_cloud = (conf.get("transcribe_engine") != "local"
                       or conf["cleanup_enabled"]
                       or conf.get("translate_enabled"))
-        start = conf.claim_api_slot(len(keys)) if uses_cloud else 0
+        if start_slot is None and uses_cloud:
+            start = conf.claim_api_slot(len(keys))
+        else:
+            start = start_slot or 0
         client = api.GeminiClient(
             keys,
             should_stop=self._stop.is_set,
