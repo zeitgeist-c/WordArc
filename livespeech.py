@@ -8,8 +8,13 @@ ve çerçeveleme stdlib (``socket`` + ``ssl``) ile yapılır.
 
 from __future__ import annotations
 
+import base64
 import os
 import select
+import socket
+import ssl
+import time
+import urllib.parse
 
 from i18n import t
 
@@ -149,3 +154,97 @@ def _exact(holder, carry, size):
     out = bytes(carry[:size])
     del carry[:size]
     return out
+
+
+def _now():
+    return time.monotonic()
+
+
+def _ssl_context():
+    cafile = os.environ.get("SSL_CERT_FILE") or ""
+    if cafile and os.path.isfile(cafile):
+        return ssl.create_default_context(cafile=cafile)
+    return ssl.create_default_context()
+
+
+def _default_open(host, port, timeout):
+    raw = socket.create_connection((host, port), timeout=timeout)
+    try:
+        return _ssl_context().wrap_socket(raw, server_hostname=host)
+    except Exception:
+        raw.close()
+        raise
+
+
+def _connect(key, socket_factory=None):
+    """TLS + websocket el sıkışması; hazır soketi döndürür.
+
+    ``socket_factory`` yalnız testler içindir: (host, port, timeout)
+    alıp konuşmaya hazır soket verir, TLS sarma atlanır.
+    """
+    opener = socket_factory or _default_open
+    try:
+        sock = opener(HOST, 443, 20)
+    except LiveError:
+        raise
+    except Exception as exc:
+        raise LiveError(_redact(str(exc), key)
+                        or t("Live transcription failed."))
+    nonce = base64.b64encode(os.urandom(16)).decode("ascii")
+    query = urllib.parse.urlencode({"key": key})
+    request = (
+        "GET %s?%s HTTP/1.1\r\n"
+        "Host: %s\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Key: %s\r\n"
+        "Sec-WebSocket-Version: 13\r\n"
+        "\r\n"
+    ) % (PATH, query, HOST, nonce)
+    try:
+        sock.sendall(request.encode("ascii"))
+        status, leftover = _read_headers(sock)
+    except Exception as exc:
+        try:
+            sock.close()
+        except Exception:
+            pass
+        raise LiveError(_redact(str(exc), key)
+                        or t("Live transcription failed."))
+    if b" 101 " not in status:
+        try:
+            sock.close()
+        except Exception:
+            pass
+        detail = status.decode("utf-8", errors="replace").split("\r\n", 1)[0]
+        raise LiveError(_redact(detail, key)
+                        or t("Live transcription failed."))
+    try:
+        sock.settimeout(None)
+    except Exception:
+        pass
+    return _Socket(sock, leftover)
+
+
+def _read_headers(sock):
+    data = bytearray()
+    while b"\r\n\r\n" not in data:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        data.extend(chunk)
+        if len(data) > 65536:
+            break
+    head, _, rest = bytes(data).partition(b"\r\n\r\n")
+    return head, rest
+
+
+def _redact(text, key):
+    """Hata metninden API anahtarını ayıkla (log/ekran sızdırmasın)."""
+    out = str(text or "")
+    if key and len(key) >= 8:
+        out = out.replace(key, "***")
+        head, tail = key[:4], key[-4:]
+        if head in out or tail in out:
+            out = out.replace(key[:8], "***").replace(key[-8:], "***")
+    return out.strip()
