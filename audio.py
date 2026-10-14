@@ -268,6 +268,115 @@ class Recorder(QObject, _CaptureBase):
         self.stopped.emit(path, frames / RATE, rms)
 
 
+class LiveStreamer(QObject, _CaptureBase):
+    """Mic capture for the live engine: ~100 ms PCM pieces, no WAV.
+
+    ``Recorder`` records first and hands over a file; this one hands over
+    pieces while the user is still speaking, so the transcript can flow.
+    Piece size matches ``livespeech.CHUNK`` (3200 bytes = 100 ms).
+    """
+
+    PIECE_BYTES = 3200
+
+    chunk = pyqtSignal(bytes)
+    level = pyqtSignal(float)
+    failed = pyqtSignal(str)
+    active = property(lambda self: self._stream is not None)
+
+    def __init__(self, parent=None):
+        QObject.__init__(self, parent)
+        _CaptureBase.__init__(self)
+        self._pending = bytearray()
+        self._error_reported = False
+
+    def start(self, target="", max_seconds=480):
+        if self.active:
+            return
+        self._device = _match_input_device(target)
+        self._buffer = bytearray()
+        self._pending = bytearray()
+        self._rms = []
+        self._cancelled = False
+        self._error_reported = False
+        self._max_bytes = int(max_seconds * RATE * SAMPLE_WIDTH * CHANNELS)
+        try:
+            self._open_stream()
+        except Exception as exc:
+            self._stream = None
+            reason = _short_error(exc)
+            if target:
+                _log.warning("saved microphone %r did not open "
+                             "(%s); falling back to the default input",
+                             target, reason)
+                try:
+                    self._device = None
+                    self._open_stream()
+                except Exception as fallback_exc:
+                    self._stream = None
+                    reason = _short_error(fallback_exc)
+                    _log.warning("default microphone did not open either "
+                                 "(%s)", reason)
+            else:
+                _log.warning("default microphone did not open (%s)", reason)
+            if self._stream is None:
+                self.failed.emit(
+                    t("Could not open the microphone: {error}", error=reason))
+
+    def _open_stream(self):
+        self._stream = _open_portaudio_stream(
+            samplerate=RATE, channels=CHANNELS, dtype="int16",
+            blocksize=CHUNK_FRAMES, device=self._device,
+            callback=self._callback)
+
+    def _callback(self, indata, frames, time_info, status):
+        if status and not self._error_reported:
+            self._error_reported = True
+            self.failed.emit(t("The sound device stopped responding."))
+            return
+        _chunk, peak, _rms = self._on_data(indata, frames, time_info, status)
+        self.level.emit(peak)
+        self._pending.extend(_chunk)
+        while len(self._pending) >= self.PIECE_BYTES:
+            self.chunk.emit(bytes(self._pending[:self.PIECE_BYTES]))
+            del self._pending[:self.PIECE_BYTES]
+
+    def _stop_stream(self):
+        if self._stream is not None:
+            try:
+                self._stream.stop()
+            except Exception:
+                pass
+            self._stream = None
+
+    def cancel(self):
+        self._cancelled = True
+        self._stop_stream()
+        with self._lock:
+            self._buffer = bytearray()
+            self._pending = bytearray()
+
+    def stop(self):
+        """End capture; (duration_seconds, rms) or None when unusable."""
+        if self._stream is None:
+            return None
+        self._stop_stream()
+        with self._lock:
+            pcm = bytes(self._buffer)
+            rms = list(self._rms)
+            self._buffer = bytearray()
+            self._rms = []
+        if self._cancelled:
+            return None
+        frames = len(pcm) // (SAMPLE_WIDTH * CHANNELS)
+        if frames < MIN_FRAMES:
+            self.failed.emit(t("Recording too short, speak for at least 0.3 s"))
+            return None
+        if self._pending:
+            self.chunk.emit(bytes(self._pending))
+            self._pending = bytearray()
+        return frames / RATE, rms
+
+
 class MeetingRecorder(QObject, _CaptureBase):
     """Microphone (left) + system loopback (right) into a stereo WAV."""
 
