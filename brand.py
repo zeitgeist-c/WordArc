@@ -10,7 +10,7 @@ import sys
 @dataclass(frozen=True)
 class BrandIdentity:
     name: str = "WordArc"
-    version: str = "0.6.12"
+    version: str = "0.7.0"
     slug: str = "wordarc"
     executable: str = "wordarc.exe"
     data_directory: str = "WordArc"
