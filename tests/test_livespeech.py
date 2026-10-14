@@ -56,3 +56,60 @@ def test_frame_answers_ping_with_pong():
     finally:
         left.close()
         right.close()
+
+
+def test_redact_masks_api_key():
+    from livespeech import _redact
+    out = _redact("hata: key SECRETKEY reddedildi", "SECRETKEY")
+    assert "SECRETKEY" not in out
+    assert "reddedildi" in out
+
+
+def test_connect_handshake_carries_key_and_upgrades():
+    from livespeech import _Socket, _connect
+
+    sent = []
+
+    class FakeSock:
+        def sendall(self, data):
+            sent.append(bytes(data))
+
+        def recv(self, size):
+            return (b"HTTP/1.1 101 Switching Protocols\r\n"
+                    b"Upgrade: websocket\r\n"
+                    b"Connection: Upgrade\r\n\r\n")
+
+        def settimeout(self, value):
+            pass
+
+        def close(self):
+            pass
+
+    holder = _connect("DUMMYKEY", socket_factory=lambda host, port, timeout: FakeSock())
+    assert isinstance(holder, _Socket)
+    request = b"".join(sent).decode("ascii")
+    assert "key=DUMMYKEY" in request
+    assert "Upgrade: websocket" in request
+
+
+def test_connect_rejects_non_101_status():
+    from livespeech import LiveError, _connect
+
+    class FakeSock:
+        def sendall(self, data):
+            pass
+
+        def recv(self, size):
+            return b"HTTP/1.1 401 Unauthorized\r\n\r\n"
+
+        def settimeout(self, value):
+            pass
+
+        def close(self):
+            pass
+
+    try:
+        _connect("DUMMYKEY", socket_factory=lambda host, port, timeout: FakeSock())
+    except LiveError:
+        return
+    raise AssertionError("401 el sıkışması kabul edildi")
