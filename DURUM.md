@@ -1,9 +1,41 @@
 # WordArc — durum
 
-Güncelleme: 2026-10-12
-Hazırlanan paket: 0.6.12 (`brand.py`)
+Güncelleme: 2026-10-15
+Hazırlanan paket: 0.7.0 (`brand.py`)
 Dal: master
-Git dönüş noktası: aad6592 / v0.6.11
+Git dönüş noktası: 9694009 / v0.6.12
+
+## 2026-10-15 — 0.7.0 Gemini Live üçüncü motor
+
+Ayarlardaki "Nerede çalışsın" seçimine üçüncü motor eklendi: Canlı (Gemini).
+Konuşurken ara metin kayıt şeridinde akar; durunca metin temizlenip yapışır.
+Bulut (REST) ve yerel (Whisper) aynen durur. Dosya ve toplantı yazımı live
+seçiliyken bile REST buluttan yapılır (canlı oturum mikrofona aittir).
+
+- Yeni `livespeech.py`: stdlib websocket ile `BidiGenerateContent`
+  (`gemini-3.5-transcribe-live`), Smart/Birebir modu, 8 dk yumuşak sınır,
+  iptal, API sıra failover'ı, hata metninde anahtar sızdırmazlığı.
+- `audio.py` yanına `LiveStreamer` (100 ms PCM, WAV yok); overlay'e
+  `show_live_text`; worker'a kayıtsız `run_transcript` girişi.
+- Başlat/durdur/iptal live'a dallanır; API sıra damgası (başarı/deneme)
+  korunur. Kapanışta oturum ve yakalama kapatılır.
+- Paket kapısı `livespeech` modülünü de denetler (TOC + kaynak eşleşmesi);
+  `check.ps1` import listesine eklendi.
+- Resmi kapılar: 471 test geçti, 1 atlandı; compile/import, pip-audit temiz.
+  Gerçek ağ turu sahte anahtarla doğrulandı (sunucu reddetti, sızıntı yok).
+  Gerçek mikrofonla canlı sesli prova yapılmadı.
+
+Teslim: dist/WordArc-0.7.0.exe ve dist/WordArc-0.7.0.bat.
+EXE: 1.581.444.238 bayt; SHA256:
+578f0ff40aee1ddde9618394b7192ada5cdbe769c82c05d48f9d9cdeeda14dac.
+
+Paket kapısı ilk koşuda geçti. Teslim EXE --version duvar saati 15,823
+saniye (çıkarma dahil); soğuk/ilk açılış için garanti değildir. Gömülü ana
+kod ve denetlenen modüller kaynakla birebir eşleşiyor. Önceki 0.6.12 teslim
+dosyaları korundu.
+
+Yedek 2026-10-15: kaynak/sürüm/build kaydı yerel sürüm commit'i + v0.7.0;
+origin/master ve v0.7.0 push ile uzak kaynak yedeği.
 
 ## 2026-10-12 — 0.6.12 açılış kartı ve arayüz beklemesi
 
