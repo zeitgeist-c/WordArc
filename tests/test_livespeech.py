@@ -222,3 +222,54 @@ def test_open_without_key_raises():
     except LiveError:
         return
     raise AssertionError("anahtarsız oturum açıldı")
+
+
+def test_open_with_keys_falls_over_to_second_key():
+    import socket
+    from livespeech import CHUNK, LiveSession
+    ends = []
+    for script in (
+        ({"error": {"message": "API key not valid. Pass a valid key."}},),
+        ({"setupComplete": {}},
+         {"serverContent": {"inputTranscription": {"text": "ikinci anahtar"}}},
+         {"serverContent": {"generationComplete": True}}),
+    ):
+        client_end, server_end = socket.socketpair()
+        server_end.sendall(b"HTTP/1.1 101 Switching Protocols\r\n\r\n")
+        for message in script:
+            _server_send(server_end, message)
+        ends.append((client_end, server_end))
+    try:
+        attempt = {"n": 0}
+
+        def factory(host, port, timeout):
+            client_end, _server = ends[attempt["n"]]
+            attempt["n"] += 1
+            return client_end
+
+        session = LiveSession.open_with_keys(["BIRINCI", "IKINCI"], "SMART",
+                                             socket_factory=factory)
+        assert attempt["n"] == 2
+        session.push(b"\x00" * CHUNK * 3)
+        assert session.finish() == "ikinci anahtar"
+    finally:
+        for _client, server in ends:
+            server.close()
+
+
+def test_open_with_keys_all_rejected_raises():
+    import socket
+    from livespeech import LiveError, LiveSession
+    client_end, server_end = socket.socketpair()
+    try:
+        server_end.sendall(b"HTTP/1.1 101 Switching Protocols\r\n\r\n")
+        _server_send(server_end, {"error": {"message": "bad key"}})
+        factory = lambda host, port, timeout: client_end
+        try:
+            LiveSession.open_with_keys(["KOTU"], "SMART",
+                                       socket_factory=factory)
+        except LiveError:
+            return
+        raise AssertionError("reddedilen anahtar kabul edildi")
+    finally:
+        server_end.close()
