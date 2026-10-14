@@ -154,6 +154,29 @@ class _LiveOpener(QObject):
         self.opened.emit(session)
 
 
+class _LiveFinisher(QObject):
+    """Finish a live session off the GUI thread; hand over the transcript."""
+
+    ready = pyqtSignal(str, float, object, str)
+    failed = pyqtSignal(str, str)
+
+    def __init__(self, session, duration, rms_values, operation_id,
+                 parent=None):
+        super().__init__(parent)
+        self._session = session
+        self._duration = duration
+        self._rms = list(rms_values)
+        self._operation_id = operation_id
+
+    def run(self):
+        try:
+            text = self._session.finish()
+        except livespeech.LiveError as exc:
+            self.failed.emit(str(exc), self._operation_id)
+            return
+        self.ready.emit(text, self._duration, self._rms, self._operation_id)
+
+
 class WordArc:
     def __init__(self, app, conf=None):
         self.app = app
@@ -190,6 +213,7 @@ class WordArc:
         self.live_start_slot = 0
         self._live_opener = None
         self._live_finisher = None
+        self._finishing_session = None
         self.live_timer = QTimer()
         self.live_timer.setInterval(200)
         self.live_timer.timeout.connect(self._live_poll)
@@ -462,11 +486,73 @@ class WordArc:
     def stop(self):
         if self.state != RECORDING:
             return
+        if self._live_engine():
+            self._stop_live()
+            return
         self.ticker.stop()
         self.dictation_operation.transition(operation.State.PROCESSING)
         self._set_state(BUSY)
         self.overlay.show_busy(t("Transcribing…"))
         self.recorder.stop()
+
+    def _live_slot(self, session):
+        """Absolute rotation slot the live session spoke with."""
+        total = len(self.live_keys)
+        if total <= 0:
+            return 0, 0
+        index = getattr(session, "key_index", 0) or 0
+        return (self.live_start_slot + index) % total, total
+
+    def _stop_live(self):
+        self.ticker.stop()
+        self.live_timer.stop()
+        self.dictation_operation.transition(operation.State.PROCESSING)
+        self._set_state(BUSY)
+        session, self.live_session = self.live_session, None
+        self._live_opener = None
+        operation_id = self.dictation_operation.operation_id
+        if session is None:
+            # Still connecting, or nothing captured: a late opener lands in
+            # _on_live_opened, sees no RECORDING and cancels the session.
+            self.dictation_operation.transition(operation.State.CANCELLED)
+            self.dictation_operation.transition(operation.State.IDLE)
+            self.overlay.dismiss()
+            self._set_state(IDLE)
+            return
+        self.overlay.show_busy(t("Finishing live transcription…"))
+        result = self.live_streamer.stop()
+        if result is None:
+            # Too short or already cancelled: the streamer has said so
+            # through its failed signal; only settle the API rotation here.
+            session.cancel()
+            slot, total = self._live_slot(session)
+            if total:
+                self.conf.record_api_attempt(slot, total)
+            return
+        duration, rms_values = result
+        self._finishing_session = session
+        self._live_finisher = _LiveFinisher(session, duration, rms_values,
+                                           operation_id)
+        self._live_finisher.ready.connect(self._on_live_ready)
+        self._live_finisher.failed.connect(self._on_live_failed)
+        threading.Thread(target=self._live_finisher.run, daemon=True).start()
+
+    def _on_live_ready(self, text, duration, rms_values, operation_id):
+        self._live_finisher = None
+        session, self._finishing_session = self._finishing_session, None
+        slot, total = self._live_slot(session)
+        if total:
+            self.conf.record_api_success(slot, total)
+        self.pipeline.run_transcript(text, duration, rms_values, operation_id,
+                                     start_slot=self.live_start_slot)
+
+    def _on_live_failed(self, message, operation_id):
+        self._live_finisher = None
+        session, self._finishing_session = self._finishing_session, None
+        slot, total = self._live_slot(session)
+        if total:
+            self.conf.record_api_attempt(slot, total)
+        self._on_error(message, operation_id)
 
     def cancel(self):
         """Throw away the current dictation recording."""
@@ -485,6 +571,9 @@ class WordArc:
     def _tick(self):
         seconds = self.elapsed.elapsed() / 1000.0
         self.overlay.set_seconds(seconds)
+        if self.live_session is not None and self.live_session.limit_hit.is_set():
+            self.stop()
+            return
         if seconds >= self.conf["max_seconds"]:
             self.stop()
 
