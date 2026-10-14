@@ -111,6 +111,21 @@ class Overlay(QWidget):
         self._hide_timer.stop()
         self._appear()
 
+    def show_live_text(self, text):
+        """Interim transcript tail on the recording ribbon.
+
+        The state, colours and meters stay as show_recording() left them;
+        only the message line follows the speech. GUI thread only.
+        """
+        if self.state not in ("recording", "asking"):
+            return
+        tail = (text or "").strip()
+        self.message = tail[-120:]
+        if self.muted:
+            return
+        self._hide_timer.stop()
+        self._appear()
+
     def show_meeting(self):
         """Both channels at once: your voice up, the other side down."""
         self.state = "meeting"
