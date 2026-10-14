@@ -62,11 +62,107 @@ class Pipeline(QObject):
         """
         self._stop.set()
 
+    def run_transcript(self, raw, duration, rms_values=(), operation_id="",
+                       auto_paste=None):
+        """Deliver already-transcribed text through cleanup → paste → history.
+
+        The live engine hands over text, not a recording, so transcription
+        is skipped; everything after it runs exactly as for a file job.
+        """
+        if self.busy:
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(
+            target=self._work_text,
+            args=(raw, duration, list(rms_values), operation_id, auto_paste),
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _work_text(self, raw, duration, rms_values, operation_id,
+                   auto_paste=None):
+        client, keys, uses_cloud = None, [], False
+        try:
+            client, keys, uses_cloud, started = self._begin_job(
+                operation_id, t("Cleaning up…"))
+            self._deliver(raw, None, duration, rms_values, operation_id,
+                          auto_paste, client, keys, uses_cloud, started)
+        except Exception as exc:
+            self._fail(exc, uses_cloud, client, keys, operation_id)
+
+    def _begin_job(self, operation_id, stage_message):
+        """Claim an API slot and build the failover client for one job."""
+        conf = self.conf
+        started = time.monotonic()
+        self.stage.emit(stage_message, operation_id)
+        keys = conf.gemini_keys()
+        # Sıra, işlem gerçekten bulut API kullanıyorsa ilerler: yerel
+        # transkripsiyon API harcamaz ama temizleme/çeviri hâlâ Gemini'ye gider.
+        uses_cloud = (conf.get("transcribe_engine") != "local"
+                      or conf["cleanup_enabled"]
+                      or conf.get("translate_enabled"))
+        start = conf.claim_api_slot(len(keys)) if uses_cloud else 0
+        client = api.GeminiClient(
+            keys,
+            should_stop=self._stop.is_set,
+            on_fallback=lambda slot, _exc, failed=0: self.stage.emit(
+                t("API {used} did not respond; trying API {number}...",
+                  used=failed, number=slot), operation_id),
+            start_slot=start,
+        )
+        return client, keys, uses_cloud, started
+
+    def _fail(self, exc, uses_cloud, client, keys, operation_id):
+        conf = self.conf
+        if isinstance(exc, (api.Cancelled, localspeech.Cancelled)):
+            self.cancelled.emit(operation_id)
+        elif isinstance(exc, (api.ApiError, localspeech.LocalSpeechError,
+                              paste.PasteError)):
+            _log.warning("pipeline failed (%s)", type(exc).__name__)
+            print(f"wordarc: {exc}", file=sys.stderr)
+            # Yalnız API hatası sırayı ilerletir: pano ya da yerel motor
+            # arızası başka bir API'nin suçu değildir. İptal yukarıda
+            # ayrı dalda tutulur, sıraya dokunmaz.
+            if (uses_cloud and client is not None
+                    and isinstance(exc, api.ApiError)):
+                conf.record_api_attempt(client.active_slot, len(keys))
+            self.failed.emit(str(exc), operation_id)
+        else:  # never fail silently
+            _log.exception("unexpected pipeline error")
+            traceback.print_exc()
+            self.failed.emit(t("Unexpected error: {error}", error=exc), operation_id)
+
     def _work(self, wav_path, duration, rms_values, operation_id, auto_paste=None):
+        client, keys, uses_cloud = None, [], False
+        try:
+            client, keys, uses_cloud, started = self._begin_job(
+                operation_id, t("Transcribing…"))
+            transcribe_started = time.monotonic()
+            raw = localspeech.transcribe_for(
+                self.conf, wav_path,
+                language=self.conf["language"],
+                prompt=self.conf["transcribe_prompt"],
+                should_stop=self._stop.is_set,
+                client=client,
+            )
+            _log.info("transcribe took %.1fs for %.1fs of audio",
+                      time.monotonic() - transcribe_started, duration)
+            self._deliver(raw, wav_path, duration, rms_values, operation_id,
+                          auto_paste, client, keys, uses_cloud, started)
+        except Exception as exc:
+            self._fail(exc, uses_cloud, client, keys, operation_id)
+        finally:
+            self._discard(wav_path)
+
+    def _deliver(self, raw, wav_path, duration, rms_values, operation_id,
+                 auto_paste, client, keys, uses_cloud, started):
+        """Transcribe sonrası ortak kuyruk: sessizlik → temizlik → yapıştır.
+
+        ``wav_path`` None olabilir (canlı motor): o zaman silinecek kayıt
+        yoktur, metin doğrudan teslim edilir.
+        """
         conf = self.conf
         should_paste = conf["auto_paste"] if auto_paste is None else auto_paste
-        started = time.monotonic()
-        raw = ""
 
         # Room tone only: don't spend an API call, and don't invite a
         # hallucinated sentence back.
@@ -79,154 +175,105 @@ class Pipeline(QObject):
                                    level=round(stats["speech_db"])), operation_id)
                 return
 
-        try:
-            self.stage.emit(t("Transcribing…"), operation_id)
-            keys = conf.gemini_keys()
-            # Sıra, işlem gerçekten bulut API kullanıyorsa ilerler: yerel
-            # transkripsiyon API harcamaz ama temizleme/çeviri hâlâ Gemini'ye gider.
-            uses_cloud = (conf.get("transcribe_engine") != "local"
-                          or conf["cleanup_enabled"]
-                          or conf.get("translate_enabled"))
-            start = conf.claim_api_slot(len(keys)) if uses_cloud else 0
-            client = api.GeminiClient(
-                keys,
-                should_stop=self._stop.is_set,
-                on_fallback=lambda slot, _exc, failed=0: self.stage.emit(
-                    t("API {used} did not respond; trying API {number}...",
-                      used=failed, number=slot), operation_id),
-                start_slot=start,
-            )
-            transcribe_started = time.monotonic()
-            raw = localspeech.transcribe_for(
-                conf, wav_path,
-                language=conf["language"],
-                prompt=conf["transcribe_prompt"],
-                should_stop=self._stop.is_set,
-                client=client,
-            )
-            _log.info("transcribe took %.1fs for %.1fs of audio",
-                      time.monotonic() - transcribe_started, duration)
-
-            if conf["filter_hallucinations"] and vad.looks_like_hallucination(raw, duration):
-                self._discard(wav_path)
-                self.failed.emit(t("Discarded a stock phrase: “{text}”", text=raw[:60]),
-                                 operation_id)
-                return
-
-            text = raw
-            warning = ""
-            # Claude reads through “eee” and “hani” without help, so a dictation
-            # on its way there is normally sent as it was heard, one API call and
-            # a second or two lighter.
-            translate_on = bool(conf.get("translate_enabled"))
-            if translate_on or conf["cleanup_enabled"]:
-                self.stage.emit(
-                    t("Translating…" if translate_on else "Cleaning up…"),
-                    operation_id)
-                cleanup_started = time.monotonic()
-                try:
-                    if translate_on:
-                        text = client.translate(
-                            raw,
-                            conf["gemini_translate_model"],
-                            cfg.translate_prompt(conf.get("translate_mode", "academic")),
-                        )
-                    else:
-                        text = client.cleanup(
-                            raw,
-                            conf["cleanup_model"],
-                            conf.cleanup_prompt(),
-                            reasoning=conf["cleanup_reasoning"],
-                            allow_empty=True,
-                        )
-                except api.Cancelled:
-                    # A stop that lands while the cleanup request is in flight
-                    # is a stop, not a cleanup failure: Cancelled is an
-                    # ApiError, so without this it was swallowed here and the
-                    # run went on to paste the raw text as if all were well.
-                    raise
-                except api.ApiError as exc:
-                    # Keep the transcript, but never let the failure pass unseen:
-                    # a rejected key would otherwise look like working dictation.
-                    text = raw
-                    warning = str(exc)
-                    _log.warning("cleanup request failed (status=%s, category=%s)",
-                                 exc.status, exc.category)
-                    print(f"wordarc: cleanup failed: {exc}", file=sys.stderr)
-                _log.info("cleanup took %.1fs for %d chars",
-                          time.monotonic() - cleanup_started, len(raw))
-
-            if not text.strip():
-                self._discard(wav_path)
-                self.failed.emit(t("No speech content remains after cleanup."), operation_id)
-                return
-
-            with _paste_lock:
-                previous = paste.read_clipboard() if should_paste and conf["restore_clipboard"] else None
-                paste.copy(text)
-
-                if should_paste:
-                    self.stage.emit(t("Pasting…"), operation_id)
-                    pasted = False
-                    try:
-                        paste.press(conf["paste_shortcut"])
-                        pasted = True
-                    finally:
-                        # The old contents go back whatever happened: when the
-                        # keystroke never landed, the clipboard was left holding
-                        # the dictation text and the user's own clipboard was
-                        # gone for good.
-                        if previous is not None:
-                            if pasted:
-                                # The target reads the clipboard after the
-                                # keystroke lands, so the old contents wait.
-                                time.sleep(0.35)
-                            paste.copy_bytes(previous)
-
-            history_entry = {
-                "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "duration": round(duration, 1),
-                "elapsed": round(time.monotonic() - started, 1),
-                "model": conf.transcribe_name(),
-                "cleanup_model": conf["cleanup_model"] if conf["cleanup_enabled"] else "",
-                "cleanup_error": warning,
-                "raw": raw,
-                "text": text,
-            }
-            if conf["history_enabled"]:
-                cfg.append_history(history_entry)
-                try:
-                    cfg.trim_history(conf["history_limit"])
-                except OSError as exc:
-                    print(f"wordarc: could not trim the history: {exc}", file=sys.stderr)
-            if uses_cloud:
-                conf.record_api_success(client.active_slot, len(keys))
-            self.finished.emit(raw, text, warning, operation_id)
-
-        except api.Cancelled:
-            self.cancelled.emit(operation_id)
-        except localspeech.Cancelled:
-            self.cancelled.emit(operation_id)
-        except (api.ApiError, localspeech.LocalSpeechError,
-                paste.PasteError) as exc:
-            _log.warning("pipeline failed (%s)", type(exc).__name__)
-            print(f"wordarc: {exc}", file=sys.stderr)
-            # Yalnız API hatası sırayı ilerletir: pano ya da yerel motor
-            # arızası başka bir API'nin suçu değildir. İptal yukarıda
-            # ayrı dalda tutulur, sıraya dokunmaz.
-            if uses_cloud and isinstance(exc, api.ApiError):
-                conf.record_api_attempt(client.active_slot, len(keys))
-            self.failed.emit(str(exc), operation_id)
-        except Exception as exc:  # never fail silently
-            _log.exception("unexpected pipeline error")
-            traceback.print_exc()
-            self.failed.emit(t("Unexpected error: {error}", error=exc), operation_id)
-        finally:
+        if conf["filter_hallucinations"] and vad.looks_like_hallucination(raw, duration):
             self._discard(wav_path)
+            self.failed.emit(t("Discarded a stock phrase: “{text}”", text=raw[:60]),
+                             operation_id)
+            return
+
+        text = raw
+        warning = ""
+        # Claude reads through “eee” and “hani” without help, so a dictation
+        # on its way there is normally sent as it was heard, one API call and
+        # a second or two lighter.
+        translate_on = bool(conf.get("translate_enabled"))
+        if translate_on or conf["cleanup_enabled"]:
+            self.stage.emit(
+                t("Translating…" if translate_on else "Cleaning up…"),
+                operation_id)
+            cleanup_started = time.monotonic()
+            try:
+                if translate_on:
+                    text = client.translate(
+                        raw,
+                        conf["gemini_translate_model"],
+                        cfg.translate_prompt(conf.get("translate_mode", "academic")),
+                    )
+                else:
+                    text = client.cleanup(
+                        raw,
+                        conf["cleanup_model"],
+                        conf.cleanup_prompt(),
+                        reasoning=conf["cleanup_reasoning"],
+                        allow_empty=True,
+                    )
+            except api.Cancelled:
+                # A stop that lands while the cleanup request is in flight
+                # is a stop, not a cleanup failure: Cancelled is an
+                # ApiError, so without this it was swallowed here and the
+                # run went on to paste the raw text as if all were well.
+                raise
+            except api.ApiError as exc:
+                # Keep the transcript, but never let the failure pass unseen:
+                # a rejected key would otherwise look like working dictation.
+                text = raw
+                warning = str(exc)
+                _log.warning("cleanup request failed (status=%s, category=%s)",
+                             exc.status, exc.category)
+                print(f"wordarc: cleanup failed: {exc}", file=sys.stderr)
+            _log.info("cleanup took %.1fs for %d chars",
+                      time.monotonic() - cleanup_started, len(raw))
+
+        if not text.strip():
+            self._discard(wav_path)
+            self.failed.emit(t("No speech content remains after cleanup."), operation_id)
+            return
+
+        with _paste_lock:
+            previous = paste.read_clipboard() if should_paste and conf["restore_clipboard"] else None
+            paste.copy(text)
+
+            if should_paste:
+                self.stage.emit(t("Pasting…"), operation_id)
+                pasted = False
+                try:
+                    paste.press(conf["paste_shortcut"])
+                    pasted = True
+                finally:
+                    # The old contents go back whatever happened: when the
+                    # keystroke never landed, the clipboard was left holding
+                    # the dictation text and the user's own clipboard was
+                    # gone for good.
+                    if previous is not None:
+                        if pasted:
+                            # The target reads the clipboard after the
+                            # keystroke lands, so the old contents wait.
+                            time.sleep(0.35)
+                        paste.copy_bytes(previous)
+
+        history_entry = {
+            "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "duration": round(duration, 1),
+            "elapsed": round(time.monotonic() - started, 1),
+            "model": conf.transcribe_name(),
+            "cleanup_model": conf["cleanup_model"] if conf["cleanup_enabled"] else "",
+            "cleanup_error": warning,
+            "raw": raw,
+            "text": text,
+        }
+        if conf["history_enabled"]:
+            cfg.append_history(history_entry)
+            try:
+                cfg.trim_history(conf["history_limit"])
+            except OSError as exc:
+                print(f"wordarc: could not trim the history: {exc}", file=sys.stderr)
+        if uses_cloud:
+            conf.record_api_success(client.active_slot, len(keys))
+        self.finished.emit(raw, text, warning, operation_id)
 
     def _discard(self, wav_path):
         """Delete the temporary recording, or file it away when keep_audio is on."""
-        if not os.path.exists(wav_path):
+        if not wav_path or not os.path.exists(wav_path):
             return
         if self.conf["keep_audio"]:
             try:
