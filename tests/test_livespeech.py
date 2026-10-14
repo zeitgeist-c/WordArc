@@ -146,3 +146,79 @@ def test_server_error_sets_redacted_error():
     _feed(session, {"error": {"message": "key SECRETKEY invalid"}})
     assert session.error
     assert "SECRETKEY" not in session.error
+
+
+def _server_send(sock, payload):
+    """Sunucu gibi maskesiz çerçeve yaz (test yardımcısı)."""
+    import json
+    from livespeech import _send_frame, _Socket
+    raw = json.dumps(payload).encode("utf-8")
+    header = bytearray([0x80 | 1])
+    assert len(raw) < 126
+    header.append(len(raw))
+    sock.sendall(bytes(header) + raw)
+
+
+def _open_with_scripted_server(api_key="k", script=()):
+    import socket
+    from livespeech import LiveSession
+    client_end, server_end = socket.socketpair()
+    server_end.sendall(b"HTTP/1.1 101 Switching Protocols\r\n"
+                       b"Upgrade: websocket\r\n"
+                       b"Connection: Upgrade\r\n\r\n")
+    for message in script:
+        _server_send(server_end, message)
+    session = LiveSession(api_key=api_key)
+    session.open(socket_factory=lambda host, port, timeout: client_end)
+    return session, server_end
+
+
+def test_finish_returns_final_text():
+    from livespeech import CHUNK
+    session, server = _open_with_scripted_server(script=(
+        {"setupComplete": {}},
+        {"serverContent": {"inputTranscription": {"text": "merhaba dünya"}}},
+        {"serverContent": {"generationComplete": True}},
+    ))
+    try:
+        session.push(b"\x00" * CHUNK * 3)
+        assert session.finish() == "merhaba dünya"
+    finally:
+        server.close()
+
+
+def test_finish_without_speech_raises():
+    from livespeech import CHUNK, LiveError
+    session, server = _open_with_scripted_server(script=(
+        {"setupComplete": {}},
+        {"serverContent": {"generationComplete": True}},
+    ))
+    try:
+        session.push(b"\x00" * CHUNK * 3)
+        try:
+            session.finish()
+        except LiveError:
+            return
+        raise AssertionError("sessiz kayıt metin döndürdü")
+    finally:
+        server.close()
+
+
+def test_cancel_ends_thread():
+    session, server = _open_with_scripted_server(script=(
+        {"setupComplete": {}},
+    ))
+    try:
+        session.cancel()
+        assert session.done.wait(2)
+    finally:
+        server.close()
+
+
+def test_open_without_key_raises():
+    from livespeech import LiveError, LiveSession
+    try:
+        LiveSession(api_key="").open()
+    except LiveError:
+        return
+    raise AssertionError("anahtarsız oturum açıldı")
