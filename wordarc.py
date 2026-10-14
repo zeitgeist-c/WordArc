@@ -558,8 +558,27 @@ class WordArc:
         """Throw away the current dictation recording."""
         if not self.recording:
             return
+        if self._live_engine():
+            self._cancel_live()
+            return
         self.ticker.stop()
         self.recorder.cancel()
+        self.dictation_operation.transition(operation.State.CANCELLED)
+        self.dictation_operation.transition(operation.State.IDLE)
+        self.overlay.dismiss()
+        self._set_state(IDLE)
+
+    def _cancel_live(self):
+        """Abort a live dictation: session, capture and timers all go."""
+        self.ticker.stop()
+        self.live_timer.stop()
+        self._live_opener = None
+        self._live_finisher = None
+        session, self.live_session = self.live_session, None
+        if session is not None:
+            session.cancel()
+        self.live_streamer.cancel()
+        self._finishing_session = None
         self.dictation_operation.transition(operation.State.CANCELLED)
         self.dictation_operation.transition(operation.State.IDLE)
         self.overlay.dismiss()
@@ -958,6 +977,14 @@ class WordArc:
         self.meetings.stop()
         if self.recording:
             self.recorder.cancel()
+            if getattr(self, "_live_opener", None) is not None or \
+                    getattr(self, "live_session", None) is not None:
+                self._live_opener = None
+                session, self.live_session = self.live_session, None
+                if session is not None:
+                    session.cancel()
+                self.live_streamer.cancel()
+                self.live_timer.stop()
         # A meeting in progress is closed properly rather than thrown away: the
         # WAV ends up valid and listed, ready to be written up after the restart.
         if self.meeting_state == M_RECORDING:

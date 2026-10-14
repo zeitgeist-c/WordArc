@@ -207,3 +207,44 @@ def test_live_finish_failure_records_attempt_and_reports():
     controller.conf.record_api_attempt.assert_called_once_with(0, 2)
     controller.overlay.show_error.assert_called()
     assert controller.state == wordarc.IDLE
+
+
+def test_live_cancel_aborts_session_and_idles():
+    controller = _live_controller()
+    controller.state = wordarc.RECORDING
+    controller.dictation_operation.begin()
+    session = mock.Mock()
+    controller.live_session = session
+    controller._live_opener = mock.Mock()
+    controller.cancel()
+    session.cancel.assert_called_once_with()
+    controller.live_streamer.cancel.assert_called_once_with()
+    controller.live_timer.stop.assert_called_once_with()
+    assert controller.live_session is None
+    assert controller._live_opener is None
+    assert controller.state == wordarc.IDLE
+    assert controller.dictation_operation.state == operation.State.IDLE
+    controller.overlay.dismiss.assert_called_once_with()
+
+
+def test_live_cancel_while_connecting_discards_late_session():
+    controller = _live_controller()
+    controller.state = wordarc.RECORDING
+    controller.dictation_operation.begin()
+    controller._live_opener = mock.Mock()
+    controller.cancel()
+    assert controller.state == wordarc.IDLE
+    late = mock.Mock()
+    controller._on_live_opened(late)
+    late.cancel.assert_called_once_with()
+    assert controller.live_session is None
+
+
+def test_cloud_cancel_keeps_old_recorder_path():
+    controller = _live_controller(transcribe_engine="cloud")
+    controller.state = wordarc.RECORDING
+    controller.dictation_operation.begin()
+    controller.cancel()
+    controller.recorder.cancel.assert_called_once_with()
+    controller.live_streamer.cancel.assert_not_called()
+    assert controller.state == wordarc.IDLE
