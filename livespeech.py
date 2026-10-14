@@ -9,10 +9,13 @@ ve çerçeveleme stdlib (``socket`` + ``ssl``) ile yapılır.
 from __future__ import annotations
 
 import base64
+import json
 import os
+import queue
 import select
 import socket
 import ssl
+import threading
 import time
 import urllib.parse
 
@@ -37,6 +40,12 @@ class LiveSession:
         self._key = (api_key or "").strip()
         self._mode = ("VERBATIM" if str(mode).strip().upper() == "VERBATIM"
                       else "SMART")
+        self._lock = threading.Lock()
+        self._finals = []
+        self._interim = ""
+        self._completed = False
+        self.error = ""
+        self.text = ""
 
     def _setup_message(self):
         return {
@@ -46,6 +55,57 @@ class LiveSession:
                 "inputAudioTranscription": {"mode": self._mode},
             },
         }
+
+    def preview(self):
+        """Kayıt sürerken ekrana basılacak metin (iplik güvenli)."""
+        return self._text()
+
+    def _text(self):
+        with self._lock:
+            parts = [piece.strip() for piece in self._finals
+                     if piece and piece.strip()]
+            interim = self._interim.strip()
+            if interim:
+                parts.append(interim)
+            return " ".join(parts)
+
+    def _apply(self, message):
+        if "error" in message:
+            self.error = _failure(message, self._key)
+            return
+        content = message.get("serverContent") or {}
+        if content.get("generationComplete") or content.get("turnComplete"):
+            self._completed = True
+        interim = content.get("interimInputTranscription") or {}
+        final = content.get("inputTranscription") or {}
+        with self._lock:
+            if interim.get("text"):
+                self._interim = interim["text"]
+            if final.get("text"):
+                text = final["text"].strip()
+                if self._finals and text.startswith(self._finals[-1].strip()):
+                    self._finals[-1] = text
+                elif text:
+                    self._finals.append(text)
+                # Kesin metin, yerini aldığı aranın gerisinde kalabilir;
+                # aranın kalanı ekranda tutulur.
+                self._interim = _remainder(self._interim, text)
+
+
+def _remainder(interim, final):
+    words = interim.split()
+    done = final.split()
+    if len(words) <= len(done):
+        return ""
+    return " ".join(words[len(done):])
+
+
+def _failure(message, key):
+    if not message:
+        return t("Live transcription failed.")
+    error = message.get("error") or {}
+    text = error.get("message") or error.get("status") or ""
+    return _redact(text, key)[:300] or t("Live transcription failed.")
 
 
 class LiveError(Exception):

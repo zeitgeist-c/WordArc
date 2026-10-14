@@ -113,3 +113,36 @@ def test_connect_rejects_non_101_status():
     except LiveError:
         return
     raise AssertionError("401 el sıkışması kabul edildi")
+
+
+def _feed(session, *messages):
+    for message in messages:
+        session._apply(message)
+
+
+def test_interim_then_final_has_no_duplication():
+    from livespeech import LiveSession
+    session = LiveSession(api_key="k")
+    _feed(session,
+          {"serverContent": {"interimInputTranscription": {"text": "merha"}}})
+    assert session.preview() == "merha"
+    _feed(session,
+          {"serverContent": {"inputTranscription": {"text": "merhaba"}}})
+    assert session.preview() == "merhaba"
+
+
+def test_extending_final_replaces_previous():
+    from livespeech import LiveSession
+    session = LiveSession(api_key="k")
+    _feed(session,
+          {"serverContent": {"inputTranscription": {"text": "merhaba"}}},
+          {"serverContent": {"inputTranscription": {"text": "merhaba dünya"}}})
+    assert session.preview() == "merhaba dünya"
+
+
+def test_server_error_sets_redacted_error():
+    from livespeech import LiveSession
+    session = LiveSession(api_key="SECRETKEY")
+    _feed(session, {"error": {"message": "key SECRETKEY invalid"}})
+    assert session.error
+    assert "SECRETKEY" not in session.error
