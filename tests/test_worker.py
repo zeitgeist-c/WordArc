@@ -253,3 +253,28 @@ def test_a_failed_paste_puts_the_clipboard_back():
 
     restored.assert_called_once_with(b"onceki icerik")
     assert failures, "hata kullanıcıya ulaşmalı"
+
+
+def test_transcript_entry_skips_transcription_but_cleans_and_pastes():
+    """Live engine hands over ready text: no transcribe call, same finish."""
+    conf = _dictation_conf()
+    pipeline = worker.Pipeline(conf)
+    finished, failures = [], []
+    pipeline.finished.connect(lambda *args: finished.append(args))
+    pipeline.failed.connect(lambda message, _op: failures.append(message))
+    transcribe = mock.Mock()
+    client = mock.Mock()
+    client.active_slot = 0
+    client.cleanup.return_value = "clean words"
+    with mock.patch.object(worker.localspeech, "transcribe_for", transcribe), \
+         mock.patch.object(worker.api, "GeminiClient", return_value=client), \
+         mock.patch.object(cfg.Config, "gemini_keys", return_value=["k1"]), \
+         mock.patch.object(cfg.Config, "save"), \
+         mock.patch.object(worker.paste, "copy"), \
+         mock.patch.object(worker.paste, "press"):
+        pipeline._work_text("raw words", 2.0, [], "op-live", auto_paste=True)
+    transcribe.assert_not_called()
+    assert not failures
+    assert len(finished) == 1
+    raw, text, _warning, _op = finished[0]
+    assert (raw, text) == ("raw words", "clean words")
