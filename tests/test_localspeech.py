@@ -51,7 +51,7 @@ class TestModelRegistry(unittest.TestCase):
 
     def test_engine_labels_name_a_place_not_a_library(self):
         values = [value for _label, value in localspeech.ENGINES]
-        self.assertEqual(sorted(values), ["cloud", "local"])
+        self.assertEqual(sorted(values), ["cloud", "live", "local"])
 
 
 class TestState(unittest.TestCase):
@@ -191,6 +191,18 @@ class TestRouting(unittest.TestCase):
         localspeech.transcribe_for(
             conf, _write_wav(os.path.join(self.root, "b.wav")),
             client=self._Client(self.calls))
+        self.assertEqual(self.calls, [("cloud", "gemini-x")])
+
+    def test_live_falls_back_to_the_cloud_for_recorded_audio(self):
+        # Live streams the microphone; a file or meeting chunk has no live
+        # session, so it is transcribed through the cloud REST path (which
+        # sends audio to Google just like live does).
+        conf = _Conf({"transcribe_engine": "live",
+                      "gemini_transcribe_model": "gemini-x", "keys": ["k"]})
+        out = localspeech.transcribe_for(
+            conf, _write_wav(os.path.join(self.root, "c.wav")),
+            client=self._Client(self.calls))
+        self.assertEqual(out, "cloud words")
         self.assertEqual(self.calls, [("cloud", "gemini-x")])
 
     def test_a_local_failure_never_uploads_the_audio(self):
@@ -564,6 +576,12 @@ class TestHistoryNaming(unittest.TestCase):
     def test_the_cloud_engine_is_named_as_before(self):
         self.assertEqual(_Cfg().transcribe_name(),
                          cfg.DEFAULTS["gemini_transcribe_model"])
+
+    def test_the_live_engine_is_named_in_the_history_row(self):
+        conf = _Cfg()
+        conf["transcribe_engine"] = "live"
+        self.assertEqual(conf.transcribe_name(),
+                         "live:gemini-3.5-transcribe-live")
 
 
 class _Cfg(cfg.Config):

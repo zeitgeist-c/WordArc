@@ -321,6 +321,7 @@ def default_model():
 # the work happens, not which library does it.
 ENGINES = (
     ("Cloud (Gemini)", "cloud"),
+    ("Live (Gemini)", "live"),
     ("Local (this computer)", "local"),
 )
 
@@ -873,6 +874,12 @@ def transcribe_for(conf, wav_path, language="", prompt="", should_stop=None,
     callbacks; one is built here when the caller has none.
     """
     if conf.get("transcribe_engine", "cloud") != "local":
+        engine = conf.get("transcribe_engine", "cloud")
+        if engine == "live":
+            # Live streams the microphone; a recording handed over afterwards
+            # has no live session, so the cloud REST path transcribes it.
+            # Both send audio to Google, so no privacy promise breaks.
+            _log.info("live engine chosen for recorded audio; using the cloud")
         return _cloud(conf, wav_path, language, prompt, should_stop,
                       with_segments, client)
     name = conf.get("local_stt_model") or default_model()

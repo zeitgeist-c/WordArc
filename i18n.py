@@ -129,6 +129,13 @@ TR = {
         "eleniyorsa düşür, gürültü hâlâ geçiyorsa yükselt.",
     "Recording too short, speak for at least 0.3 s": "Ses çok kısa, en az 0,3 saniye konuş",
     "Live transcription failed.": "Canlı yazı başarısız oldu.",
+    "Live (Gemini)": "Canlı (Gemini)",
+    "Live transcript mode": "Canlı yazı modu",
+    "Smart": "Akıllı",
+    "Verbatim": "Birebir",
+    "Smart removes filler words while you speak. Verbatim keeps "
+    "every word, including fillers.": "Akıllı, konuşurken dolgu kelimelerini temizler. "
+    "Birebir, dolgular dahil her kelimeyi aynen tutar.",
     "Live transcription stops at 8 minutes.": "Canlı yazı 8 dakikada durur.",
     "Connecting to live transcription…": "Canlı yazıya bağlanılıyor…",
     "Finishing live transcription…": "Canlı yazı tamamlanıyor…",

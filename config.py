@@ -13,6 +13,7 @@ import api
 from brand import BRAND
 import credential_store
 import i18n
+import livespeech
 
 _log = logging.getLogger("wordarc.config")
 
@@ -398,8 +399,9 @@ DEFAULTS = {
     "gemini_next_slot": 0,      # round-robin: sıradaki bulut işlemi hangi API slotundan başlar
     "gemini_last_used": [],     # slot başına son başarılı kullanım (ISO-8601 str, "" = henüz yok)
     "gemini_transcribe_model": "gemini-3.5-flash-lite",
-    # cloud | local — where dictation, audio files and meetings are transcribed.
+    # cloud | live | local — where dictation, audio files and meetings are transcribed.
     "transcribe_engine": "cloud",
+    "live_transcription_mode": "smart",  # smart | verbatim — live engine only
     "local_stt_model": "large-v3-turbo",
     "local_stt_device": "auto",      # auto | cuda | vulkan | cpu
     "gemini_cleanup_model": "gemini-3.5-flash-lite",
@@ -762,6 +764,9 @@ class Config:
         """
         if self.get("transcribe_engine") == "local":
             return f"local:{self.get('local_stt_model') or 'large-v3-turbo'}"
+        if self.get("transcribe_engine") == "live":
+            model = livespeech.MODEL.removeprefix("models/")
+            return f"live:{model}"
         return self["gemini_transcribe_model"]
 
     def cleanup_prompt(self, with_timestamps=False, with_speakers=False,

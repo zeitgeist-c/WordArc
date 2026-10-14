@@ -1404,6 +1404,8 @@ class SettingsWindow(QDialog):
         """One short phrase naming the engine that would answer now."""
         if self.transcribe_engine.currentData() == "local":
             return f"Whisper {self.local_stt_model.currentData()}"
+        if self.transcribe_engine.currentData() == "live":
+            return "Live Gemini"
         return self.transcribe_model.currentText()
 
     def _refresh_local_controls(self, *_):
@@ -1413,8 +1415,11 @@ class SettingsWindow(QDialog):
         if not hasattr(self, "transcribe_engine"):
             return
         local = self.transcribe_engine.currentData() == "local"
-        self.cloud_row.setVisible(not local)
-        self.transcribe_status.setVisible(not local)
+        live = self.transcribe_engine.currentData() == "live"
+        self.cloud_row.setVisible(not local and not live)
+        self.transcribe_status.setVisible(not local and not live)
+        if hasattr(self, "live_row"):
+            self.live_row.setVisible(live)
         self.local_row.setVisible(local)
         self.local_status.setVisible(local)
         if hasattr(self, "local_privacy_note"):
@@ -1981,6 +1986,15 @@ class SettingsWindow(QDialog):
             "Cloud model", self._row(self.transcribe_model,
                                      self.refresh_transcribe_models))
         stt_body.addWidget(self.cloud_row)
+        self.live_transcription_mode = FitsOnScreenCombo()
+        self.live_transcription_mode.addItem(t("Smart"), "smart")
+        self.live_transcription_mode.addItem(t("Verbatim"), "verbatim")
+        self.live_transcription_mode.setToolTip(t(
+            "Smart removes filler words while you speak. Verbatim keeps "
+            "every word, including fillers."))
+        self.live_row = self._label_row(
+            "Live transcript mode", self.live_transcription_mode)
+        stt_body.addWidget(self.live_row)
         self.transcribe_status = QLabel("")
         self.transcribe_status.setObjectName("muted")
         self.transcribe_status.setWordWrap(True)
@@ -2483,6 +2497,8 @@ class SettingsWindow(QDialog):
         self._refresh_gemini_keys()
         self.transcribe_model.setCurrentText(conf["gemini_transcribe_model"])
         self._select_data(self.transcribe_engine, conf["transcribe_engine"])
+        self._select_data(self.live_transcription_mode,
+                          conf.get("live_transcription_mode") or "smart")
         self._select_data(self.local_stt_model,
                           conf.get("local_stt_model") or localspeech.default_model())
         self._select_data(self.local_stt_device,
@@ -2559,6 +2575,8 @@ class SettingsWindow(QDialog):
 
         conf["gemini_api_key"] = ""
         conf["transcribe_engine"] = self.transcribe_engine.currentData() or "cloud"
+        conf["live_transcription_mode"] = (
+            self.live_transcription_mode.currentData() or "smart")
         conf["local_stt_model"] = (self.local_stt_model.currentData()
                                    or localspeech.default_model())
         conf["local_stt_device"] = (self.local_stt_device.currentData()
