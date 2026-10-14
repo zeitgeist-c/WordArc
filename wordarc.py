@@ -19,12 +19,13 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 
 from brand import BRAND, set_windows_app_id
 
 __version__ = BRAND.version
 
-from PyQt6.QtCore import QTimer, QElapsedTimer, Qt, QRectF  # noqa: E402
+from PyQt6.QtCore import QObject, QTimer, QElapsedTimer, Qt, QRectF, pyqtSignal  # noqa: E402
 from PyQt6.QtGui import (QAction, QBrush, QColor, QFont, QIcon,  # noqa: E402
                          QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
                          QRadialGradient)
@@ -46,6 +47,7 @@ import startup  # noqa: E402
 from brand import brand_asset  # noqa: E402
 import i18n  # noqa: E402
 from i18n import t  # noqa: E402
+import livespeech  # noqa: E402
 from meeting import MeetingPipeline  # noqa: E402
 from overlay import Overlay  # noqa: E402
 from settings_ui import SettingsWindow, WindowView, install_qt_translator  # noqa: E402
@@ -131,6 +133,27 @@ IDLE, RECORDING, BUSY = "idle", "recording", "busy"
 M_IDLE, M_RECORDING, M_WORKING = "idle", "recording", "working"
 
 
+class _LiveOpener(QObject):
+    """Open a live session off the GUI thread; report back through signals."""
+
+    opened = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, keys, mode, parent=None):
+        super().__init__(parent)
+        self._keys = list(keys)
+        self._mode = mode
+
+    def run(self):
+        try:
+            session = livespeech.LiveSession.open_with_keys(
+                self._keys, self._mode)
+        except livespeech.LiveError as exc:
+            self.failed.emit(str(exc))
+            return
+        self.opened.emit(session)
+
+
 class WordArc:
     def __init__(self, app, conf=None):
         self.app = app
@@ -158,6 +181,18 @@ class WordArc:
         self.recorder.level.connect(self._on_level)
         self.recorder.stopped.connect(self._on_recorded)
         self.recorder.failed.connect(self._on_recorder_error)
+        self.live_streamer = audio.LiveStreamer()
+        self.live_streamer.chunk.connect(
+            self._on_live_chunk, Qt.ConnectionType.QueuedConnection)
+        self.live_streamer.failed.connect(self._on_live_stream_error)
+        self.live_session = None
+        self.live_keys = []
+        self.live_start_slot = 0
+        self._live_opener = None
+        self._live_finisher = None
+        self.live_timer = QTimer()
+        self.live_timer.setInterval(200)
+        self.live_timer.timeout.connect(self._live_poll)
         self.pipeline.stage.connect(self._on_dictation_stage)
         self.pipeline.finished.connect(self._on_finished)
         self.pipeline.failed.connect(self._on_error)
@@ -346,6 +381,9 @@ class WordArc:
         if self.state != IDLE:
             return
         self.dictation_operation.begin()
+        if self._live_engine():
+            self._start_live()
+            return
         self.overlay.show_recording()
         if not self._begin_recording():
             if self.dictation_operation.state == operation.State.RECORDING:
@@ -353,6 +391,67 @@ class WordArc:
                 self.dictation_operation.transition(operation.State.IDLE)
             return
         self._set_state(RECORDING)
+
+    def _live_engine(self):
+        """Whether dictation streams through Gemini Live right now."""
+        try:
+            return self.conf.get("transcribe_engine", "cloud") == "live"
+        except Exception:
+            return False
+
+    def _start_live(self):
+        """Open the live session off the GUI thread, then stream the mic."""
+        self.overlay.show_recording()
+        self.elapsed.restart()
+        self.ticker.start()
+        keys = self.conf.gemini_keys()
+        start = self.conf.claim_api_slot(len(keys))
+        ordered = keys[start:] + keys[:start] if keys else []
+        self.live_keys = list(keys)
+        self.live_start_slot = start
+        mode = self.conf.get("live_transcription_mode", "smart") or "smart"
+        self._live_opener = _LiveOpener(ordered, mode)
+        self._live_opener.opened.connect(self._on_live_opened)
+        self._live_opener.failed.connect(self._on_live_open_failed)
+        self._set_state(RECORDING)
+        threading.Thread(target=self._live_opener.run, daemon=True).start()
+
+    def _on_live_opened(self, session):
+        if self.state != RECORDING:
+            session.cancel()
+            return
+        self.live_session = session
+        self.live_streamer.start(self.conf["mic_target"],
+                                 self.conf["max_seconds"])
+        if not self.live_streamer.active:
+            return  # start() has already said what went wrong
+        self.live_timer.start(200)
+
+    def _on_live_open_failed(self, message):
+        self._live_opener = None
+        self.ticker.stop()
+        self._on_error(message, self.dictation_operation.operation_id)
+
+    def _on_live_chunk(self, pcm):
+        session = self.live_session
+        if session is not None:
+            session.push(pcm)
+
+    def _on_live_stream_error(self, message):
+        session, self.live_session = self.live_session, None
+        if session is not None:
+            session.cancel()
+        self.live_timer.stop()
+        self.ticker.stop()
+        self._on_error(message, self.dictation_operation.operation_id)
+
+    def _live_poll(self):
+        session = self.live_session
+        if session is None or self.state != RECORDING:
+            return
+        self.overlay.show_live_text(session.preview())
+        if session.limit_hit.is_set():
+            self.stop()
 
     def _begin_recording(self):
         self.elapsed.restart()
