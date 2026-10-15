@@ -1,9 +1,22 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-15
-Hazırlanan paket: 0.7.3 (`brand.py`)
+Hazırlanan paket: 0.7.2 (`brand.py`)
 Dal: master
-Git dönüş noktası: 977623a / v0.7.2
+Git dönüş noktası: 6f1ca43 / v0.7.1
+
+## 2026-10-15 — 0.7.3 geri alındı, 0.7.2'ye dönüldü
+
+Kullanıcı gömülü Hermes tetikleyiciyi beğenmedi; 0.7.3 (özellik + 3 düzeltme,
+a3dacab ve 8ce2214) geri alındı, kaynak 0.7.2 durumuna döndü. 0.7.3 kayıtları
+geçmiş bilgi olarak aşağıda duruyor; paket ve etiket 0.7.2'yi gösterir.
+
+- `v0.7.3` etiketi (yerel + uzak) ve GitHub Release v0.7.3 silindi.
+- dist içindeki 0.7.3 çıktıları silindi; 0.7.2 aynı kaynaktan yeniden
+  paketlendi.
+- AutoHotkey kaldırma geri alınmadı (ayrı onaylı temizlikti); genel
+  Shift+Space tetikleyici yok. Hermes odaktayken kendi Shift+Space diktesi
+  çalışır; genel kısayolu kullanıcı kendi eliyle halledecek.
 
 ## 2026-10-15 — 0.7.3 Hermes tetikleyici gömüldü, AutoHotkey kalktı
 

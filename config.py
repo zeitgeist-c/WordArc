@@ -424,7 +424,6 @@ DEFAULTS = {
     "min_voiced_seconds": 0.3,
     "filter_hallucinations": True,
     "shortcut": "Ctrl+Space",
-    "hermes_shortcut": "Alt+Space",  # empty -> no Hermes trigger; frees the old AutoHotkey helper
     "overlay_corner": "bottom-left",
     "overlay_meter": "spectrum",   # bars | spectrum | wave | capsule
     "keep_audio": False,

@@ -37,7 +37,6 @@ import audio  # noqa: E402
 import config as cfg  # noqa: E402
 import diagnostics  # noqa: E402
 import hotkey  # noqa: E402
-import hermes_trigger  # noqa: E402
 import meeting  # noqa: E402
 import localspeech  # noqa: E402
 from cuda_recovery import CudaRecovery  # noqa: E402
@@ -388,17 +387,8 @@ class WordArc:
         handler()
 
     def _on_hotkey(self, name):
-        handlers = {"meeting": self._toggle_meeting,
-                    "hermes": self._trigger_hermes}
+        handlers = {"meeting": self._toggle_meeting}
         handlers.get(name, self._toggle)()
-
-    def _trigger_hermes(self):
-        # Eski AutoHotkey yardımcısının yaptığı iş: Hermes'i öne getirip
-        # dikte açma/kapama tuşuna (Alt+Space) bas. Başarısızlık WordArc
-        # kaydını etkilemez, yalnız bilgi verilir.
-        error = hermes_trigger.trigger()
-        if error:
-            self._report(t(error), self.overlay)
 
     def _toggle(self):
         # Two /dev/input nodes can carry the same keyboard, and a menu click can
@@ -959,8 +949,7 @@ class WordArc:
         self._refresh_tray()
         self.evdev.stop()
         self.evdev.start({"toggle": self.conf["shortcut"],
-                          "meeting": self.conf["meeting_shortcut"],
-                          "hermes": self.conf["hermes_shortcut"]})
+                          "meeting": self.conf["meeting_shortcut"]})
 
     def restart(self):
         """Replace this process with a fresh one, picking up code and settings.
