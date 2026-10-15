@@ -9,13 +9,14 @@ import unittest
 from unittest import mock
 
 from PyQt6.QtCore import QPoint, QRect, QEvent, QTimer
-from PyQt6.QtGui import QFont, QFontMetrics
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QImage
 from PyQt6.QtWidgets import QApplication, QComboBox
 
 import audio
 import config as cfg
 import localspeech
 import settings_ui
+import screenshot_capture
 from i18n import t
 
 
@@ -68,10 +69,10 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertTrue(window.windowTitle().startswith("WordArc"))
         self.assertGreaterEqual(window.width(), 920)
         self.assertGreaterEqual(window.height(), 700)
-        self.assertEqual(window.tabs.count(), 4)
+        self.assertEqual(window.tabs.count(), 5)
         self.assertEqual(tuple(window._tab_index), (
             "dictation", "history", "meeting", "minutes",
-            "audio_file", "settings", "shared_ai", "application",
+            "audio_file", "screenshot", "settings", "shared_ai", "application",
         ))
 
         self.assertEqual(window.tabs.currentIndex(), 0)
@@ -125,12 +126,16 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertTrue(window.navigate_to("history"))
         self.assertEqual(window.tabs.currentIndex(), 0)
         self.assertTrue(window.navigate_to("shared_ai"))
-        self.assertEqual(window.tabs.currentIndex(), 3)
+        self.assertEqual(window.tabs.currentIndex(), 4)
         self.assertFalse(window.navigate_to("agent"))
         self.assertEqual(
             [window.tabs.tabText(index) for index in range(window.tabs.count())],
-            [t("Dictation"), t("Meeting"), t("Audio file"), t("Settings")],
+            [t("Dictation"), t("Meeting"), t("Audio file"), t("Screenshot"),
+             t("Settings")],
         )
+        self.assertTrue(window.navigate_to("screenshot"))
+        self.assertEqual(window.tabs.currentIndex(), 3)
+        self.assertEqual(window.screenshot_shortcut.currentText(), "Ctrl+Alt+S")
 
     def test_noop_save_preserves_every_config_key_and_emits_once(self):
         window = self.window
@@ -155,6 +160,66 @@ class TestSettingsSmoke(unittest.TestCase):
             window._save()
         self.assertEqual(window.conf["assistant_provider"], "codex")
         self.assertEqual(window.conf["assistant_prompt"], "legacy custom prompt")
+
+    def test_screenshot_preferences_round_trip_and_own_tab(self):
+        window = self.window
+        self.assertEqual(window._tab_index["screenshot"], 3)
+        window.screenshot_shortcut.setCurrentText("Ctrl+Alt+S")
+        window.screenshot_directory.setText("C:/Screenshots")
+        window.screenshot_format.setCurrentIndex(
+            window.screenshot_format.findData("JPEG"))
+        with mock.patch.object(settings_ui.startup, "set_enabled"), \
+             mock.patch.object(settings_ui, "info_box"):
+            window._save(quiet=True)
+        self.assertEqual(window.conf["screenshot_shortcut"], "Ctrl+Alt+S")
+        self.assertEqual(window.conf["screenshot_directory"], "C:/Screenshots")
+        self.assertEqual(window.conf["screenshot_format"], "JPEG")
+        loaded = settings_ui.SettingsWindow(window.conf, "wordarc toggle")
+        try:
+            self.assertEqual(loaded.screenshot_shortcut.currentText(), "Ctrl+Alt+S")
+            self.assertEqual(loaded.screenshot_directory.text(), "C:/Screenshots")
+            self.assertEqual(loaded.screenshot_format.currentData(), "JPEG")
+        finally:
+            loaded.close()
+            loaded.deleteLater()
+            self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+    def test_capture_controller_shutdown_does_not_restore_hidden_window(self):
+        owner = settings_ui.QWidget()
+        owner.show()
+        owner.hide()
+        controller = screenshot_capture.ScreenshotController(self.window.conf)
+        controller._hidden_owner = owner
+        controller.shutdown()
+        self.assertFalse(owner.isVisible())
+        owner.close()
+        controller.deleteLater()
+
+    def test_screenshot_values_save_from_preview_without_global_settings_save(self):
+        image = QImage(12, 8, QImage.Format.Format_RGB32)
+        image.fill(QColor("#235577"))
+        preview = screenshot_capture.ScreenshotPreview(image, self.window.conf)
+        controller = screenshot_capture.ScreenshotController(self.window.conf)
+        controller._preview = preview
+        preview.saved.connect(controller._queue_save_preferences)
+        controller.preferences_saved.connect(
+            lambda folder, fmt: (self.window.screenshot_directory.setText(folder),
+                                 settings_ui.SettingsWindow._select_data(
+                                     self.window.screenshot_format, fmt)))
+        self.window.conf.save = mock.Mock()
+        with tempfile.TemporaryDirectory() as folder:
+            target = str(pathlib.Path(folder) / "capture.png")
+            with mock.patch.object(screenshot_capture.QFileDialog, "getSaveFileName",
+                                   return_value=(target, "PNG image (*.png)")):
+                preview._save()
+            self.app.processEvents()
+            self.assertTrue(pathlib.Path(target).is_file())
+            self.assertEqual(self.window.screenshot_directory.text(), folder)
+            self.assertEqual(self.window.screenshot_format.currentData(), "PNG")
+            self.window.conf.save.assert_called_once_with()
+        preview.close()
+        controller.close()
+        controller.deleteLater()
 
     def test_gemini_keys_can_be_reordered_without_showing_secrets(self):
         window = self.window
@@ -367,7 +432,7 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertFalse([text for text in texts if "tek akışta" in text])
         self.assertEqual([l for l in labels if l.objectName() == "pageTitle"], [])
         self.assertEqual(
-            len([l for l in labels if l.objectName() == "pageDescription"]), 4)
+            len([l for l in labels if l.objectName() == "pageDescription"]), 5)
         self.assertIsNotNone(window.findChild(settings_ui.QFrame, "headerRule"))
 
     def test_settings_tab_shows_every_section(self):
@@ -377,7 +442,7 @@ class TestSettingsSmoke(unittest.TestCase):
         self.app.processEvents()
         window.navigate_to("settings")
         self.app.processEvents()
-        page = window.tabs.widget(3)
+        page = window.tabs.widget(window._tab_index["settings"])
         titles = [box.title() for box in page.findChildren(settings_ui.QGroupBox)]
         for expected in ("Keys", "Speech to text", "Transcript cleanup",
                          "Names and terms", "Interface", "Startup", "Support"):
@@ -720,7 +785,7 @@ class TestTheWindowSurvivesABadAudioLibrary(unittest.TestCase):
              mock.patch.object(settings_ui.startup, "is_enabled", return_value=False):
             window = settings_ui.SettingsWindow(cfg.Config(), "wordarc toggle")
         try:
-            self.assertEqual(window.tabs.count(), 4)
+            self.assertEqual(window.tabs.count(), 5)
             self.assertEqual(window.mic.count(), 1)
             self.assertEqual(window.mic.currentData(), "")
             self.assertTrue(window.dictation_output.isReadOnly())

@@ -45,7 +45,7 @@ def main():
             window._refresh_header_theme()
             for width, height in ((1040, 760), (520, 400)):
                 window.resize(width, height)
-                for tab in range(4):
+                for tab in range(window.tabs.count()):
                     window.tabs.setCurrentIndex(tab)
                     app.processEvents()
                     window.grab().save(str(output / f"{lang}-{mode}-{width}-{tab}.png"))

@@ -60,7 +60,7 @@ UNTRANSLATED = {
     "Nvidia GPU", "CPU",
 }
 
-SOURCE_FILES = ("settings_ui.py", "wordarc.py", "meeting.py", "worker.py",
+SOURCE_FILES = ("settings_ui.py", "screenshot_capture.py", "wordarc.py", "meeting.py", "worker.py",
                 "audio.py", "filetranscribe.py", "paste.py", "api.py",
                 "localspeech.py")
 
@@ -150,7 +150,7 @@ class TestTranslationCoverage(unittest.TestCase):
                             for target in node.targets)):
                 specs = node.value
         self.assertIsNotNone(specs, "specs listesi bulunamadi")
-        self.assertEqual(len(specs.elts), 4)
+        self.assertEqual(len(specs.elts), 5)
         for element in specs.elts:
             for index in (2, 3):
                 text = element.elts[index]

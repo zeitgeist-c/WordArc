@@ -292,6 +292,50 @@ TR = {
         "Sesli istekleri açık izinlerle çalıştırın.",
     "Capture microphone and system audio reliably.":
         "Mikrofon ve sistem sesini güvenilir biçimde kaydedin.",
+    "Capture a screen region or the full display, then copy or save it.":
+        "Ekranın bir bölgesini veya tamamını yakalayın; ardından kopyalayın ya da kaydedin.",
+    "Select a screen region or capture the whole display.":
+        "Ekranın bir bölgesini seçin veya tamamını yakalayın.",
+    "Select a region or capture the active screen.":
+        "Bir alan seçin veya etkin ekranı yakalayın.",
+    "Capture a region on the active screen, then copy or save it.":
+        "Etkin ekranda alan seçin, ardından kopyalayın veya kaydedin.",
+    "Capture and save a screenshot from the active screen.":
+        "Etkin ekrandan görüntü alın ve kaydedin.",
+    "Capture this screen": "Bu ekranı yakala",
+    "Choose where new screenshots are saved by default.":
+        "Yeni ekran görüntülerinin kaydedileceği varsayılan konumu seçin.",
+    "Leave empty to use the Pictures/WordArc folder.":
+        "Boş bırakırsanız Resimler/WordArc klasörü kullanılır.",
+    "Screenshot": "Ekran görüntüsü",
+    "Capture and save a screenshot.": "Ekran görüntüsü alın ve kaydedin.",
+    "Screenshot failed: {error}": "Ekran görüntüsü alınamadı: {error}",
+    "Screenshots": "Ekran görüntüleri",
+    "PNG image (*.png)": "PNG görüntüsü (*.png)",
+    "JPEG image (*.jpg *.jpeg)": "JPEG görüntüsü (*.jpg *.jpeg)",
+    "Screenshot options": "Ekran görüntüsü ayarları",
+    "Capture": "Yakalama",
+    "Capture screenshot": "Ekran görüntüsü al",
+    "Capture shortcut": "Ekran görüntüsü kısayolu",
+    "Select area…": "Alan seç…",
+    "Capture full screen": "Tüm ekranı yakala",
+    "Select screenshot area": "Ekran görüntüsü alanını seçin",
+    "Drag to select · Esc to cancel": "Alanı seçmek için sürükleyin · İptal için Esc",
+    "Copy image": "Görüntüyü kopyala",
+    "Save image…": "Görüntüyü kaydet…",
+    "Save screenshot": "Ekran görüntüsünü kaydet",
+    "PNG image (*.png);;JPEG image (*.jpg *.jpeg)":
+        "PNG görüntüsü (*.png);;JPEG görüntüsü (*.jpg *.jpeg)",
+    "Could not write the image file.": "Görüntü dosyası yazılamadı.",
+    "No screen is available for capture.": "Yakalanabilecek ekran bulunamadı.",
+    "Windows could not capture the screen.": "Windows ekran görüntüsünü alamadı.",
+    "Screen has an invalid size.": "Ekran boyutu geçersiz.",
+    "Select an area at least 2 × 2 pixels.": "En az 2 × 2 piksellik bir alan seçin.",
+
+    "Choose folder…": "Klasör seç…",
+    "Choose screenshot folder": "Ekran görüntüsü klasörünü seçin",
+    "Save folder": "Kayıt klasörü",
+    "Image format": "Görüntü biçimi",
     "Review and retry meeting summaries.":
         "Toplantı özetlerini inceleyin ve yeniden deneyin.",
     "Transcribe an existing recording.":

@@ -10,6 +10,7 @@ WordArc turns speech into polished text. Press `Ctrl+Space`, talk, press again �
 
 - **Push-to-talk dictation** — `Ctrl+Space` to start/stop, `Escape` discards without transcription or AI processing.
 - **Meeting mode** — `wordarc.py meeting` records mic + system audio (WASAPI loopback), writes minutes-grade transcripts.
+- **Screenshots** — `Ctrl+Alt+S` selects a region on the active screen; Settings also offers active-screen capture, clipboard copy, and PNG/JPEG save.
 - **System-audio capture** — meeting counterparts are captured even without a mic share.
 - **Voice activity detection** — trims silence before sending audio.
 - **Paste where you work** — result is pasted into the focused app.
@@ -69,8 +70,9 @@ wordarc.py        tray app, CLI, single-instance IPC
 worker.py         dictation pipeline
 meeting.py        meeting pipeline
 audio*.py         mic + WASAPI loopback capture
-settings_ui.py    settings window
-hotkey.py         global hotkey
+settings_ui.py    settings and screenshot tabs
+screenshot_capture.py  region/full-screen capture and local preview
+hotkey.py         global hotkeys
 assets/brand      canonical SVG sources, icon build
 tools/            brand asset + helper scripts
 tests/            pytest suite

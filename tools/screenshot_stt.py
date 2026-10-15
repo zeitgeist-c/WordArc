@@ -66,7 +66,7 @@ def main():
         window.resize(980, 820)
         window.navigate_to("settings")
         app.processEvents()
-        scroller = window.tabs.widget(3).findChild(settings_ui.QScrollArea)
+        scroller = window.tabs.widget(window._tab_index["settings"]).findChild(settings_ui.QScrollArea)
         grab(window, app, "stt-cloud", scroller, 0.22)
 
         window.transcribe_engine.setCurrentIndex(

@@ -33,6 +33,9 @@ class TestConfigLoadSave(unittest.TestCase):
         self.assertEqual(c["theme_mode"], "dark")
         self.assertEqual(c["config_schema"], 4)
         self.assertTrue(c["close_to_tray"])
+        self.assertEqual(c["screenshot_shortcut"], "Ctrl+Alt+S")
+        self.assertEqual(c["screenshot_directory"], "")
+        self.assertEqual(c["screenshot_format"], "PNG")
     def test_invalid_theme_falls_back_to_dark(self):
         cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         cfg.CONFIG_FILE.write_text(json.dumps({"theme_mode": "neon"}), encoding="utf-8")
