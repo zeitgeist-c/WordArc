@@ -1,9 +1,30 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-16
-Hazırlanan paket: 0.8.1 (`brand.py`)
+Hazırlanan paket: 0.8.2 (`brand.py`)
 Dal: master
-Git dönüş noktası: 1030580 / v0.8.0
+Git dönüş noktası: 7efa3be / v0.8.1
+
+## 2026-10-16 — 0.8.2 ekran editörü ve bas-ata kısayollar
+
+Ekran önizlemesinde düzenleme araçları eklendi: dikdörtgen/elips, ok, çizgi,
+kalem, vurgulama, bulanıklaştırma/pikselleştirme, numaralı adım badge ve metin;
+renk/kalınlık, geri al, çizimi sıfırla. Etkin pencere yakalama (`window` modu)
+desteği ve Ayarlar sekmesine "Etkin pencereyi yakala" düğmesi eklendi.
+Kısayol kutuları artık önceden tanımlı listeden değil, alana tıklayıp tuşlara basarak atanıyor
+(`HotkeyEdit`); geçersiz kombinasyon reddediliyor, `×` temizliyor.
+
+- Derin araştırma: vault'da `50 - Kaynaklar/Arastirma/2026-10-16-wordarc-ekran-alinti-onderme/report.md`.
+- `screenshot_editor.py` yeni modül; wordarc.spec hiddenimports'a eklendi.
+- `tools/verify_release_package.py` geçti; pakette `screenshot_capture` ve
+  `screenshot_editor` mevcut.
+- Son doğrulama: 518 test geçti, 1 atlandı; `check.ps1` ✅.
+- Teslim: `dist/WordArc-0.8.2.exe` ve `dist/WordArc-0.8.2.bat`.
+  EXE: SHA256 `d091fd3be51f618b97572f63e601184b91d0f56d17dc02bbf1c06bb324d050c4`.
+  Paket `--version`: `WordArc version 0.8.2`.
+
+Yedek 2026-10-16: kaynak commit `3c2d9c7`, `v0.8.2` etiketi aynı commit'e
+bağlandı; push ve GitHub Release yapılıyor.
 
 ## 2026-10-16 — 0.8.1 seçimde ayarlama ve ekran üstü araç çubuğu
 
