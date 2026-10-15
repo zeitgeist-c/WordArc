@@ -1,9 +1,47 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-15
-Hazırlanan paket: 0.7.0 (`brand.py`)
+Hazırlanan paket: 0.7.1 (`brand.py`)
 Dal: master
-Git dönüş noktası: 9694009 / v0.6.12
+Git dönüş noktası: beb7d5b / v0.7.0
+
+## 2026-10-15 — 0.7.1 canlı dikte düzeltmeleri
+
+Kullanıcı 0.7.0'ı gerçek kullanımda denedi ve üç sorun bildirdi; üçü de
+kaynakta doğrulanıp düzeltildi.
+
+- **Canlı ara metin hiç çizilmiyordu.** Overlay kayıt sürerken yalnızca
+  seviye çubuklarını boyuyordu; `show_live_text()` ile gelen metin yalnızca
+  "busy" durumunda görünen alana yazılıyordu. Piksel ölçümü kanıtladı
+  (metin bölgesinde 0 parlak piksel). Artık şeridin üst satırı konuşulanı
+  akıtıyor, seviye çubukları altında kalıyor, şerit uzun cümlede genişliyor.
+- **Motor seçim listesi alttan taşıyordu.** Popup yüksekliği sabit 34 px
+  satır varsayımıyla hesaplanıyordu; satırlar gerçekte daha yüksek çiziliyor
+  ve son satır kırpılıyordu. Artık satırlar `sizeHintForRow()` ile ölçülüyor,
+  liste çerçevesi/arama kutusu payı ayrı ekleniyor.
+- **Ölü C++ nesnesi çökmesi (access violation).** Seçici popup kapanırken
+  `destroyed` sinyali silinmiş nesneye dokunuyordu; tam süit bunu yakaladı.
+  Yaşam döngüsü tek noktaya (`_close_picker` / `_live_picker`, `sip.isdeleted`)
+  alındı; seçim ve Escape yollarında referans temizleniyor.
+- Canlı motorun modeli seçilemez olduğu artık ayarlarda yazıyor:
+  "Canlı, gemini-3.5-transcribe-live kullanır; değiştirilemez. Ardından
+  metni, 'Transkripti temizleme' altındaki model düzenler." Motor kutusunun
+  ipucu üç seçeneğin farkını anlatıyor. (Kullanıcının gördüğü "46 model"
+  temizleme listesidir, transkripsiyonla ilgisi yok.)
+
+Resmi kapılar: 480 test geçti, 1 atlandı; compile/import ve pip-audit temiz.
+
+Teslim: dist/WordArc-0.7.1.exe ve dist/WordArc-0.7.1.bat.
+EXE: 1.581.446.380 bayt; SHA256:
+15fa65a6a9ac5651758e7f2b9e7f415d370aa0fc6cb4199f4c56583b200ae0ce.
+
+Paket kapısı ilk koşuda geçti. Teslim EXE --version duvar saati 17,832
+saniye (çıkarma dahil); soğuk/ilk açılış için garanti değildir. Gömülü ana
+kod ve denetlenen modüller kaynakla birebir eşleşiyor. Önceki 0.7.0 ve
+0.6.12 teslim dosyaları korundu.
+
+Yedek 2026-10-15: kaynak/sürüm/build kaydı yerel sürüm commit'i + v0.7.1;
+origin/master ve v0.7.1 push ile uzak kaynak yedeği.
 
 ## 2026-10-15 — 0.7.0 Gemini Live üçüncü motor
 
