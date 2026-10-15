@@ -1,9 +1,31 @@
 # WordArc — durum
 
-Güncelleme: 2026-10-15
-Hazırlanan paket: 0.8.0 (`brand.py`)
+Güncelleme: 2026-10-16
+Hazırlanan paket: 0.8.1 (`brand.py`)
 Dal: master
-Git dönüş noktası: 977623a / v0.7.2
+Git dönüş noktası: 1030580 / v0.8.0
+
+## 2026-10-16 — 0.8.1 seçimde ayarlama ve ekran üstü araç çubuğu
+
+Ekran görüntüsü seçimi bırakınca direkt alınmıyor; seçim ekranda kalıyor.
+8 tutamaçla boyutlandırma, içinden sürükleyerek taşıma, seçim altında
+Kopyala/Kaydet/İptal çubuğu. Onay çift tıklama veya Enter (önizlemeye gider);
+Esc/sağ tık iptal; Ctrl+C / Ctrl+S hızlı kopyalama/kaydetme. Kaydetme mantığı
+önizlemeyle tek fonksiyonda birleşti; klasör/biçim tercihi iki yolda da
+hatırlanıyor. Seçim ekran dışına taşmıyor.
+
+- Son doğrulama: 512 test geçti, 1 atlandı; `check.ps1`, `compileall`, import
+  kontrolü başarılı. Overlay offscreen görüntüyle gözle de doğrulandı
+  (tutamaklar, ölçü etiketi, araç çubuğu).
+- Teslim: `dist/WordArc-0.8.1.exe` ve `dist/WordArc-0.8.1.bat`.
+  EXE: 1.581.470.559 bayt; SHA256
+  `745fd31457a30b874db2da3b61c6891933d65a966098aa36d51b84d7cc0f2d3b`.
+  Paket `--version`: `WordArc version 0.8.1`.
+- Sınırlar: ok/dikdörtgen/metin çizimi ve bulanıklaştırma yok; gerçek
+  masaüstünde elle deneme yapılmadı.
+
+Yedek 2026-10-16: sürüm 0.8.1 kaynak commit'i + `v0.8.1` etiketi +
+`origin/master` push'u + GitHub Release bu kapanışta tamamlanacak.
 
 ## 2026-10-15 — 0.8.0 ekran görüntüsü sekmesi
 
