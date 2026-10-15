@@ -10,6 +10,7 @@ WordArc konuşmayı düzenlenmiş metne dönüştürür. `Ctrl+Space` bas, konu�
 
 - **Bas-konuş dikte** — `Ctrl+Space` başlat/durdur, `Escape` yazıya çevirmeden siler.
 - **Toplantı modu** — `wordarc.py meeting` mikrofon + sistem sesini (WASAPI loopback) kaydeder, tutanaklık metin üretir.
+- **Ekran görüntüsü** — `Ctrl+Alt+S` ile etkin ekranda alan seç; Ayarlar sekmesinden etkin ekranı al, görüntüyü panoya kopyala veya PNG/JPEG kaydet.
 - **Sistem sesi yakalama** — karşı taraf sesi mikser paylaşımı olmadan alınır.
 - **Ses aktivite algısı (VAD)** — göndermeden önce sessizliği kırpar.
 - **Çalıştığın yere yapıştır** — sonuç odaktaki uygulamaya yapıştırılır.
@@ -69,8 +70,9 @@ wordarc.py        tepsi uygulaması, CLI, tek örnek IPC
 worker.py         dikte hattı
 meeting.py        toplantı hattı
 audio*.py         mikrofon + WASAPI loopback yakalama
-settings_ui.py    ayar penceresi
-hotkey.py         genel kısayol
+settings_ui.py    ayarlar ve ekran görüntüsü sekmeleri
+screenshot_capture.py  alan/tam ekran yakalama ve yerel önizleme
+hotkey.py         genel kısayollar
 assets/brand      özgün SVG kaynakları, ikon üretimi
 tools/            marka ve yardımcı scriptler
 tests/            pytest paketi

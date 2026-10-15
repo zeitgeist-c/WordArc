@@ -48,6 +48,7 @@ from brand import brand_asset  # noqa: E402
 import i18n  # noqa: E402
 from i18n import t  # noqa: E402
 import livespeech  # noqa: E402
+import screenshot_capture  # noqa: E402
 from meeting import MeetingPipeline  # noqa: E402
 import overlay  # noqa: E402
 from overlay import Overlay  # noqa: E402
@@ -250,6 +251,11 @@ class WordArc:
 
         self.tray = QSystemTrayIcon()
         self.tray.activated.connect(self._tray_clicked)
+        self.screenshot_controller = screenshot_capture.ScreenshotController(
+            self.conf, self.settings_window)
+        self.screenshot_controller.failed.connect(self._on_screenshot_failed)
+        self.screenshot_controller.preferences_saved.connect(
+            self._on_screenshot_preferences_saved)
         self._apply_settings()
         self.tray.show()
 
@@ -277,6 +283,11 @@ class WordArc:
         self.meeting_cancel_action.triggered.connect(self.cancel_meeting)
         self.meeting_cancel_action.setEnabled(False)
         self.menu.addAction(self.meeting_cancel_action)
+        self.menu.addSeparator()
+
+        self.screenshot_action = QAction(t("Capture screenshot"), self.menu)
+        self.screenshot_action.triggered.connect(self._take_screenshot)
+        self.menu.addAction(self.screenshot_action)
         self.menu.addSeparator()
 
         self.settings_action = QAction(t("Settings…"), self.menu)
@@ -387,8 +398,26 @@ class WordArc:
         handler()
 
     def _on_hotkey(self, name):
-        handlers = {"meeting": self._toggle_meeting}
+        handlers = {
+            "meeting": self._toggle_meeting,
+            "screenshot": self._take_screenshot,
+        }
         handlers.get(name, self._toggle)()
+
+    def _take_screenshot(self, *_):
+        self.screenshot_controller.start("region", self.settings_window)
+
+    def _on_screenshot_failed(self, message):
+        logging.getLogger("wordarc.screenshot").warning("capture failed: %s", message)
+        if self.tray.isVisible():
+            self.tray.showMessage(BRAND.name, message,
+                                  QSystemTrayIcon.MessageIcon.Warning, 5000)
+
+    def _on_screenshot_preferences_saved(self, directory, image_format):
+        window = self.settings_window
+        if window is not None:
+            window.screenshot_directory.setText(directory)
+            window._select_data(window.screenshot_format, image_format)
 
     def _toggle(self):
         # Two /dev/input nodes can carry the same keyboard, and a menu click can
@@ -851,6 +880,11 @@ class WordArc:
                 self.conf, launch_command(), meeting_command(), self.meetings,
             )
             self.settings_window.recording_requested.connect(self._window_record)
+            self.settings_window.screenshot_requested.connect(
+                lambda mode: self.screenshot_controller.start(
+                    mode, self.settings_window))
+            self.screenshot_controller.failed.connect(
+                self.settings_window.screenshot_failed)
             self.settings_window.cancel_requested.connect(self._window_cancel)
             self.settings_window.set_dictation_result(self._last_dictation)
             self._sync_workspace()
@@ -949,7 +983,8 @@ class WordArc:
         self._refresh_tray()
         self.evdev.stop()
         self.evdev.start({"toggle": self.conf["shortcut"],
-                          "meeting": self.conf["meeting_shortcut"]})
+                          "meeting": self.conf["meeting_shortcut"],
+                          "screenshot": self.conf.get("screenshot_shortcut", "")})
 
     def restart(self):
         """Replace this process with a fresh one, picking up code and settings.
@@ -978,6 +1013,7 @@ class WordArc:
 
     def shutdown(self):
         self._quitting = True
+        self.screenshot_controller.shutdown()
         self.evdev.stop()
         self.cancel_hotkey.stop()
         self.pipeline.cancel()

@@ -155,7 +155,7 @@ def test_workspace_reflows_and_settings_remain_accessible(window):
     workspace.selector.setCurrentIndex(1)
     assert workspace.panes[1].isVisibleTo(window)
     assert not workspace.panes[0].isVisibleTo(window)
-    window.tabs.setCurrentIndex(3)
+    window.tabs.setCurrentIndex(window._tab_index["settings"])
     QApplication.processEvents()
     assert window.settings_section_stack.isVisibleTo(window)
     window.settings_section_stack.setCurrentIndex(3)
@@ -329,7 +329,8 @@ def test_selected_desktop_forms_fit_without_page_scrolling(window, size, languag
             fresh.model_setup.setCurrentIndex(0)
             for _ in range(4):
                 QApplication.processEvents()
-            for scroll in fresh.tabs.widget(3).findChildren(settings_ui.QScrollArea):
+            for scroll in fresh.tabs.widget(
+                    fresh._tab_index["settings"]).findChildren(settings_ui.QScrollArea):
                 if scroll.isVisibleTo(fresh):
                     assert scroll.verticalScrollBar().maximum() == 0, (size, language, "local")
     finally:

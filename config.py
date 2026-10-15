@@ -424,6 +424,9 @@ DEFAULTS = {
     "min_voiced_seconds": 0.3,
     "filter_hallucinations": True,
     "shortcut": "Ctrl+Space",
+    "screenshot_shortcut": "Ctrl+Alt+S",
+    "screenshot_directory": "",
+    "screenshot_format": "PNG",
     "overlay_corner": "bottom-left",
     "overlay_meter": "spectrum",   # bars | spectrum | wave | capsule
     "keep_audio": False,

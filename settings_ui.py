@@ -33,6 +33,7 @@ import meeting
 import sounds
 import startup
 import theme
+from screenshot_capture import default_save_folder
 from brand import BRAND, brand_asset
 from filetranscribe import FileTranscriber
 from i18n import t
@@ -71,6 +72,7 @@ PASTE_SHORTCUTS = ["ctrl+v", "ctrl+shift+v", "shift+insert"]
 # combinations that are usually free, not the set of ones that work.
 SHORTCUTS = [
     "Ctrl+Space", "Ctrl+Alt+Space", "Ctrl+Shift+Space", "Meta+Space",
+    "Ctrl+Alt+S",
     "Ctrl+Alt+A", "Ctrl+Alt+D", "Ctrl+Alt+M", "Ctrl+Alt+Q",
     "Meta+A", "Meta+D", "Meta+M",
     "Ctrl+Alt+F1", "Ctrl+Alt+F2", "Ctrl+Alt+F3",
@@ -857,7 +859,7 @@ class WindowView:
     onto the first.
     """
 
-    PAGES = ("dictation", "meeting", "audio_file", "settings")
+    PAGES = ("dictation", "meeting", "audio_file", "screenshot", "settings")
 
     def __init__(self, window):
         self.maximized = window.isMaximized()
@@ -894,6 +896,8 @@ class WindowView:
 
 class SettingsWindow(QDialog):
     recording_requested = pyqtSignal(str)
+    screenshot_requested = pyqtSignal(str)
+    screenshot_failed = pyqtSignal(str)
     cancel_requested = pyqtSignal(str)
     applied = pyqtSignal()
     language_changed = pyqtSignal()
@@ -1059,6 +1063,10 @@ class SettingsWindow(QDialog):
              "Transcribe an existing recording.",
              style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton),
              self._file_tab(), True),
+            ("screenshot", (), "Screenshot",
+             "Capture and save a screenshot from the active screen.",
+             style.standardIcon(QStyle.StandardPixmap.SP_DesktopIcon),
+             self._screenshot_tab(), True),
             ("settings", ("shared_ai", "application"), "Settings",
              "Models, language, startup and appearance.",
              style.standardIcon(QStyle.StandardPixmap.SP_ComputerIcon),
@@ -1143,6 +1151,8 @@ class SettingsWindow(QDialog):
 
     def _workspace_page(self, kind, original):
         """Move existing controls into fixed local pages, preserving callbacks."""
+        if kind == "screenshot":
+            return original
         old = original.layout()
         widgets = []
         while old.count():
@@ -2459,6 +2469,70 @@ class SettingsWindow(QDialog):
         layout.addWidget(transcript)
         return page
 
+    def _screenshot_tab(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setSpacing(14)
+        intro = QLabel(t("Capture a region on the active screen, then copy or save it."))
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        capture, body = self._section_card(
+            "Capture", "Select a region or capture the active screen.")
+        region = QPushButton(t("Select area…"))
+        region.setObjectName("primaryButton")
+        region.clicked.connect(
+            lambda _checked=False: self.screenshot_requested.emit("region"))
+        full = QPushButton(t("Capture this screen"))
+        full.clicked.connect(
+            lambda _checked=False: self.screenshot_requested.emit("screen"))
+        actions = QHBoxLayout()
+        actions.addWidget(region)
+        actions.addWidget(full)
+        actions.addStretch(1)
+        body.addLayout(actions)
+        self.screenshot_shortcut = self._shortcut_box()
+        body.addWidget(self._label_row("Capture shortcut", self.screenshot_shortcut))
+        self.screenshot_status = QLabel("")
+        self.screenshot_status.setObjectName("muted")
+        self.screenshot_status.setWordWrap(True)
+        self.screenshot_status.hide()
+        self.screenshot_failed.connect(self._show_screenshot_error)
+        body.addWidget(self.screenshot_status)
+        layout.addWidget(capture)
+
+        options, body = self._section_card(
+            "Screenshot options", "Choose where new screenshots are saved by default.")
+        self.screenshot_directory = QLineEdit()
+        browse = QPushButton(t("Choose folder…"))
+        browse.clicked.connect(self._choose_screenshot_directory)
+        body.addWidget(self._label_row(
+            "Save folder", self._row(self.screenshot_directory, browse)))
+        default_folder = QLabel(t("Leave empty to use the Pictures/WordArc folder."))
+        default_folder.setObjectName("muted")
+        default_folder.setWordWrap(True)
+        body.addWidget(default_folder)
+        self.screenshot_format = FitsOnScreenCombo()
+        self.screenshot_format.addItem("PNG", "PNG")
+        self.screenshot_format.addItem("JPEG", "JPEG")
+        body.addWidget(self._label_row("Image format", self.screenshot_format))
+        layout.addWidget(options)
+        layout.addStretch(1)
+        return page
+
+    def _choose_screenshot_directory(self):
+        current = self.screenshot_directory.text().strip()
+        if not current:
+            current = str(default_save_folder())
+        folder = QFileDialog.getExistingDirectory(
+            self, t("Choose screenshot folder"), current)
+        if folder:
+            self.screenshot_directory.setText(folder)
+
+    def _show_screenshot_error(self, message):
+        self.screenshot_status.setText(t("Screenshot failed: {error}", error=message))
+        self.screenshot_status.show()
+
     def _history_box(self):
         box = QGroupBox(t("History"))
         layout = QVBoxLayout(box)
@@ -2585,6 +2659,12 @@ class SettingsWindow(QDialog):
         self.paste_shortcut.setCurrentText(conf["paste_shortcut"])
         self.restore_clipboard.setChecked(conf["restore_clipboard"])
         self._select_data(self.corner, conf["overlay_corner"])
+        self.screenshot_shortcut.setCurrentText(
+            conf.get("screenshot_shortcut", "Ctrl+Alt+S") or "")
+        self.screenshot_directory.setText(
+            conf.get("screenshot_directory", "") or "")
+        self._select_data(self.screenshot_format,
+                          conf.get("screenshot_format", "PNG") or "PNG")
         self._select_data(self.meter_style,
                           conf.get("overlay_meter") or "spectrum")
         # The combo only fires on a *change*: a saved "Bars" would leave every
@@ -2670,6 +2750,9 @@ class SettingsWindow(QDialog):
         conf["paste_shortcut"] = self.paste_shortcut.currentText().strip()
         conf["restore_clipboard"] = self.restore_clipboard.isChecked()
         conf["overlay_corner"] = self.corner.currentData() or "bottom-left"
+        conf["screenshot_shortcut"] = self.screenshot_shortcut.currentText().strip()
+        conf["screenshot_directory"] = self.screenshot_directory.text().strip()
+        conf["screenshot_format"] = self.screenshot_format.currentData() or "PNG"
         conf["overlay_meter"] = self.meter_style.currentData() or "spectrum"
         conf["max_seconds"] = self.max_seconds.value()
         conf["skip_silent"] = self.skip_silent.isChecked()

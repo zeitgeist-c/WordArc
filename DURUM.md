@@ -1,6 +1,43 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-15
+Hazırlanan paket: 0.8.0 (`brand.py`)
+Dal: master
+Git dönüş noktası: 977623a / v0.7.2
+
+## 2026-10-15 — 0.8.0 ekran görüntüsü sekmesi
+
+WordArc Ayarları'na ekran görüntüsü yakalama sekmesi eklendi. Bölge seçimi, aktif ekranın tamamını yakalama, önizleme, panoya kopyalama ve PNG/JPEG kaydetme; yapılandırılabilir global kısayol ve kayıt klasörü/biçim tercihleri mevcut.
+
+- Kısayol: `Ctrl+Alt+S`.
+- Varsayılan klasör: Windows `Pictures` (Resimler) bilinen klasörü altındaki `WordArc`.
+- Lightshot sitesi ve ScreenForge 1.2.8 Windows portable paketi REA ve statik kaynak incelemesiyle incelendi. ScreenForge'un yakalama türü yayımlanan .NET DLL'indeki sanal ekran boyutları, GDI `BitBlt`, imleç çizimi ve kırpma üyelerinden gözlendi. Lightshot installer indirme sunucusu indirmeyi engelledi; Lightshot paket davranışı incelenemedi.
+- Son doğrulama: 509 test geçti, 1 atlandı; `check.ps1`, `compileall`, import kontrolü ve PyInstaller frozen package gate başarılı. Paket `--version`: `WordArc version 0.8.0`; gate'in başlangıç süresi 11.523 sn.
+- Teslim: `dist/WordArc-0.8.0.exe` ve `dist/WordArc-0.8.0.bat`. EXE: 1.581.464.377 bayt; SHA256 `ec9774647b681f685cea4e69767241f1260522fd44ed1a662dd6e2596a4a9db5`.
+- Gerçek ekran seçimi ve global kısayol etkileşimi EXE içinde elle doğrulanmadı; otomatik testler alan kırpma, DPI ölçekleme, önizleme, panoya kopyalama, PNG/JPEG yazımı ve paket içindeki modülü doğruluyor.
+
+EXE içindeki `screenshot_capture` kaynak kodu paket kapısında kaynakla karşılaştırıldı; modül frozen PYZ'de mevcut. Paket `--version` bağımsız çalıştırması da başarılı.
+
+Yedek 2026-10-15: sürüm 0.8.0 kaynakları ve EXE/BAT teslimi; kaynak commit'i, `v0.8.0` etiketi, `origin/master` push'u ve GitHub Release bu kapanışta tamamlanacak.
+
+## 2026-10-15 — 0.7.3 geri alındı, 0.7.2'ye dönüldü
+
+Kullanıcı gömülü Hermes tetikleyiciyi beğenmedi; 0.7.3 (özellik + 3 düzeltme,
+a3dacab ve 8ce2214) geri alındı, kaynak 0.7.2 durumuna döndü. 0.7.3 kayıtları
+geçmiş bilgi olarak aşağıda duruyor; paket ve etiket 0.7.2'yi gösterir.
+
+- `v0.7.3` etiketi (yerel + uzak) ve GitHub Release v0.7.3 silindi.
+- dist içindeki 0.7.3 çıktıları silindi; 0.7.2 aynı kaynaktan yeniden
+  paketlendi.
+- AutoHotkey kaldırma geri alınmadı (ayrı onaylı temizlikti); genel
+  Shift+Space tetikleyici yok. Hermes odaktayken kendi Shift+Space diktesi
+  çalışır; genel kısayolu kullanıcı kendi eliyle halledecek.
+
+---
+
+Geri alınmış `0.7.3` ve eski sürüm kayıtları aşağıdadır.
+
+Güncelleme: 2026-10-15
 Hazırlanan paket: 0.7.2 (`brand.py`)
 Dal: master
 Git dönüş noktası: 6f1ca43 / v0.7.1

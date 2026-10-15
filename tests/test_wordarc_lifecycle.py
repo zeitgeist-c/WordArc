@@ -61,6 +61,7 @@ def test_window_close_quits_if_system_tray_is_unavailable():
 
 def test_shutdown_stops_meeting_pipeline_without_missing_cancel_method():
     controller = wordarc.WordArc.__new__(wordarc.WordArc)
+    controller.screenshot_controller = mock.Mock()
     controller.evdev = mock.Mock()
     controller.cancel_hotkey = mock.Mock()
     controller.pipeline = mock.Mock()
@@ -72,6 +73,7 @@ def test_shutdown_stops_meeting_pipeline_without_missing_cancel_method():
 
     controller.shutdown()
 
+    controller.screenshot_controller.shutdown.assert_called_once_with()
     controller.meetings.stop.assert_called_once_with()
     controller.cancel_hotkey.stop.assert_called_once_with()
 
@@ -258,6 +260,7 @@ def test_open_settings_puts_the_window_back_where_it_was_before_showing():
     controller.meetings = None
     controller._last_dictation = ""
     controller.settings_window = None
+    controller.screenshot_controller = mock.Mock()
     controller._sync_workspace = mock.Mock()
     controller._window_record = mock.Mock()
     controller._window_cancel = mock.Mock()

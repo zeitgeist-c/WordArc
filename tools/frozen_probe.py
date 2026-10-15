@@ -187,7 +187,7 @@ def workspace():
             theme.ThemeManager.apply("dark", app)
             window.show()
             window.resize(1040, 760)
-            assert window.tabs.count() == 4
+            assert window.tabs.count() == 5
             combos = window.findChildren(settings_ui.FitsOnScreenCombo)
             assert len(combos) >= 15
             for combo in combos:
@@ -202,7 +202,7 @@ def workspace():
             window.set_recording_state("dictation", "busy", "release probe")
             assert not window.dictation_record_button.isEnabled()
             window.set_dictation_result("Isolated release verification")
-            for index in range(4):
+            for index in range(window.tabs.count()):
                 window.tabs.setCurrentIndex(index)
                 app.processEvents()
                 assert window.grab().save(str(out / f"workspace-{index}.png"))
