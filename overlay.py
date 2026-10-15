@@ -196,7 +196,16 @@ class MeterPreview(QWidget):
         self._anim = QTimer(self)
         self._anim.setInterval(60)
         self._anim.timeout.connect(self._advance)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # The animation is only worth running while it can be seen; the
+        # settings window stays alive (hidden) for the life of the app.
         self._anim.start()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._anim.stop()
 
     def set_selected(self, selected):
         self._selected = bool(selected)
