@@ -209,6 +209,10 @@ class WordArc:
         self.live_streamer = audio.LiveStreamer()
         self.live_streamer.chunk.connect(
             self._on_live_chunk, Qt.ConnectionType.QueuedConnection)
+        # The meter: without this the ribbon sits flat through a whole live
+        # dictation — the capture was reading levels and nobody was listening.
+        self.live_streamer.level.connect(
+            self._on_level, Qt.ConnectionType.QueuedConnection)
         self.live_streamer.failed.connect(self._on_live_stream_error)
         self.live_session = None
         self.live_keys = []
