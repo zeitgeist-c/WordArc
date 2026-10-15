@@ -5,6 +5,40 @@ Hazırlanan paket: 0.7.2 (`brand.py`)
 Dal: master
 Git dönüş noktası: 6f1ca43 / v0.7.1
 
+## 2026-10-15 — 0.7.2 yeniden yapı: her biçim kendi çizimini yapıyor, canlı seviye pakette
+
+Kullanıcı dört biçimin şeritte aynı göründüğünü bildirdi. İki ayrı sorun
+vardı: (1) Spectrum ile Capsules çizimi %88 aynıydı — seçim gerçekten bir şey
+değiştirmiyordu; (2) karşılaştırma görüntüsü yanıltıcıydı, çünkü `set_meter`
+modül geneli: dört şerit aynı anda yakalanırken hepsi son stille çiziliyordu.
+Ayrıca canlı seviye düzeltmesi (`86521de`) önceki teslim EXE'sine girmemişti
+(EXE 11:11, düzeltme 12:00), bu yüzden gösterge konuşurken hareket etmiyordu.
+
+- `overlay._draw_meter_into` dört biçimin tek çizim kaynağı oldu; kayıt
+  şeridi, toplantının iki yarısı ve Ayarlar önizlemeleri aynı fonksiyondan
+  geçiyor. Toplantı görünümü artık dalga seçiliyken gerçekten dalga çiziyor.
+- Ayarlar > Arayüz: her biçimin canlı önizlemesi seçeneğin yanında; seçili
+  olan çerçeveli. Ad tek başına anlatmadığı için önizleme şarttı.
+- Ölü çizim kodu kaldırıldı (`_bars`, `_bar_colour`, `_draw_waveform`,
+  `_draw_dual_waveform`, `_draw_dual_rounded`, `_meter_geometry`).
+- Testler çizimi sabit tuvale doğrudan verip yapısal imza ölçüyor; dar
+  şeritte (170 px) ve toplantıda da dört imza ayrışıyor.
+- `tools/verify_release_package.py` artık `overlay` modülünü de kaynakla
+  karşılaştırıyor; paketin bu çizimleri taşıdığı kanıtlı.
+
+Resmi kapılar: 493 test geçti, 1 atlandı; compile/import ve pip-audit temiz.
+
+Teslim: dist/WordArc-0.7.2.exe ve dist/WordArc-0.7.2.bat (aynı sürümün üzerine
+yazıldı; sürüm numarası değişmedi). EXE: 1.581.342.627 bayt; SHA256:
+531fe4c4f5d11df1e7cefd5617e8786bd7adf302b471d635344dd19f600689ed.
+Paket kapısı --version duvar saati 11,255 saniye; gömülü kaynak denetlenen
+modüllerle birebir eşleşiyor.
+
+Yedek 2026-10-15: aynı sürümün üzerine yazıldı — kaynak commit'i + DURUM
+kaydı `origin/master`'a push; `v0.7.2` etiketi yeni yapı commit'ine taşındı;
+GitHub Release v0.7.2 assetleri (EXE+BAT) yenileriyle değiştirildi.
+Önceki kayıt (672d9dfd… yapısı) artık geçerli değil.
+
 ## 2026-10-15 — 0.7.2 seçilebilir ses dalgası, canlı metin şeritten kalktı
 
 Kullanıcı canlı diktede şeritte akan metni istemedi: diğer kayıtlar gibi ses

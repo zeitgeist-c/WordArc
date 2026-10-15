@@ -69,7 +69,7 @@ def main():
     assert "PanelTabs" in list(constants(archive.extract("settings_ui"))), "old workspace layout bundled"
     for name in ("settings_ui", "theme", "worker", "localspeech", "livespeech", "cuda_runtime", "faster_whisper", "vulkan_speech", "local_stt_diagnostic"):
         assert name in archive.toc, f"missing bundled module: {name}"
-    for name in ("brand", "settings_ui", "localspeech", "livespeech", "vulkan_speech", "config", "i18n", "cuda_recovery", "local_stt_diagnostic"):
+    for name in ("brand", "settings_ui", "overlay", "localspeech", "livespeech", "vulkan_speech", "config", "i18n", "cuda_recovery", "local_stt_diagnostic"):
         source = compile((root / (name + '.py')).read_bytes(), name + '.py', 'exec', dont_inherit=True)
         # Code equality compares bytecode/constants recursively. marshal bytes
         # also encode incidental string interning/shared-reference identities,
