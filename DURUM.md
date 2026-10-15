@@ -23,8 +23,10 @@ Kısayol kutuları artık önceden tanımlı listeden değil, alana tıklayıp t
   EXE: SHA256 `d091fd3be51f618b97572f63e601184b91d0f56d17dc02bbf1c06bb324d050c4`.
   Paket `--version`: `WordArc version 0.8.2`.
 
-Yedek 2026-10-16: kaynak commit `3c2d9c7`, `v0.8.2` etiketi aynı commit'e
-bağlandı; push ve GitHub Release yapılıyor.
+Yedek 2026-10-16 tamamlandı: kaynak commit `3c2d9c7`, `v0.8.2` etiketi aynı
+commit'e bağlı, `origin/master` ile eşit. GitHub Release:
+https://github.com/zeitgeist-c/WordArc/releases/tag/v0.8.2 — EXE/BAT asset'leri
+yüklendi, SHA256 değerleri yerel teslim dosyalarıyla eşleşti.
 
 ## 2026-10-16 — 0.8.1 seçimde ayarlama ve ekran üstü araç çubuğu
 
