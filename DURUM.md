@@ -24,8 +24,10 @@ hatırlanıyor. Seçim ekran dışına taşmıyor.
 - Sınırlar: ok/dikdörtgen/metin çizimi ve bulanıklaştırma yok; gerçek
   masaüstünde elle deneme yapılmadı.
 
-Yedek 2026-10-16: sürüm 0.8.1 kaynak commit'i + `v0.8.1` etiketi +
-`origin/master` push'u + GitHub Release bu kapanışta tamamlanacak.
+Yedek 2026-10-16 tamamlandı: kaynak commit `7efa3be`, `v0.8.1` etiketi aynı
+commit'e bağlı ve `origin/master` ile eşit. GitHub Release:
+https://github.com/zeitgeist-c/WordArc/releases/tag/v0.8.1 — EXE/BAT
+asset'leri yüklendi, SHA256 değerleri yerel teslim dosyalarıyla eşleşti.
 
 ## 2026-10-15 — 0.8.0 ekran görüntüsü sekmesi
 
