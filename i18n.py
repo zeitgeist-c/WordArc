@@ -321,6 +321,8 @@ TR = {
     "Capture full screen": "Tüm ekranı yakala",
     "Select screenshot area": "Ekran görüntüsü alanını seçin",
     "Drag to select · Esc to cancel": "Alanı seçmek için sürükleyin · İptal için Esc",
+    "Drag handles to adjust · double-click to confirm":
+        "Kenar tutamaçlarıyla ayarlayın · onaylamak için çift tıklayın",
     "Copy image": "Görüntüyü kopyala",
     "Save image…": "Görüntüyü kaydet…",
     "Save screenshot": "Ekran görüntüsünü kaydet",
