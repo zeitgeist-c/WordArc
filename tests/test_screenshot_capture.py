@@ -45,7 +45,26 @@ class TestScreenshotCapture(unittest.TestCase):
             screenshot_capture.crop_screen_image(image, QRect(1, 1, 1, 1), QSize(100, 50))
 
 
-    def test_region_overlay_emits_high_dpi_crop_for_drag_selection(self):
+    def _make_overlay(self, fill="#123456", scale=2):
+        screen = self.app.primaryScreen()
+        if screen is None:
+            self.skipTest("Qt reports no screen")
+        geometry = screen.geometry()
+        image = QImage(geometry.width() * scale, geometry.height() * scale,
+                       QImage.Format.Format_RGB32)
+        image.fill(QColor(fill))
+        pixmap = screenshot_capture.QPixmap.fromImage(image)
+        overlay = screenshot_capture.RegionOverlay(screen, pixmap)
+        overlay.show()
+        return overlay
+
+    def _drag(self, overlay, start, end):
+        QTest.mousePress(overlay, Qt.MouseButton.LeftButton, pos=start)
+        QTest.mouseMove(overlay, end)
+        QTest.mouseRelease(overlay, Qt.MouseButton.LeftButton, pos=end)
+        self.app.processEvents()
+
+    def test_region_overlay_waits_for_confirm_after_drag_selection(self):
         screen = self.app.primaryScreen()
         if screen is None:
             self.skipTest("Qt reports no screen")
@@ -62,8 +81,50 @@ class TestScreenshotCapture(unittest.TestCase):
         QTest.mouseMove(overlay, QPoint(40, 40))
         QTest.mouseRelease(overlay, Qt.MouseButton.LeftButton, pos=QPoint(40, 40))
         self.app.processEvents()
+        self.assertEqual(selected, [])
+        self.assertTrue(overlay.toolbar.isVisible())
+        QTest.keyClick(overlay, Qt.Key.Key_Return)
+        self.app.processEvents()
         self.assertEqual(len(selected), 1)
         self.assertEqual((selected[0].width(), selected[0].height()), (42, 42))
+        overlay.close()
+        overlay.deleteLater()
+
+    def test_region_overlay_resize_handle_changes_selection(self):
+        overlay = self._make_overlay()
+        self._drag(overlay, QPoint(20, 20), QPoint(60, 60))
+        before = QRect(overlay.selection)
+        handles = overlay._handle_rects()
+        corner = handles["se"].center()
+        self._drag(overlay, corner, corner + QPoint(20, 10))
+        self.assertGreater(overlay.selection.width(), before.width())
+        self.assertGreater(overlay.selection.height(), before.height())
+        self.assertTrue(overlay.toolbar.isVisible())
+        overlay.close()
+        overlay.deleteLater()
+
+    def test_region_overlay_inside_drag_moves_selection(self):
+        overlay = self._make_overlay()
+        self._drag(overlay, QPoint(20, 20), QPoint(60, 60))
+        before = QRect(overlay.selection)
+        self._drag(overlay, QPoint(30, 30), QPoint(50, 40))
+        self.assertEqual(
+            (overlay.selection.width(), overlay.selection.height()),
+            (before.width(), before.height()))
+        self.assertEqual(overlay.selection.topLeft(),
+                         before.topLeft() + QPoint(20, 10))
+        overlay.close()
+        overlay.deleteLater()
+
+    def test_region_overlay_copy_button_emits_cropped_image(self):
+        overlay = self._make_overlay()
+        copied = []
+        overlay.copy_requested.connect(copied.append)
+        self._drag(overlay, QPoint(20, 20), QPoint(60, 60))
+        QTest.mouseClick(overlay.copy_button, Qt.MouseButton.LeftButton)
+        self.app.processEvents()
+        self.assertEqual(len(copied), 1)
+        self.assertEqual(copied[0].pixelColor(0, 0).name(), "#123456")
         overlay.close()
         overlay.deleteLater()
 
