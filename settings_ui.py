@@ -26,6 +26,7 @@ import audio
 import config as cfg
 import filetranscribe
 import i18n
+import hotkey
 import livespeech
 import localspeech
 import overlay
@@ -67,16 +68,6 @@ REASONING_LEVELS = [
     ("Low", "low"), ("Medium", "medium"), ("High", "high"),
 ]
 PASTE_SHORTCUTS = ["ctrl+v", "ctrl+shift+v", "shift+insert"]
-# Offered for all three global shortcuts, which keeps them one kind of field
-# rather than three. The boxes stay editable: this is a shortlist of
-# combinations that are usually free, not the set of ones that work.
-SHORTCUTS = [
-    "Ctrl+Space", "Ctrl+Alt+Space", "Ctrl+Shift+Space", "Meta+Space",
-    "Ctrl+Alt+S",
-    "Ctrl+Alt+A", "Ctrl+Alt+D", "Ctrl+Alt+M", "Ctrl+Alt+Q",
-    "Meta+A", "Meta+D", "Meta+M",
-    "Ctrl+Alt+F1", "Ctrl+Alt+F2", "Ctrl+Alt+F3",
-]
 AUDIO_FILTER = ("*.mp3 *.wav *.m4a *.ogg *.opus *.flac *.aac *.wma "
                 "*.mp4 *.mkv *.webm *.mov *.avi")
 
@@ -508,6 +499,7 @@ class FitsOnScreenCombo(QComboBox):
     can steal Windows focus and immediately close the list.
     """
 
+
     def _cards_if_long(self, subs):
         """Turn on card rows when the list is long enough to need them.
 
@@ -840,6 +832,78 @@ class FitsOnScreenCombo(QComboBox):
             y = min(max(rect.y(), avail.top()),
                     avail.bottom() - rect.height() + 1)
             popup.setGeometry(rect.x(), y, rect.width(), rect.height())
+
+
+class HotkeyEdit(QWidget):
+    """Press-to-assign shortcut field: focus it and press the combination.
+
+    Any combination the Win32 RegisterHotKey path accepts (one key plus
+    Ctrl/Alt/Shift/Meta) is assigned by pressing it; typing the text still
+    works and the × button clears the shortcut.
+    """
+
+    def __init__(self, placeholder="", parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        self.line = QLineEdit(self)
+        if placeholder:
+            self.line.setPlaceholderText(placeholder)
+        else:
+            self.line.setPlaceholderText(t("Press shortcut keys…"))
+        self.line.installEventFilter(self)
+        layout.addWidget(self.line, 1)
+        self.clear_button = QPushButton("×", self)
+        self.clear_button.setToolTip(t("Clear"))
+        self.clear_button.setMaximumWidth(28)
+        self.clear_button.clicked.connect(self.line.clear)
+        layout.addWidget(self.clear_button, 0)
+
+    def currentText(self):
+        return self.line.text()
+
+    def setCurrentText(self, text):
+        self.line.setText(text or "")
+
+    def clear(self):
+        self.line.clear()
+
+    def eventFilter(self, obj, event):
+        if obj is self.line and event.type() == QEvent.Type.KeyPress:
+            try:
+                if self._capture(event):
+                    return True
+            except Exception:
+                logging.getLogger("wordarc.shortcut").exception(
+                    "could not capture the pressed keys")
+        return super().eventFilter(obj, event)
+
+    def _capture(self, event):
+        key = event.key()
+        mods = (event.modifiers() & (Qt.KeyboardModifier.ControlModifier
+                | Qt.KeyboardModifier.AltModifier
+                | Qt.KeyboardModifier.MetaModifier
+                | Qt.KeyboardModifier.ShiftModifier)).value
+        if key in (Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt,
+                   Qt.Key.Key_Meta, Qt.Key.Key_unknown):
+            return True
+        if not mods:
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Tab,
+                       Qt.Key.Key_Escape):
+                return False
+            if not Qt.Key.Key_F1 <= key <= Qt.Key.Key_F12:
+                return False
+        elif (mods == Qt.KeyboardModifier.ShiftModifier.value
+              and not Qt.Key.Key_F1 <= key <= Qt.Key.Key_F12):
+            return False
+        text = QKeySequence(mods | int(key)).toString(
+            QKeySequence.SequenceFormat.PortableText)
+        if not text or hotkey.parse_shortcut(text) == (0, 0):
+            return False
+        self.line.setText(text)
+        self.line.clearFocus()
+        return True
 
 
 class WindowView:
@@ -2486,9 +2550,13 @@ class SettingsWindow(QDialog):
         full = QPushButton(t("Capture this screen"))
         full.clicked.connect(
             lambda _checked=False: self.screenshot_requested.emit("screen"))
+        window = QPushButton(t("Capture active window"))
+        window.clicked.connect(
+            lambda _checked=False: self.screenshot_requested.emit("window"))
         actions = QHBoxLayout()
         actions.addWidget(region)
         actions.addWidget(full)
+        actions.addWidget(window)
         actions.addStretch(1)
         body.addLayout(actions)
         self.screenshot_shortcut = self._shortcut_box()
@@ -2589,14 +2657,8 @@ class SettingsWindow(QDialog):
 
     @staticmethod
     def _shortcut_box(placeholder=""):
-        """The field a global shortcut is typed or picked in."""
-        box = FitsOnScreenCombo()
-        box.setEditable(True)
-        box.addItems(SHORTCUTS)
-        box.setCurrentText("")
-        if placeholder:
-            box.lineEdit().setPlaceholderText(placeholder)
-        return box
+        """The field a global shortcut is pressed or typed in."""
+        return HotkeyEdit(placeholder)
 
     @staticmethod
     def _row(*widgets):

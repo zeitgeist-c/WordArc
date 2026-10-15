@@ -30,7 +30,7 @@ for dll in list((_SITE / 'nvidia').glob('*/bin/*.dll')) + list((_SITE / 'nvidia'
 # because they reach for binaries at runtime rather than importing them.
 hiddenimports = ['unicodedata', 'soundcard', 'faster_whisper', 'ctranslate2',
                   'onnxruntime', 'tokenizers', 'huggingface_hub',
-                  'av', 'av.audio.resampler', 'screenshot_capture']
+                  'av', 'av.audio.resampler', 'screenshot_capture', 'screenshot_editor']
 
 
 a = Analysis(
