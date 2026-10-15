@@ -31,6 +31,47 @@ STATE_COLORS = {"recording": REC, "asking": ASK, "meeting": REC, "busy": BUSY,
                 "done": OK, "warning": WARN, "error": ERR}
 LIVE = ("recording", "asking", "meeting")
 
+# How the live level meter is drawn. Three shapes, one setting: the user picks
+# the look in Settings and every overlay follows, because they all read the
+# same module value.
+METER_BARS = "bars"          # the original: thin bars growing from the centre
+METER_SPECTRUM = "spectrum"  # rounded bars, brighter as they get taller
+METER_WAVE = "wave"          # one filled wave with a bright crest line
+METER_CAPSULE = "capsule"    # thick capsules with a vertical gradient
+
+
+def meter_styles():
+    """The meter choices, as (label, value) for the settings combo."""
+    return (("Bars", METER_BARS), ("Spectrum", METER_SPECTRUM),
+            ("Wave", METER_WAVE), ("Capsules", METER_CAPSULE))
+
+
+_METER = METER_BARS
+
+
+def set_meter(style):
+    """Choose the live meter drawing; unknown values keep the current one."""
+    global _METER
+    if style in (METER_BARS, METER_SPECTRUM, METER_WAVE, METER_CAPSULE):
+        _METER = style
+
+
+def meter():
+    return _METER
+
+
+def show_live_text_enabled():
+    """Whether the interim transcript is drawn on the recording ribbon."""
+    return _SHOW_LIVE_TEXT
+
+
+_SHOW_LIVE_TEXT = True
+
+
+def set_show_live_text(enabled):
+    global _SHOW_LIVE_TEXT
+    _SHOW_LIVE_TEXT = bool(enabled)
+
 
 def set_theme(colors):
     """Apply the central WordArc palette to existing and future overlays."""
@@ -112,19 +153,14 @@ class Overlay(QWidget):
         self._appear()
 
     def show_live_text(self, text):
-        """Interim transcript tail on the recording ribbon.
+        """Interim transcript on the recording ribbon: no longer drawn.
 
-        The state, colours and meters stay as show_recording() left them;
-        only the message line follows the speech. GUI thread only.
+        The ribbon shows the level meter in every live state now, so a live
+        dictation looks like the other recordings. The words are delivered
+        when the recording ends. The call site is kept so a live session
+        that still reports a preview does not fail; the text is dropped.
         """
-        if self.state not in ("recording", "asking"):
-            return
-        tail = (text or "").strip()
-        self.message = tail[-120:]
-        if self.muted:
-            return
-        self._hide_timer.stop()
-        self._appear()
+        self.message = ""
 
     def show_meeting(self):
         """Both channels at once: your voice up, the other side down."""
@@ -227,10 +263,6 @@ class Overlay(QWidget):
         if self.state in LIVE:
             # A meeting runs long enough to need an hours field.
             width = MIN_WIDTH + (24 if self.state == "meeting" else 0)
-            if self.message and self.state != "meeting":
-                metrics = QFontMetrics(self._label_font())
-                width = max(width, min(MAX_WIDTH,
-                                       metrics.horizontalAdvance(self.message) + 132))
         else:
             metrics = QFontMetrics(self._label_font())
             extra = 76 + (18 if self._can_dismiss else 0)
@@ -294,46 +326,188 @@ class Overlay(QWidget):
         self._draw_indicator(painter, accent)
 
         if self.state in LIVE:
-            if self.message and self.state != "meeting":
-                self._draw_live_caption(painter, accent)
-            else:
-                self._draw_waveform(painter, accent)
+            self._draw_meter(painter, accent)
             self._draw_time(painter)
         else:
             self._draw_message(painter)
             if self._can_dismiss:
                 self._draw_dismiss(painter)
 
-    def _draw_live_caption(self, painter, accent):
-        """What has been heard so far, above the meter.
+    def _draw_meter(self, painter, accent):
+        """The live level meter, in whichever shape Settings asks for.
 
-        The words are the point of a live dictation, and this ribbon is the
-        only place the user is looking: the transcript used to be painted
-        nowhere at all while a recording was under way.
+        Every live state shares this: a dictation, a command being recorded
+        and a meeting all show the same meter, so a style chosen once holds
+        everywhere. The interim transcript is not drawn here — the words come
+        after the recording ends, and the ribbon stays a meter.
         """
-        font = self._label_font()
-        metrics = QFontMetrics(font)
-        painter.setFont(font)
-        painter.setPen(TEXT)
-        box = QRectF(46, 3, self.width() - 46 - 62, 24)
-        text = metrics.elidedText(self.message, Qt.TextElideMode.ElideRight,
-                                  int(box.width()))
-        painter.drawText(
-            box, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft),
-            text,
-        )
-        # The meter keeps moving underneath, at half height, so the recording
-        # still looks alive while the caption takes the top line.
+        style = meter()
+        if self.state == "meeting":
+            self._draw_dual_meter(painter, style)
+            return
+        if style == METER_WAVE:
+            self._draw_wave_meter(painter, accent)
+        elif style == METER_SPECTRUM:
+            self._draw_rounded_meter(painter, accent, capsule=False)
+        elif style == METER_CAPSULE:
+            self._draw_rounded_meter(painter, accent, capsule=True)
+        else:
+            self._draw_bars_meter(painter, accent)
+
+    def _draw_bars_meter(self, painter, accent):
+        """The original meter: thin bars, tallest at 26 px."""
         left, bar_w, step = self._bars()
-        mid = 41.0
+        mid = self.height() / 2
         painter.setPen(Qt.PenStyle.NoPen)
         for i, level in enumerate(self.levels):
             shaped = min(1.0, level ** 0.55)
-            h = 2.0 + shaped * 13.0
+            h = 3.0 + shaped * 26.0
             painter.setBrush(self._bar_colour(shaped, accent))
             painter.drawRoundedRect(
                 QRectF(left + i * step, mid - h / 2, bar_w, h), 1.3, 1.3
             )
+
+    def _draw_rounded_meter(self, painter, accent, capsule=False):
+        """Rounded bars/capsules with a vertical gradient and a soft glow.
+
+        Brighter towards the middle of each bar and glowing at the top end,
+        so a louder stretch of speech reads as taller *and* hotter without
+        needing a bigger ribbon.
+        """
+        left, bar_w, step = self._bars()
+        if capsule:
+            bar_w = 4.4
+            step = bar_w + (step - bar_w)  # keep the same total span
+        mid = self.height() / 2
+        painter.setPen(Qt.PenStyle.NoPen)
+        for i, level in enumerate(self.levels):
+            shaped = min(1.0, level ** 0.6)
+            h = (4.0 if capsule else 2.6) + shaped * (20.0 if capsule else 22.0)
+            x = left + i * step
+            y = mid - h / 2
+            alpha = 0.30 + 0.70 * shaped
+            top = QColor(accent)
+            top.setAlphaF(min(1.0, alpha + 0.15))
+            body = QColor(accent)
+            body.setAlphaF(alpha)
+            gradient = QLinearGradient(0, y, 0, y + h)
+            gradient.setColorAt(0.0, top)
+            gradient.setColorAt(0.5, body)
+            gradient.setColorAt(1.0, top)
+            painter.setBrush(QBrush(gradient))
+            if shaped > 0.55:
+                glow = QColor(accent)
+                glow.setAlphaF(0.30 * shaped)
+                painter.setPen(QPen(glow, 2.4))
+            painter.drawRoundedRect(QRectF(x, y, bar_w, h), bar_w / 2, bar_w / 2)
+            painter.setPen(Qt.PenStyle.NoPen)
+
+    def _draw_wave_meter(self, painter, accent):
+        """One filled wave with a bright crest, drawn as a smooth path.
+
+        The crest follows the same level list, so the motion is identical to
+        the bar meters; only the drawing differs.
+        """
+        left, bar_w, step = self._bars()
+        right = left + (len(self.levels) - 1) * step
+        mid = self.height() / 2
+        base = mid + 15.0
+        points = []
+        for i, level in enumerate(self.levels):
+            shaped = min(1.0, level ** 0.6)
+            height = 3.0 + shaped * 21.0
+            points.append(QPointF(left + i * step, mid - height / 2 + 3.0))
+        path = QPainterPath()
+        path.moveTo(left, base)
+        path.lineTo(points[0].x(), points[0].y())
+        for i in range(1, len(points)):
+            prev, cur = points[i - 1], points[i]
+            mid_x = (prev.x() + cur.x()) / 2
+            path.cubicTo(mid_x, prev.y(), mid_x, cur.y(), cur.x(), cur.y())
+        path.lineTo(right, base)
+        path.closeSubpath()
+        fill = QLinearGradient(0, mid - 24, 0, base)
+        top = QColor(accent)
+        top.setAlphaF(0.95)
+        middle = QColor(accent)
+        middle.setAlphaF(0.55)
+        bottom = QColor(accent)
+        bottom.setAlphaF(0.06)
+        fill.setColorAt(0.0, top)
+        fill.setColorAt(0.55, middle)
+        fill.setColorAt(1.0, bottom)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(fill))
+        painter.drawPath(path)
+        crest = QPainterPath()
+        crest.moveTo(points[0].x(), points[0].y())
+        for i in range(1, len(points)):
+            prev, cur = points[i - 1], points[i]
+            mid_x = (prev.x() + cur.x()) / 2
+            crest.cubicTo(mid_x, prev.y(), mid_x, cur.y(), cur.x(), cur.y())
+        line = QColor(accent)
+        line = line.lighter(135)
+        line.setAlphaF(0.95)
+        pen = QPen(line, 1.6)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(crest)
+
+    def _draw_dual_meter(self, painter, style):
+        """A meeting: your voice above, the other side below.
+
+        Both halves use the chosen style so a meeting and a dictation look
+        like the same product; the second channel gets the cyan accent that
+        already marks it.
+        """
+        if style in (METER_SPECTRUM, METER_CAPSULE):
+            self._draw_dual_rounded(painter, style == METER_CAPSULE)
+            return
+        left, bar_w, step = self._bars()
+        mid = self.height() / 2
+        painter.setPen(Qt.PenStyle.NoPen)
+        for i, (mine, theirs) in enumerate(zip(self.levels, self.levels2)):
+            x = left + i * step
+            for level, accent, up in ((mine, REC, True), (theirs, THEM, False)):
+                shaped = min(1.0, level ** 0.55)
+                h = 2.0 + shaped * 12.0
+                y = mid - 1.5 - h if up else mid + 1.5
+                painter.setBrush(self._bar_colour(shaped, accent))
+                painter.drawRoundedRect(QRectF(x, y, bar_w, h), 1.3, 1.3)
+
+    def _draw_dual_rounded(self, painter, capsule):
+        left, bar_w, step = self._bars()
+        if capsule:
+            bar_w = 4.4
+        mid = self.height() / 2
+        painter.setPen(Qt.PenStyle.NoPen)
+        for i, (mine, theirs) in enumerate(zip(self.levels, self.levels2)):
+            x = left + i * step
+            for level, accent, up in ((mine, REC, True), (theirs, THEM, False)):
+                shaped = min(1.0, level ** 0.6)
+                h = (3.0 if capsule else 2.0) + shaped * (11.0 if capsule else 12.0)
+                y = mid - 2.0 - h if up else mid + 2.0
+                body = QColor(accent)
+                body.setAlphaF(0.30 + 0.70 * shaped)
+                bright = QColor(accent)
+                bright.setAlphaF(min(1.0, 0.45 + 0.55 * shaped))
+                gradient = QLinearGradient(0, y, 0, y + h)
+                gradient.setColorAt(0.0, bright)
+                gradient.setColorAt(1.0, body)
+                painter.setBrush(QBrush(gradient))
+                radius = bar_w / 2 if capsule else 1.3
+                painter.drawRoundedRect(QRectF(x, y, bar_w, h), radius, radius)
+
+    def _draw_live_caption(self, painter, accent):
+        """Kept for the record: the interim transcript is no longer drawn.
+
+        Live dictation now shows the same meter as every other recording —
+        the words arrive when the recording ends. Nothing calls this; the
+        method stays one release so an old call site cannot break a build.
+        """
+        return
 
     def _draw_indicator(self, painter, accent):
         cx, cy = 26.0, self.height() / 2

@@ -140,6 +140,16 @@ TR = {
     "Transcript cleanup tidies the text afterwards.":
         "Canlı, {model} kullanır; değiştirilemez. Ardından metni, "
         "\"Transkripti temizleme\" altındaki model düzenler.",
+    "Sound wave style": "Ses dalgası biçimi",
+    "Bars": "Çubuklar",
+    "Spectrum": "Frekans",
+    "Wave": "Dalga",
+    "Capsules": "Kapsüller",
+    "How the sound wave is drawn on the recording indicator. "
+    "Spectrum and Capsules glow as you speak louder; Wave is a single "
+    "flowing line.":
+        "Ses dalgasının kayıt göstergesinde nasıl çizileceği. Frekans ve "
+        "Kapsüller yüksek sesle konuştukça parlar; Dalga tek akıcı çizgidir.",
     "Live transcription stops at 8 minutes.": "Canlı yazı 8 dakikada durur.",
     "Connecting to live transcription…": "Canlı yazıya bağlanılıyor…",
     "Finishing live transcription…": "Canlı yazı tamamlanıyor…",

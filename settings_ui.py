@@ -28,6 +28,7 @@ import filetranscribe
 import i18n
 import livespeech
 import localspeech
+import overlay
 import meeting
 import sounds
 import startup
@@ -1851,6 +1852,15 @@ class SettingsWindow(QDialog):
         for value in CORNERS:
             self.corner.addItem(t(value), value)
         body.addWidget(self._label_row("Indicator corner", self.corner))
+
+        self.meter_style = FitsOnScreenCombo()
+        for label, value in overlay.meter_styles():
+            self.meter_style.addItem(t(label), value)
+        self.meter_style.setToolTip(t(
+            "How the sound wave is drawn on the recording indicator. "
+            "Spectrum and Capsules glow as you speak louder; Wave is a single "
+            "flowing line."))
+        body.addWidget(self._label_row("Sound wave style", self.meter_style))
         layout.addWidget(interface)
 
         startup_box, body = self._section_card(
@@ -2544,6 +2554,8 @@ class SettingsWindow(QDialog):
         self.paste_shortcut.setCurrentText(conf["paste_shortcut"])
         self.restore_clipboard.setChecked(conf["restore_clipboard"])
         self._select_data(self.corner, conf["overlay_corner"])
+        self._select_data(self.meter_style,
+                          conf.get("overlay_meter") or "spectrum")
         self.max_seconds.setValue(conf["max_seconds"])
         self.skip_silent.setChecked(conf["skip_silent"])
         self.silence_db.setValue(int(conf["silence_db"]))
@@ -2624,6 +2636,7 @@ class SettingsWindow(QDialog):
         conf["paste_shortcut"] = self.paste_shortcut.currentText().strip()
         conf["restore_clipboard"] = self.restore_clipboard.isChecked()
         conf["overlay_corner"] = self.corner.currentData() or "bottom-left"
+        conf["overlay_meter"] = self.meter_style.currentData() or "spectrum"
         conf["max_seconds"] = self.max_seconds.value()
         conf["skip_silent"] = self.skip_silent.isChecked()
         conf["silence_db"] = float(self.silence_db.value())
