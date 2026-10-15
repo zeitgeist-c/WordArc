@@ -18,7 +18,7 @@ WordArc Ayarları'na ekran görüntüsü yakalama sekmesi eklendi. Bölge seçim
 
 EXE içindeki `screenshot_capture` kaynak kodu paket kapısında kaynakla karşılaştırıldı; modül frozen PYZ'de mevcut. Paket `--version` bağımsız çalıştırması da başarılı.
 
-Yedek 2026-10-15: sürüm 0.8.0 kaynakları ve EXE/BAT teslimi; kaynak commit'i, `v0.8.0` etiketi, `origin/master` push'u ve GitHub Release bu kapanışta tamamlanacak.
+Yedek 2026-10-15 tamamlandı: commit `1030580160df3a388bd9f669d28cdec594551135`, `v0.8.0` etiketi aynı commit'e bağlı ve `origin/master` ile eşit. GitHub Release: https://github.com/zeitgeist-c/WordArc/releases/tag/v0.8.0 — EXE/BAT asset'leri yüklendi, SHA256 değerleri yerel teslim dosyalarıyla eşleşti.
 
 ## 2026-10-15 — 0.7.3 geri alındı, 0.7.2'ye dönüldü
 
