@@ -136,6 +136,10 @@ TR = {
     "Smart removes filler words while you speak. Verbatim keeps "
     "every word, including fillers.": "Akıllı, konuşurken dolgu kelimelerini temizler. "
     "Birebir, dolgular dahil her kelimeyi aynen tutar.",
+    "Live uses {model}; it cannot be changed. The model under "
+    "Transcript cleanup tidies the text afterwards.":
+        "Canlı, {model} kullanır; değiştirilemez. Ardından metni, "
+        "\"Transkripti temizleme\" altındaki model düzenler.",
     "Live transcription stops at 8 minutes.": "Canlı yazı 8 dakikada durur.",
     "Connecting to live transcription…": "Canlı yazıya bağlanılıyor…",
     "Finishing live transcription…": "Canlı yazı tamamlanıyor…",
@@ -445,10 +449,14 @@ TR = {
     "quick, 141 MB": "hızlı, 141 MB",
     "middle, 464 MB": "orta, 464 MB",
     "hardest audio, 1,5 GB": "en zor ses, 1,5 GB",
-    "Local transcribes on this computer and sends no audio anywhere. Cloud uses "
-    "Gemini and needs an API key.":
-        "Yerel bu bilgisayarda yazıya çevirir ve hiçbir yere ses göndermez. "
-        "Bulut Gemini'yi kullanır, API anahtarı ister.",
+    "Local transcribes on this computer and sends no audio anywhere. "
+    "Cloud and Live use Gemini and need an API key: Cloud types up a "
+    "recording after it ends, Live streams your speech as you speak "
+    "and shows the words while you are still talking.":
+        "Yerel, sesi bu bilgisayarda yazıya çevirir ve hiçbir yere göndermez. "
+        "Bulut ve Canlı, Gemini kullanır ve API anahtarı ister: Bulut, kayıt "
+        "bittikten sonra yazıya çevirir; Canlı ise konuşurken akıtır ve "
+        "kelimeleri sen daha konuşurken gösterir.",
     "Measured on Turkish dictation. base is quick and the smallest download; "
     "small is in between; large-v3-turbo reads hardest audio most reliably and "
     "never invents a closing sentence.":
