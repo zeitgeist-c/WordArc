@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from PyQt6.QtCore import QPoint, QRect, QEvent, QTimer, QEventLoop
+from PyQt6.QtCore import QPoint, QRect, QEvent, QTimer
 from PyQt6.QtGui import QFont, QFontMetrics
 from PyQt6.QtWidgets import QApplication, QComboBox
 
@@ -216,21 +216,6 @@ class TestSettingsSmoke(unittest.TestCase):
                 self.assertEqual(
                     scroller.horizontalScrollBar().maximum(), 0, index
                 )
-
-    def test_hermes_shortcut_survives_workspace_rebuild(self):
-        window = self.window
-        window.show()
-        # deleteLater yıkımı yalnız dönen bir olay döngüsünde işlenir;
-        # processEvents üretimdeki tabloyu tutturamaz.
-        loop = QEventLoop()
-        QTimer.singleShot(200, loop.quit)
-        loop.exec()
-        # The workspace view rebuilds the dictation tab and deletes the
-        # leftover pages; the Hermes shortcut must be reparented into the
-        # new card, or _save crashes on a deleted widget (0.7.3).
-        self.assertIsNotNone(window.hermes_shortcut.parent())
-        self.assertEqual(window.hermes_shortcut.currentText(), "Alt+Space")
-        self.assertIn("Alt+Space", window.hermes_shortcut_status.text())
 
     def test_dictation_frequent_controls_are_visible_and_advanced_is_closed(self):
         window = self.window

@@ -70,7 +70,7 @@ PASTE_SHORTCUTS = ["ctrl+v", "ctrl+shift+v", "shift+insert"]
 # rather than three. The boxes stay editable: this is a shortlist of
 # combinations that are usually free, not the set of ones that work.
 SHORTCUTS = [
-    "Ctrl+Space", "Alt+Space", "Ctrl+Alt+Space", "Ctrl+Shift+Space", "Meta+Space",
+    "Ctrl+Space", "Ctrl+Alt+Space", "Ctrl+Shift+Space", "Meta+Space",
     "Ctrl+Alt+A", "Ctrl+Alt+D", "Ctrl+Alt+M", "Ctrl+Alt+Q",
     "Meta+A", "Meta+D", "Meta+M",
     "Ctrl+Alt+F1", "Ctrl+Alt+F2", "Ctrl+Alt+F3",
@@ -1234,9 +1234,8 @@ class SettingsWindow(QDialog):
         if kind == "dictation":
             controls = card("Dictation", [
                 ("Microphone", self._row(self.mic, self.refresh_audio_devices)),
-                ("Speech language", self.language),
-                self.shortcut_pair, self.status_pair,
-                self.cleanup_enabled, self.auto_paste,
+                ("Speech language", self.language), ("Shortcut", self.shortcut),
+                self.shortcut_status, self.cleanup_enabled, self.auto_paste,
             ])
             left = self._column([self._record_controls(kind), controls])
             recording = card("Recording", [
@@ -1749,24 +1748,11 @@ class SettingsWindow(QDialog):
         start, body = self._section_card(
             "Start", "The key that starts and stops dictation.")
         self.shortcut = self._shortcut_box("Ctrl+Space")
+        body.addWidget(self._label_row("Shortcut", self.shortcut))
         self.shortcut_status = QLabel("")
         self.shortcut_status.setObjectName("muted")
         self.shortcut_status.setWordWrap(True)
-        self.hermes_shortcut = self._shortcut_box("Alt+Space")
-        self.hermes_shortcut.setToolTip(
-            t("Brings Hermes forward and toggles its dictation. "
-              "Replaces the separate AutoHotkey helper."))
-        self.hermes_shortcut_status = QLabel("")
-        self.hermes_shortcut_status.setObjectName("muted")
-        self.hermes_shortcut_status.setWordWrap(True)
-        # İki kısayol yan yana: tek kısayol ile aynı yükseklik, bilgi kaybı yok.
-        self.shortcut_pair = self._halves(
-            self._label_row("Shortcut", self.shortcut),
-            self._label_row("Hermes dictation", self.hermes_shortcut))
-        body.addWidget(self.shortcut_pair)
-        self.status_pair = self._halves(
-            self.shortcut_status, self.hermes_shortcut_status)
-        body.addWidget(self.status_pair)
+        body.addWidget(self.shortcut_status)
         layout.addWidget(start)
 
         sound, body = self._section_card(
@@ -2550,17 +2536,6 @@ class SettingsWindow(QDialog):
         return holder
 
     @staticmethod
-    def _halves(first, second):
-        """Two labelled fields side by side, sharing the row evenly."""
-        holder = QWidget()
-        layout = QHBoxLayout(holder)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
-        layout.addWidget(first, 1)
-        layout.addWidget(second, 1)
-        return holder
-
-    @staticmethod
     def _label_row(label, widget):
         """A labelled row: muted label on top, control below it."""
         holder = QWidget()
@@ -2665,14 +2640,12 @@ class SettingsWindow(QDialog):
         self.file_path = ""
 
         self.shortcut.setCurrentText(conf["shortcut"])
-        self.hermes_shortcut.setCurrentText(conf["hermes_shortcut"])
 
         self.history_enabled.setChecked(bool(conf["history_enabled"]))
         self.history_limit.setEnabled(self.history_enabled.isChecked())
         self.history_limit.setValue(max(0, int(conf["history_limit"])))
 
         self._refresh_shortcut_status()
-        self._refresh_hermes_shortcut_status()
         self._refresh_meeting_shortcut_status()
         self._load_history()
         self._load_minutes()
@@ -2751,7 +2724,6 @@ class SettingsWindow(QDialog):
         conf["file_cleanup"] = self.file_cleanup.isChecked()
 
         conf["shortcut"] = self.shortcut.currentText().strip() or "Ctrl+Space"
-        conf["hermes_shortcut"] = self.hermes_shortcut.currentText().strip()
         conf["history_enabled"] = self.history_enabled.isChecked()
         conf["history_limit"] = self.history_limit.value()
         try:
@@ -3270,12 +3242,6 @@ class SettingsWindow(QDialog):
             t("Active shortcut: {shortcut}", shortcut=self.conf["meeting_shortcut"])
             if self.conf["meeting_shortcut"] else
             t("No shortcut set. The tray menu starts a meeting too.")
-        )
-
-    def _refresh_hermes_shortcut_status(self):
-        self.hermes_shortcut_status.setText(
-            t("Active shortcut: {shortcut}", shortcut=self.conf["hermes_shortcut"])
-            if self.conf["hermes_shortcut"] else t("No shortcut set.")
         )
 
     def _open_diagnostics(self):
