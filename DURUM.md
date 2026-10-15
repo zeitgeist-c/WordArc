@@ -1,9 +1,39 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-15
-Hazırlanan paket: 0.7.2 (`brand.py`)
+Hazırlanan paket: 0.7.3 (`brand.py`)
 Dal: master
-Git dönüş noktası: 6f1ca43 / v0.7.1
+Git dönüş noktası: 977623a / v0.7.2
+
+## 2026-10-15 — 0.7.3 Hermes tetikleyici gömüldü, AutoHotkey kalktı
+
+Ayrı çalışan AutoHotkey yardımcısı (`hermes-dictate-hotkey.ahk`: Shift+Space
+ile Hermes'i öne getirip dikteyi açıyordu) WordArc'ın içine taşındı; ayrı
+program ve kısayol çakışması bitti.
+
+- Yeni `hermes_trigger.py`: Hermes penceresini bulur (başlık + Hermes.exe
+  denetimi), öne getirir, Hermes'in dikte tuşuna basar. Başarısızlık WordArc
+  kaydını etkilemez, yalnız bilgi verilir.
+- Hermes'in kendi kısayolu da Alt+Space olur (Hermes Ayarları → Klavye →
+  "Start / stop dictation"); WordArc artık Alt+Space gönderir. İkisi birlikte
+  geçmeli, yoksa tetikleme çalışmaz.
+- Ayarlar → Başlangıç kartında "Hermes diktesi" kısayolu: varsayılan
+  Alt+Space, seçilebilir; boş bırakılırsa tetikleyici kapalı. WordArc'ın
+  kendi Ctrl+Space diktesi aynı.
+- Not: Alt+Space Windows'ta pencere menüsünü de açar; WordArc çalışırken bu
+  menü gelmez. Kullanıcı bu tuşu kullanmıyor.
+- `check.ps1` import kapısı yeni modülü de denetliyor.
+
+Resmi kapılar: 508 test geçti, 1 atlandı; compile/import temiz.
+
+Teslim: dist/WordArc-0.7.3.exe ve dist/WordArc-0.7.3.bat.
+EXE: 1.581.456.101 bayt; SHA256:
+af2845c691580c3eb087dbbe4b3f2dd1d0aff0470e64996baff612244726d6bf.
+Paket kapısı --version duvar saati 23,674 saniye; `hermes_trigger` modülü
+gömülü PYZ'de kanıtlı.
+
+Yedek 2026-10-15: kaynak commit'i + DURUM kaydı `origin/master`'a push;
+`v0.7.3` etiketi aynı commit'te; GitHub Release v0.7.3 assetleri (EXE+BAT).
 
 ## 2026-10-15 — 0.7.2 yeniden yapı: her biçim kendi çizimini yapıyor, canlı seviye pakette
 

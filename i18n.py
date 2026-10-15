@@ -881,3 +881,14 @@ TR.update({
     "Translating…": "Çevriliyor…",
     "Translate dictation to English": "Dikteyi İngilizceye çevir",
 })
+
+TR.update({
+    "Hermes dictation": "Hermes diktesi",
+    "Brings Hermes forward and toggles its dictation. "
+    "Replaces the separate AutoHotkey helper.":
+        "Hermes'i öne getirip diktesini açıp kapatır. "
+        "Ayrı AutoHotkey yardımcısının yerini alır.",
+    "Hermes is not open.": "Hermes açık değil.",
+    "Could not press the Hermes dictation key.":
+        "Hermes dikte tuşuna basılamadı.",
+})
