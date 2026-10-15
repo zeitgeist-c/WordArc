@@ -1234,8 +1234,9 @@ class SettingsWindow(QDialog):
         if kind == "dictation":
             controls = card("Dictation", [
                 ("Microphone", self._row(self.mic, self.refresh_audio_devices)),
-                ("Speech language", self.language), ("Shortcut", self.shortcut),
-                self.shortcut_status, self.cleanup_enabled, self.auto_paste,
+                ("Speech language", self.language),
+                self.shortcut_pair, self.status_pair,
+                self.cleanup_enabled, self.auto_paste,
             ])
             left = self._column([self._record_controls(kind), controls])
             recording = card("Recording", [
@@ -1748,20 +1749,24 @@ class SettingsWindow(QDialog):
         start, body = self._section_card(
             "Start", "The key that starts and stops dictation.")
         self.shortcut = self._shortcut_box("Ctrl+Space")
-        body.addWidget(self._label_row("Shortcut", self.shortcut))
         self.shortcut_status = QLabel("")
         self.shortcut_status.setObjectName("muted")
         self.shortcut_status.setWordWrap(True)
-        body.addWidget(self.shortcut_status)
         self.hermes_shortcut = self._shortcut_box("Alt+Space")
         self.hermes_shortcut.setToolTip(
             t("Brings Hermes forward and toggles its dictation. "
               "Replaces the separate AutoHotkey helper."))
-        body.addWidget(self._label_row("Hermes dictation", self.hermes_shortcut))
         self.hermes_shortcut_status = QLabel("")
         self.hermes_shortcut_status.setObjectName("muted")
         self.hermes_shortcut_status.setWordWrap(True)
-        body.addWidget(self.hermes_shortcut_status)
+        # İki kısayol yan yana: tek kısayol ile aynı yükseklik, bilgi kaybı yok.
+        self.shortcut_pair = self._halves(
+            self._label_row("Shortcut", self.shortcut),
+            self._label_row("Hermes dictation", self.hermes_shortcut))
+        body.addWidget(self.shortcut_pair)
+        self.status_pair = self._halves(
+            self.shortcut_status, self.hermes_shortcut_status)
+        body.addWidget(self.status_pair)
         layout.addWidget(start)
 
         sound, body = self._section_card(
@@ -2542,6 +2547,17 @@ class SettingsWindow(QDialog):
             layout.addWidget(widget, 1 if index == 0 else 0)
         holder = QWidget()
         holder.setLayout(layout)
+        return holder
+
+    @staticmethod
+    def _halves(first, second):
+        """Two labelled fields side by side, sharing the row evenly."""
+        holder = QWidget()
+        layout = QHBoxLayout(holder)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+        layout.addWidget(first, 1)
+        layout.addWidget(second, 1)
         return holder
 
     @staticmethod
