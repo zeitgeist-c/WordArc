@@ -18,26 +18,29 @@ Ayrıca canlı seviye düzeltmesi (`86521de`) önceki teslim EXE'sine girmemişt
   şeridi, toplantının iki yarısı ve Ayarlar önizlemeleri aynı fonksiyondan
   geçiyor. Toplantı görünümü artık dalga seçiliyken gerçekten dalga çiziyor.
 - Ayarlar > Arayüz: her biçimin canlı önizlemesi seçeneğin yanında; seçili
-  olan çerçeveli. Ad tek başına anlatmadığı için önizleme şarttı.
+  olan çerçeveli. Ad tek başına anlatmadığı için önizleme şarttı. Çerçeve
+  açılışta da çizilir: kayıtlı biçim listenin ilk maddesi (Çubuklar) olsa
+  bile `_load()` bir kez boyar. Önizleme animasyonu yalnız görünürken çalışır.
 - Ölü çizim kodu kaldırıldı (`_bars`, `_bar_colour`, `_draw_waveform`,
   `_draw_dual_waveform`, `_draw_dual_rounded`, `_meter_geometry`).
 - Testler çizimi sabit tuvale doğrudan verip yapısal imza ölçüyor; dar
-  şeritte (170 px) ve toplantıda da dört imza ayrışıyor.
+  şeritte (170 px) ve toplantıda da dört imza ayrışıyor. `tests/test_settings_meter.py`
+  seçim turunu, açılıştaki çerçeveyi ve önizlemelerin ayrı çizildiğini korur.
 - `tools/verify_release_package.py` artık `overlay` modülünü de kaynakla
   karşılaştırıyor; paketin bu çizimleri taşıdığı kanıtlı.
 
-Resmi kapılar: 493 test geçti, 1 atlandı; compile/import ve pip-audit temiz.
+Resmi kapılar: 500 test geçti, 1 atlandı; compile/import ve pip-audit temiz.
 
 Teslim: dist/WordArc-0.7.2.exe ve dist/WordArc-0.7.2.bat (aynı sürümün üzerine
-yazıldı; sürüm numarası değişmedi). EXE: 1.581.342.627 bayt; SHA256:
-531fe4c4f5d11df1e7cefd5617e8786bd7adf302b471d635344dd19f600689ed.
-Paket kapısı --version duvar saati 11,255 saniye; gömülü kaynak denetlenen
+yazıldı; sürüm numarası değişmedi). EXE: 1.581.341.166 bayt; SHA256:
+785db446711f5261956b8c9bddad36e61d422d228d010edc315529900165d56c.
+Paket kapısı --version duvar saati 12,693 saniye; gömülü kaynak denetlenen
 modüllerle birebir eşleşiyor.
 
 Yedek 2026-10-15: aynı sürümün üzerine yazıldı — kaynak commit'i + DURUM
 kaydı `origin/master`'a push; `v0.7.2` etiketi yeni yapı commit'ine taşındı;
 GitHub Release v0.7.2 assetleri (EXE+BAT) yenileriyle değiştirildi.
-Önceki kayıt (672d9dfd… yapısı) artık geçerli değil.
+Önceki yapılar (672d9dfd… ve 531fe4c4… artefaktları) artık geçerli değil.
 
 ## 2026-10-15 — 0.7.2 seçilebilir ses dalgası, canlı metin şeritten kalktı
 
