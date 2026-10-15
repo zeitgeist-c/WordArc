@@ -24,6 +24,11 @@ class TestParseShortcut(unittest.TestCase):
         mods, vk = hotkey.parse_shortcut("Alt+1")
         self.assertEqual(vk, ord("1"))
         self.assertTrue(mods & hotkey.MOD_ALT)
+    def test_alt_space(self):
+        mods, vk = hotkey.parse_shortcut("Alt+Space")
+        self.assertTrue(mods & hotkey.MOD_ALT)
+        self.assertTrue(mods & hotkey.MOD_NOREPEAT)
+        self.assertEqual(vk, 0x20)
     def test_super(self):
         mods, vk = hotkey.parse_shortcut("Meta+P")
         self.assertTrue(mods & hotkey.MOD_WIN)
