@@ -89,6 +89,11 @@ TR = {
     "Stop and transcribe": "Kaydı bitir ve yaz",
     "Working…": "İşleniyor…",
     "Cancel": "İptal",
+    "Color": "Renk",
+    "Undo": "Geri al",
+    "Reset drawing": "Çizimi sıfırla",
+    "Add text": "Metin ekle",
+    "Text:": "Metin:",
     "Cancel recording": "Kaydı iptal et",
     "Cancel": "İptal",
     "Settings…": "Ayarlar…",
@@ -303,6 +308,8 @@ TR = {
     "Capture and save a screenshot from the active screen.":
         "Etkin ekrandan görüntü alın ve kaydedin.",
     "Capture this screen": "Bu ekranı yakala",
+    "Capture active window": "Etkin pencereyi yakala",
+    "No active window is available for capture.": "Yakalanacak etkin pencere bulunamadı.",
     "Choose where new screenshots are saved by default.":
         "Yeni ekran görüntülerinin kaydedileceği varsayılan konumu seçin.",
     "Leave empty to use the Pictures/WordArc folder.":
@@ -317,6 +324,8 @@ TR = {
     "Capture": "Yakalama",
     "Capture screenshot": "Ekran görüntüsü al",
     "Capture shortcut": "Ekran görüntüsü kısayolu",
+    "Press shortcut keys…": "Kısayol tuşlarına basın…",
+    "Clear": "Temizle",
     "Select area…": "Alan seç…",
     "Capture full screen": "Tüm ekranı yakala",
     "Select screenshot area": "Ekran görüntüsü alanını seçin",

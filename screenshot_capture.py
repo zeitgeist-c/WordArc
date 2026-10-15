@@ -9,9 +9,11 @@ from pathlib import Path
 from PyQt6.QtCore import QPoint, QRect, QStandardPaths, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QCursor, QGuiApplication, QImage, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
-                             QPushButton, QSizePolicy, QVBoxLayout, QWidget)
+                             QPushButton, QSizePolicy, QSpinBox, QVBoxLayout, QWidget)
 
 from i18n import t
+
+from screenshot_editor import AnnotationCanvas
 
 
 def default_save_folder() -> Path:
@@ -365,14 +367,37 @@ class ScreenshotPreview(QDialog):
         self.conf = conf
         self.setWindowTitle(t("Screenshot"))
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
-        self.resize(780, 560)
+        self.resize(900, 640)
         layout = QVBoxLayout(self)
-        self.preview = QLabel()
-        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview.setSizePolicy(QSizePolicy.Policy.Expanding,
-                                   QSizePolicy.Policy.Expanding)
-        self.preview.setMinimumSize(280, 180)
-        layout.addWidget(self.preview, 1)
+        tools = QHBoxLayout()
+        self.tool_buttons = {}
+        for tool in AnnotationCanvas.TOOLS:
+            button = QPushButton(tool.capitalize())
+            button.setCheckable(True)
+            button.clicked.connect(
+                lambda _checked=False, name=tool: self._set_tool(name))
+            self.tool_buttons[tool] = button
+            tools.addWidget(button)
+        tools.addStretch(1)
+        self.color_button = QPushButton(t("Color"))
+        self.color_button.clicked.connect(self._choose_color)
+        tools.addWidget(self.color_button)
+        self.width_box = QSpinBox()
+        self.width_box.setRange(1, 40)
+        self.width_box.setValue(3)
+        tools.addWidget(self.width_box)
+        self.undo_button = QPushButton(t("Undo"))
+        self.undo_button.clicked.connect(lambda: self.canvas.undo())
+        tools.addWidget(self.undo_button)
+        self.reset_button = QPushButton(t("Reset drawing"))
+        self.reset_button.clicked.connect(lambda: self.canvas.reset())
+        tools.addWidget(self.reset_button)
+        layout.addLayout(tools)
+
+        self.canvas = AnnotationCanvas(image, self)
+        self.canvas.changed.connect(lambda: None)
+        self.width_box.valueChanged.connect(self.canvas.set_stroke_width)
+        layout.addWidget(self.canvas, 1)
         self.dimensions = QLabel(f"{image.width()} × {image.height()}")
         self.dimensions.setObjectName("muted")
         layout.addWidget(self.dimensions)
@@ -386,27 +411,27 @@ class ScreenshotPreview(QDialog):
         actions.addStretch(1)
         actions.addWidget(self.save_button)
         layout.addLayout(actions)
-        self._refresh_preview()
+        self._set_tool("rect")
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._refresh_preview()
+    def _set_tool(self, name):
+        self.canvas.set_tool(name)
+        for tool, button in self.tool_buttons.items():
+            button.setChecked(tool == name)
 
-    def _refresh_preview(self):
-        if not hasattr(self, "preview") or self.image.isNull():
-            return
-        pixmap = QPixmap.fromImage(self.image)
-        self.preview.setPixmap(pixmap.scaled(
-            self.preview.size(), Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation))
+    def _choose_color(self):
+        from PyQt6.QtWidgets import QColorDialog
+        color = QColorDialog.getColor(self.canvas.color, self, t("Color"))
+        if color.isValid():
+            self.canvas.set_color(color)
 
     def _copy(self):
-        copy_image_to_clipboard(self.image)
+        copy_image_to_clipboard(self.canvas.rendered_image())
         self.copy_button.setText(t("Copied"))
 
     def _save(self):
         try:
-            result = save_image_to_file(self.image, self.conf, self)
+            result = save_image_to_file(
+                self.canvas.rendered_image(), self.conf, self)
         except OSError as exc:
             self.failed.emit(str(exc))
             return
@@ -468,10 +493,15 @@ class ScreenshotController(QWidget):
 
     def _capture_screen(self):
         try:
-            pixmap = self._screen.grabWindow(0)
+            if self._mode == "window":
+                pixmap = self._capture_active_window()
+                if pixmap is None:
+                    raise OSError(t("No active window is available for capture."))
+            else:
+                pixmap = self._screen.grabWindow(0)
             if pixmap.isNull():
                 raise OSError(t("Windows could not capture the screen."))
-            if self._mode == "screen":
+            if self._mode in ("screen", "window"):
                 self._show_preview(pixmap.toImage())
                 return
             self._overlay = RegionOverlay(self._screen, pixmap)
