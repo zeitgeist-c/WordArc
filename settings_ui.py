@@ -2587,6 +2587,9 @@ class SettingsWindow(QDialog):
         self._select_data(self.corner, conf["overlay_corner"])
         self._select_data(self.meter_style,
                           conf.get("overlay_meter") or "spectrum")
+        # The combo only fires on a *change*: a saved "Bars" would leave every
+        # preview unframed, so the selection is painted once here too.
+        self._highlight_meter_preview()
         self.max_seconds.setValue(conf["max_seconds"])
         self.skip_silent.setChecked(conf["skip_silent"])
         self.silence_db.setValue(int(conf["silence_db"]))
