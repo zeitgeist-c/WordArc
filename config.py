@@ -425,6 +425,7 @@ DEFAULTS = {
     "filter_hallucinations": True,
     "shortcut": "Ctrl+Space",
     "overlay_corner": "bottom-left",
+    "overlay_meter": "spectrum",   # bars | spectrum | wave | capsule
     "keep_audio": False,
     "history_limit": 0,
     "history_enabled": False,

@@ -49,6 +49,7 @@ import i18n  # noqa: E402
 from i18n import t  # noqa: E402
 import livespeech  # noqa: E402
 from meeting import MeetingPipeline  # noqa: E402
+import overlay  # noqa: E402
 from overlay import Overlay  # noqa: E402
 from settings_ui import SettingsWindow, WindowView, install_qt_translator  # noqa: E402
 from worker import Pipeline  # noqa: E402
@@ -193,6 +194,7 @@ class WordArc:
         self._last_dictation = ""
         self._quitting = False
 
+        overlay.set_meter(self.conf.get("overlay_meter") or "spectrum")
         self.overlay = Overlay(self.conf["overlay_corner"])
         self.recorder = audio.Recorder()
         self.pipeline = Pipeline(self.conf)
@@ -938,6 +940,7 @@ class WordArc:
     def _apply_settings(self):
         theme.ThemeManager.apply(self.conf["theme_mode"], self.app)
         self.overlay.corner = self.conf["overlay_corner"]
+        overlay.set_meter(self.conf.get("overlay_meter") or "spectrum")
         self._build_tray()
         self._refresh_tray()
         self.evdev.stop()
