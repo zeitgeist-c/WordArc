@@ -49,6 +49,121 @@ def meter_styles():
 _METER = METER_BARS
 
 
+def _draw_meter_into(painter, rect, levels, accent, style=None):
+    """Draw one meter of `style` into `rect` with `levels`.
+
+    The single entry point for both the recording ribbon and the settings
+    previews: a preview drawn by different code would drift from what the
+    user actually gets, which is the whole reason to show one.
+    """
+    style = style or _METER
+    mid = rect.center().y()
+    count = len(levels)
+    left = rect.left()
+    span = max(1.0, rect.width())
+    height = rect.height()
+    top = rect.top()
+    painter.setPen(Qt.PenStyle.NoPen)
+    if style == METER_WAVE:
+        floor = rect.bottom()
+        ceiling = top + 1.0
+        points = []
+        points_count = count * 2 - 1
+        for i in range(points_count):
+            src = i / (points_count - 1) * (count - 1)
+            low = int(src)
+            high = min(count - 1, low + 1)
+            frac = src - low
+            level = levels[low] * (1 - frac) + levels[high] * frac
+            shaped = min(1.0, level ** 0.6)
+            x = left + span * i / (points_count - 1)
+            points.append(QPointF(x, floor - (floor - ceiling) * shaped))
+        path = QPainterPath()
+        path.moveTo(points[0].x(), floor)
+        path.lineTo(points[0].x(), points[0].y())
+        for i in range(1, len(points)):
+            prev, cur = points[i - 1], points[i]
+            mid_x = (prev.x() + cur.x()) / 2
+            path.cubicTo(mid_x, prev.y(), mid_x, cur.y(), cur.x(), cur.y())
+        path.lineTo(points[-1].x(), floor)
+        path.closeSubpath()
+        fill = QLinearGradient(0, ceiling, 0, floor)
+        for stop, alpha in ((0.0, 0.98), (0.55, 0.42), (1.0, 0.04)):
+            colour = QColor(accent)
+            colour.setAlphaF(alpha)
+            fill.setColorAt(stop, colour)
+        painter.setBrush(QBrush(fill))
+        painter.drawPath(path)
+        crest = QPainterPath()
+        crest.moveTo(points[0].x(), points[0].y())
+        for i in range(1, len(points)):
+            prev, cur = points[i - 1], points[i]
+            mid_x = (prev.x() + cur.x()) / 2
+            crest.cubicTo(mid_x, prev.y(), mid_x, cur.y(), cur.x(), cur.y())
+        line = QColor(accent).lighter(150)
+        pen = QPen(line, 1.6)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(crest)
+        return
+    if style == METER_SPECTRUM:
+        # Fewer, spaced bars: a spectrum analyser reads as separate lines, and
+        # spaced bars cannot merge into the solid body the wave draws.
+        bar_w = max(1.8, 2.6)
+        count_bars = max(8, min(20, int(span / 14)))
+        step = (span - bar_w) / max(1, count_bars - 1)
+        rail = QColor(MUTED)
+        rail.setAlphaF(0.50)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(rail)
+        painter.drawRect(QRectF(left, mid - 0.5, span, 1.0))
+        for i in range(count_bars):
+            level = levels[int(i * (count - 1) / (count_bars - 1))]
+            shaped = min(1.0, level ** 0.6)
+            half = 1.2 + shaped * (height * 0.44)
+            colour = QColor(accent)
+            colour.setAlphaF(0.28 + 0.72 * shaped)
+            painter.setBrush(colour)
+            painter.drawRoundedRect(
+                QRectF(left + i * step, mid - half, bar_w, half * 2),
+                bar_w / 2, bar_w / 2)
+        return
+    if style == METER_CAPSULE:
+        bars = max(6, min(11, int(span / 26)))
+        bar_w = max(7.0, span / (bars * 1.9))
+        step = (span - bar_w) / max(1, bars - 1)
+        for i in range(bars):
+            level = levels[int(i * (count - 1) / (bars - 1))]
+            shaped = min(1.0, level ** 0.55)
+            h = max(4.0, height * 0.20) + shaped * (height * 0.72)
+            x = left + i * step
+            y = mid - h / 2
+            gradient = QLinearGradient(0, y, 0, y + h)
+            head = QColor(accent).lighter(160)
+            head.setAlphaF(min(1.0, 0.55 + 0.45 * shaped))
+            tail = QColor(accent)
+            tail.setAlphaF(0.22 + 0.60 * shaped)
+            gradient.setColorAt(0.0, head)
+            gradient.setColorAt(1.0, tail)
+            painter.setBrush(QBrush(gradient))
+            painter.drawRoundedRect(QRectF(x, y, bar_w, h), bar_w / 2, bar_w / 2)
+        return
+    # Bars: a dense comb of hair-thin picks.
+    bar_w = max(1.0, span / (count * 3.4))
+    bars = max(18, min(44, int(span / 5.2)))
+    step = (span - bar_w) / max(1, bars - 1)
+    for i in range(bars):
+        level = levels[int(i * (count - 1) / (bars - 1))]
+        shaped = min(1.0, level ** 0.55)
+        h = max(2.0, height * 0.06) + shaped * (height * 0.90)
+        colour = QColor(accent if shaped > 0.04 else MUTED)
+        colour.setAlphaF(0.30 + 0.70 * min(1.0, shaped * 2.2))
+        painter.setBrush(colour)
+        painter.drawRect(QRectF(left + i * step, mid - h / 2, bar_w, h))
+
+
 def set_meter(style):
     """Choose the live meter drawing; unknown values keep the current one."""
     global _METER
@@ -58,6 +173,62 @@ def set_meter(style):
 
 def meter():
     return _METER
+
+
+class MeterPreview(QWidget):
+    """Bir stil seçeneğinin gerçek çizimiyle canlı önizlemesi.
+
+    Ayarlar listesinde her satırın yanında o stilin nasıl göründüğü durur;
+    seçenek adı tek başına "Dalga" ile "Kapsüller" arasındaki farkı
+    anlatamaz. Önizleme, üretimde kullanılan aynı çizim kodunu çağırır, o
+    yüzden gördüğü şey çalışırken gördüğü şeydir.
+    """
+
+    WIDTH = 148
+    HEIGHT = 30
+
+    def __init__(self, style, parent=None):
+        super().__init__(parent)
+        self.style = style
+        self._selected = False
+        self.setFixedSize(self.WIDTH, self.HEIGHT)
+        self._phase = 0.0
+        self._anim = QTimer(self)
+        self._anim.setInterval(60)
+        self._anim.timeout.connect(self._advance)
+        self._anim.start()
+
+    def set_selected(self, selected):
+        self._selected = bool(selected)
+        self.update()
+
+    def _advance(self):
+        self._phase += 0.16
+        self.update()
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(0.5, 0.5, self.width() - 1, self.height() - 1)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 8, 8)
+        painter.fillPath(path, BG)
+        if self._selected:
+            painter.setPen(QPen(QColor(ASK), 2.0))
+        else:
+            painter.setPen(QPen(BORDER, 1.0))
+        painter.drawPath(path)
+        levels = [min(1.0, 0.12 + 0.85 * (0.5 + 0.5 * math.sin(
+            self._phase + i * 0.7))) for i in range(BARS)]
+        # The production drawing code, borrowed rather than duplicated: a
+        # preview that drifts from the real thing is worse than none.
+        saved = meter()
+        set_meter(self.style)
+        try:
+            _draw_meter_into(painter, self.rect().adjusted(8, 4, -8, -4),
+                             levels, STATE_COLORS["recording"])
+        finally:
+            set_meter(saved)
 
 
 def show_live_text_enabled():
@@ -336,169 +507,32 @@ class Overlay(QWidget):
     def _draw_meter(self, painter, accent):
         """The live level meter, in whichever shape Settings asks for.
 
-        Every live state shares this: a dictation, a command being recorded
-        and a meeting all show the same meter, so a style chosen once holds
-        everywhere. The interim transcript is not drawn here — the words come
-        after the recording ends, and the ribbon stays a meter.
+        Every live state shares this, and the drawing itself lives in
+        ``_draw_meter_into`` so the settings previews show exactly what the
+        ribbon will show. The interim transcript is not drawn — the words
+        arrive when the recording ends, and the ribbon stays a meter.
         """
-        style = meter()
         if self.state == "meeting":
-            self._draw_dual_meter(painter, style)
+            self._draw_dual_meter(painter, meter())
             return
-        if style == METER_WAVE:
-            self._draw_wave_meter(painter, accent)
-        elif style == METER_SPECTRUM:
-            self._draw_rounded_meter(painter, accent, capsule=False)
-        elif style == METER_CAPSULE:
-            self._draw_rounded_meter(painter, accent, capsule=True)
-        else:
-            self._draw_bars_meter(painter, accent)
-
-    def _draw_bars_meter(self, painter, accent):
-        """The original meter: thin bars, tallest at 26 px."""
-        left, bar_w, step = self._bars()
-        mid = self.height() / 2
-        painter.setPen(Qt.PenStyle.NoPen)
-        for i, level in enumerate(self.levels):
-            shaped = min(1.0, level ** 0.55)
-            h = 3.0 + shaped * 26.0
-            painter.setBrush(self._bar_colour(shaped, accent))
-            painter.drawRoundedRect(
-                QRectF(left + i * step, mid - h / 2, bar_w, h), 1.3, 1.3
-            )
-
-    def _draw_rounded_meter(self, painter, accent, capsule=False):
-        """Rounded bars/capsules with a vertical gradient and a soft glow.
-
-        Brighter towards the middle of each bar and glowing at the top end,
-        so a louder stretch of speech reads as taller *and* hotter without
-        needing a bigger ribbon.
-        """
-        left, bar_w, step = self._bars()
-        if capsule:
-            bar_w = 4.4
-            step = bar_w + (step - bar_w)  # keep the same total span
-        mid = self.height() / 2
-        painter.setPen(Qt.PenStyle.NoPen)
-        for i, level in enumerate(self.levels):
-            shaped = min(1.0, level ** 0.6)
-            h = (4.0 if capsule else 2.6) + shaped * (20.0 if capsule else 22.0)
-            x = left + i * step
-            y = mid - h / 2
-            alpha = 0.30 + 0.70 * shaped
-            top = QColor(accent)
-            top.setAlphaF(min(1.0, alpha + 0.15))
-            body = QColor(accent)
-            body.setAlphaF(alpha)
-            gradient = QLinearGradient(0, y, 0, y + h)
-            gradient.setColorAt(0.0, top)
-            gradient.setColorAt(0.5, body)
-            gradient.setColorAt(1.0, top)
-            painter.setBrush(QBrush(gradient))
-            if shaped > 0.55:
-                glow = QColor(accent)
-                glow.setAlphaF(0.30 * shaped)
-                painter.setPen(QPen(glow, 2.4))
-            painter.drawRoundedRect(QRectF(x, y, bar_w, h), bar_w / 2, bar_w / 2)
-            painter.setPen(Qt.PenStyle.NoPen)
-
-    def _draw_wave_meter(self, painter, accent):
-        """One filled wave with a bright crest, drawn as a smooth path.
-
-        The crest follows the same level list, so the motion is identical to
-        the bar meters; only the drawing differs.
-        """
-        left, bar_w, step = self._bars()
-        right = left + (len(self.levels) - 1) * step
-        mid = self.height() / 2
-        base = mid + 15.0
-        points = []
-        for i, level in enumerate(self.levels):
-            shaped = min(1.0, level ** 0.6)
-            height = 3.0 + shaped * 21.0
-            points.append(QPointF(left + i * step, mid - height / 2 + 3.0))
-        path = QPainterPath()
-        path.moveTo(left, base)
-        path.lineTo(points[0].x(), points[0].y())
-        for i in range(1, len(points)):
-            prev, cur = points[i - 1], points[i]
-            mid_x = (prev.x() + cur.x()) / 2
-            path.cubicTo(mid_x, prev.y(), mid_x, cur.y(), cur.x(), cur.y())
-        path.lineTo(right, base)
-        path.closeSubpath()
-        fill = QLinearGradient(0, mid - 24, 0, base)
-        top = QColor(accent)
-        top.setAlphaF(0.95)
-        middle = QColor(accent)
-        middle.setAlphaF(0.55)
-        bottom = QColor(accent)
-        bottom.setAlphaF(0.06)
-        fill.setColorAt(0.0, top)
-        fill.setColorAt(0.55, middle)
-        fill.setColorAt(1.0, bottom)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(fill))
-        painter.drawPath(path)
-        crest = QPainterPath()
-        crest.moveTo(points[0].x(), points[0].y())
-        for i in range(1, len(points)):
-            prev, cur = points[i - 1], points[i]
-            mid_x = (prev.x() + cur.x()) / 2
-            crest.cubicTo(mid_x, prev.y(), mid_x, cur.y(), cur.x(), cur.y())
-        line = QColor(accent)
-        line = line.lighter(135)
-        line.setAlphaF(0.95)
-        pen = QPen(line, 1.6)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawPath(crest)
+        rect = QRectF(46.0, 5.0, max(20.0, self.width() - 46.0 - 58.0),
+                      self.height() - 10.0)
+        _draw_meter_into(painter, rect, self.levels, accent, style=meter())
 
     def _draw_dual_meter(self, painter, style):
         """A meeting: your voice above, the other side below.
 
-        Both halves use the chosen style so a meeting and a dictation look
-        like the same product; the second channel gets the cyan accent that
-        already marks it.
+        Both halves are drawn through ``_draw_meter_into`` with the chosen
+        style, so a setting picked once holds everywhere: a Wave meeting shows
+        two waves, a Capsules meeting two rows of capsules. The second channel
+        keeps the cyan accent that already marks it.
         """
-        if style in (METER_SPECTRUM, METER_CAPSULE):
-            self._draw_dual_rounded(painter, style == METER_CAPSULE)
-            return
-        left, bar_w, step = self._bars()
-        mid = self.height() / 2
-        painter.setPen(Qt.PenStyle.NoPen)
-        for i, (mine, theirs) in enumerate(zip(self.levels, self.levels2)):
-            x = left + i * step
-            for level, accent, up in ((mine, REC, True), (theirs, THEM, False)):
-                shaped = min(1.0, level ** 0.55)
-                h = 2.0 + shaped * 12.0
-                y = mid - 1.5 - h if up else mid + 1.5
-                painter.setBrush(self._bar_colour(shaped, accent))
-                painter.drawRoundedRect(QRectF(x, y, bar_w, h), 1.3, 1.3)
-
-    def _draw_dual_rounded(self, painter, capsule):
-        left, bar_w, step = self._bars()
-        if capsule:
-            bar_w = 4.4
-        mid = self.height() / 2
-        painter.setPen(Qt.PenStyle.NoPen)
-        for i, (mine, theirs) in enumerate(zip(self.levels, self.levels2)):
-            x = left + i * step
-            for level, accent, up in ((mine, REC, True), (theirs, THEM, False)):
-                shaped = min(1.0, level ** 0.6)
-                h = (3.0 if capsule else 2.0) + shaped * (11.0 if capsule else 12.0)
-                y = mid - 2.0 - h if up else mid + 2.0
-                body = QColor(accent)
-                body.setAlphaF(0.30 + 0.70 * shaped)
-                bright = QColor(accent)
-                bright.setAlphaF(min(1.0, 0.45 + 0.55 * shaped))
-                gradient = QLinearGradient(0, y, 0, y + h)
-                gradient.setColorAt(0.0, bright)
-                gradient.setColorAt(1.0, body)
-                painter.setBrush(QBrush(gradient))
-                radius = bar_w / 2 if capsule else 1.3
-                painter.drawRoundedRect(QRectF(x, y, bar_w, h), radius, radius)
+        span = max(20.0, self.width() - 46.0 - 74.0)
+        half = (self.height() - 6.0) / 2
+        _draw_meter_into(painter, QRectF(46.0, 2.0, span, half),
+                         self.levels, REC, style=style)
+        _draw_meter_into(painter, QRectF(46.0, 4.0 + half, span, half),
+                         self.levels2, THEM, style=style)
 
     def _draw_live_caption(self, painter, accent):
         """Kept for the record: the interim transcript is no longer drawn.
@@ -550,55 +584,6 @@ class Overlay(QWidget):
             painter.setPen(pen)
             painter.drawLine(QPointF(cx - 6, cy - 6), QPointF(cx + 6, cy + 6))
             painter.drawLine(QPointF(cx + 6, cy - 6), QPointF(cx - 6, cy + 6))
-
-    def _bars(self):
-        """(x of the first bar, bar width, distance between two bars)."""
-        # A meeting's clock carries an hours field, so it needs more room and
-        # the ribbon has to stop earlier.
-        left = 46.0
-        right = self.width() - (74.0 if self.state == "meeting" else 58.0)
-        bar_w = 2.6
-        gap = (right - left - BARS * bar_w) / max(1, BARS - 1)
-        return left, bar_w, bar_w + gap
-
-    @staticmethod
-    def _bar_colour(shaped, accent):
-        color = QColor(accent if shaped > 0.04 else MUTED)
-        color.setAlphaF(0.35 + 0.65 * min(1.0, shaped * 2.2))
-        return color
-
-    def _draw_waveform(self, painter, accent=REC):
-        if self.state == "meeting":
-            self._draw_dual_waveform(painter)
-            return
-        left, bar_w, step = self._bars()
-        mid = self.height() / 2
-        painter.setPen(Qt.PenStyle.NoPen)
-        for i, level in enumerate(self.levels):
-            shaped = min(1.0, level ** 0.55)
-            h = 3.0 + shaped * 26.0
-            painter.setBrush(self._bar_colour(shaped, accent))
-            painter.drawRoundedRect(
-                QRectF(left + i * step, mid - h / 2, bar_w, h), 1.3, 1.3
-            )
-
-    def _draw_dual_waveform(self, painter):
-        """Your microphone above the line, what the speakers play below it.
-
-        Seeing both move is the whole check that a meeting is being captured
-        properly: one silent half means that side is not reaching the recording.
-        """
-        left, bar_w, step = self._bars()
-        mid = self.height() / 2
-        painter.setPen(Qt.PenStyle.NoPen)
-        for i, (mine, theirs) in enumerate(zip(self.levels, self.levels2)):
-            x = left + i * step
-            for level, accent, up in ((mine, REC, True), (theirs, THEM, False)):
-                shaped = min(1.0, level ** 0.55)
-                h = 2.0 + shaped * 12.0
-                y = mid - 1.5 - h if up else mid + 1.5
-                painter.setBrush(self._bar_colour(shaped, accent))
-                painter.drawRoundedRect(QRectF(x, y, bar_w, h), 1.3, 1.3)
 
     def _draw_time(self, painter):
         font = QFont(self.font())

@@ -1861,7 +1861,38 @@ class SettingsWindow(QDialog):
             "Spectrum and Capsules glow as you speak louder; Wave is a single "
             "flowing line."))
         body.addWidget(self._label_row("Sound wave style", self.meter_style))
+        # Every style shown as it actually draws: the names alone ("Wave",
+        # "Capsules") cannot say what the difference looks like, and a user
+        # who picks blind ends up thinking the setting does nothing.
+        self.meter_previews = []
+        previews_row = QWidget()
+        previews = QHBoxLayout(previews_row)
+        previews.setContentsMargins(0, 0, 0, 0)
+        previews.setSpacing(8)
+        for label, value in overlay.meter_styles():
+            column = QVBoxLayout()
+            column.setSpacing(3)
+            caption = QLabel(t(label))
+            caption.setObjectName("muted")
+            caption.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            widget = overlay.MeterPreview(value)
+            self.meter_previews.append(widget)
+            column.addWidget(widget)
+            column.addWidget(caption)
+            holder = QWidget()
+            holder.setLayout(column)
+            previews.addWidget(holder)
+        previews.addStretch(1)
+        body.addWidget(previews_row)
         layout.addWidget(interface)
+
+        def highlight_preview():
+            """Seçili biçimin önizlemesi belirgin dursun."""
+            chosen = self.meter_style.currentData()
+            for widget in self.meter_previews:
+                widget.set_selected(widget.style == chosen)
+        self.meter_style.currentIndexChanged.connect(highlight_preview)
+        self._highlight_meter_preview = highlight_preview
 
         startup_box, body = self._section_card(
             "Startup", "What happens when Windows and WordArc start.")
