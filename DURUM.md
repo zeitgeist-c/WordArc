@@ -1,9 +1,41 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-15
-Hazırlanan paket: 0.7.1 (`brand.py`)
+Hazırlanan paket: 0.7.2 (`brand.py`)
 Dal: master
-Git dönüş noktası: beb7d5b / v0.7.0
+Git dönüş noktası: 6f1ca43 / v0.7.1
+
+## 2026-10-15 — 0.7.2 seçilebilir ses dalgası, canlı metin şeritten kalktı
+
+Kullanıcı canlı diktede şeritte akan metni istemedi: diğer kayıtlar gibi ses
+göstergesi görünsün dedi. Ayrıca göstergenin daha modern olmasını ve biçimin
+Ayarlar'dan seçilebilmesini istedi.
+
+- Akan ara metin şeritten kaldırıldı. Kayıt sürerken yalnızca ses göstergesi
+  ve süre çizilir; metin kayıt bitince temizlenip yapıştırılır.
+  `show_live_text()` çağrısı korunur ama artık metni çizmez.
+- Dört dalga biçimi eklendi; Ayarlar → Uygulama → "Ses dalgası biçimi":
+  Çubuklar (eski), Frekans (yeni varsayılan; yuvarlak, yükseklikle parlayan
+  çubuklar), Dalga (tek akıcı dolgu + parlak tepe çizgisi), Kapsüller (kalın
+  yuvarlak, dikey renk geçişi). Seçim kaydedilince anında uygulanır.
+- Toplantı görünümü de seçilen biçimle çizilir (sen üstte kırmızı, karşı
+  taraf altta mavi). Şerit boyutu değişmedi; kompakt kalır.
+- Biçim sözleşmesi piksel testiyle bağlandı: dört biçimin çizimi birbirinden
+  farklı olmak zorunda (tests/test_overlay_meter.py).
+
+Resmi kapılar: 485 test geçti, 1 atlandı; compile/import ve pip-audit temiz.
+
+Teslim: dist/WordArc-0.7.2.exe ve dist/WordArc-0.7.2.bat.
+EXE: 1.581.448.337 bayt; SHA256:
+672d9dfd333e813467a25cda53fac9b4b9972a41877eb8b66c5db3b9b8cfebf8.
+
+Paket kapısı ilk koşuda geçti. Teslim EXE --version duvar saati 11,868
+saniye (çıkarma dahil); soğuk/ilk açılış için garanti değildir. Gömülü ana
+kod ve denetlenen modüller kaynakla birebir eşleşiyor. Önceki 0.7.1, 0.7.0
+ve 0.6.12 teslim dosyaları korundu.
+
+Yedek 2026-10-15: kaynak/sürüm/build kaydı yerel sürüm commit'i + v0.7.2;
+origin/master ve v0.7.2 push ile uzak kaynak yedeği.
 
 ## 2026-10-15 — 0.7.1 canlı dikte düzeltmeleri
 
