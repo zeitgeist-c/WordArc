@@ -889,6 +889,7 @@ TR.update({
         "Hermes'i öne getirip diktesini açıp kapatır. "
         "Ayrı AutoHotkey yardımcısının yerini alır.",
     "Hermes is not open.": "Hermes açık değil.",
+    "Could not bring Hermes forward.": "Hermes öne getirilemedi.",
     "Could not press the Hermes dictation key.":
         "Hermes dikte tuşuna basılamadı.",
 })

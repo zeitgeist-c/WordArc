@@ -35,6 +35,43 @@ gömülü PYZ'de kanıtlı.
 Yedek 2026-10-15: kaynak commit'i + DURUM kaydı `origin/master`'a push;
 `v0.7.3` etiketi aynı commit'te; GitHub Release v0.7.3 assetleri (EXE+BAT).
 
+## 2026-10-15 — 0.7.3 aynı sürüm üzerine yeniden yapı (3 hata düzeltmesi)
+
+Kullanıcı 0.7.3'te üç arıza bildirdi; üçü de doğrulandı, kök nedenler kapatıldı.
+Sürüm numarası değişmedi, aynı adla yeniden paketlendi.
+
+- Kaydet çöküyordu, kayıt başlamıyordu: Ayarlar penceresi sekmeleri
+  çalışma alanına yeniden dizerken Hermes satırı yeni karta alınmamıştı;
+  silinen kutuya dokunan `_save` `RuntimeError` veriyor, kayda basmak önce
+  sessiz kaydetmeyi denediği için kayıt da açılmıyordu. Satır yeni Dikte
+  kartına taşındı (`shortcut_pair` ile birlikte).
+- Ayarlar'da Hermes satırı görünmüyordu: aynı kök neden; satır silinen
+  kartta kalmıştı. Artık Başlangıç kartında "Kısayol | Hermes diktesi" yan
+  yana, ikisi de seçilebilir; yükseklik tek kısayolla aynı, 920x700 dahil
+  kayma yok (yerleşim kapısı yeşil).
+- Alt+Space Hermes'i küçültüyordu: iki üst üste sorun. Hermes'in kendi
+  kısayolu hâlâ Shift+Space idi, giden Alt+Space sistem menüsünü açtı. Ayrıca
+  WordArc Hermes'i öne getiremeyince bile tuşu gönderiyordu. Artık öne
+  getirme `AttachThreadInput` ile güçlendirildi; getirilemezse tuş
+  GÖNDERİLMİYOR, bilgi veriliyor ("Hermes öne getirilemedi").
+- Başlangıç klasöründe ölü `HermesDikteHotkey.vbs` ve kurulum betiği de
+  silindi; yeniden başlatmada hata vermeyecek.
+
+Resmi kapılar: 511 test geçti, 1 atlandı; compile/import temiz. Yeni
+regresyon testleri: çalışma-alanı yıkımında Hermes kısayolunun sağ kalması,
+öne getirme başarısızken tuş gönderilmemesi, gönderilen tuşun Alt+Space
+olması.
+
+Teslim: dist/WordArc-0.7.3.exe ve dist/WordArc-0.7.3.bat (aynı adla üzerine
+yazıldı). EXE: 1.581.457.754 bayt; SHA256:
+05f1dc89f49158805ec4e60b7377e0cdbd0a9e30fd49903ebbdd6a7a19aca925.
+`hermes_trigger` (NOT_FORWARD + Alt gönderimi) gömülü PYZ'de kanıtlı.
+
+Yedek 2026-10-15 (aynı sürüm): kaynak commit'i + DURUM kaydı
+`origin/master`'a push; `v0.7.3` etiketi yeni yapı commit'ine taşındı;
+GitHub Release v0.7.3 assetleri (EXE+BAT) yenileriyle değiştirildi. Önceki
+yapı (af2845c6… artefaktı) artık geçerli değil.
+
 ## 2026-10-15 — 0.7.2 yeniden yapı: her biçim kendi çizimini yapıyor, canlı seviye pakette
 
 Kullanıcı dört biçimin şeritte aynı göründüğünü bildirdi. İki ayrı sorun

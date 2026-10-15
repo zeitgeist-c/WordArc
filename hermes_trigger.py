@@ -20,6 +20,7 @@ _log = logging.getLogger("wordarc.hermes")
 
 OK = ""
 NOT_OPEN = "Hermes is not open."
+NOT_FORWARD = "Could not bring Hermes forward."
 SEND_FAILED = "Could not press the Hermes dictation key."
 
 VK_MENU = 0x12
@@ -122,28 +123,71 @@ def _send_hermes_key(user32=None):
         return 0
 
 
-def trigger(user32=None, found=None, sender=None):
-    """Hermes'i öne getirip diktesini aç/kapat.
+def _bring_forward(user32, hwnd):
+    """Hermes penceresini öne getir; başaran True döner.
 
-    Başarıda ``OK`` (``""``), Hermes açık değilse ``NOT_OPEN``, tuş
-    gönderilemezse ``SEND_FAILED`` döner.
+    Arka plandaki bir işlemin `SetForegroundWindow` çağrısı Windows öncelik
+    kilidine takılır; o yüzden öndeki işlemin girdisine geçici olarak
+    bağlanılır (eski AutoHotkey `WinActivate` ile aynı numara). Öne
+    getirilemeyen pencereye tuş gönderilmez — yanlış pencereye giden
+    Alt+Space menü açar, küçültür.
     """
-    user32 = user32 or ctypes.windll.user32
-    hwnd = found if found is not None else find_hermes_window(user32)
-    if hwnd is None:
-        return NOT_OPEN
-    send = sender or (lambda: _send_hermes_key(user32))
+    kernel32 = ctypes.windll.kernel32
+    try:
+        if user32.GetForegroundWindow() == hwnd:
+            return True
+    except Exception:
+        pass
     try:
         try:
             user32.ShowWindow(hwnd, SW_RESTORE)
         except Exception:
             pass
-        if not user32.SetForegroundWindow(hwnd):
-            _log.warning("could not bring Hermes forward")
-        time.sleep(0.2)
+        current = kernel32.GetCurrentThreadId()
+        try:
+            foreground = user32.GetWindowThreadProcessId(
+                user32.GetForegroundWindow(), None)
+        except Exception:
+            foreground = 0
+        attached = False
+        try:
+            if foreground and foreground != current:
+                attached = bool(user32.AttachThreadInput(
+                    current, foreground, True))
+            if user32.SetForegroundWindow(hwnd):
+                return True
+        finally:
+            if attached:
+                try:
+                    user32.AttachThreadInput(current, foreground, False)
+                except Exception:
+                    pass
+        try:
+            user32.BringWindowToTop(hwnd)
+            return bool(user32.GetForegroundWindow() == hwnd)
+        except Exception:
+            return False
     except Exception:
         _log.exception("could not activate the Hermes window")
-        return SEND_FAILED
+        return False
+
+
+def trigger(user32=None, found=None, sender=None):
+    """Hermes'i öne getirip diktesini aç/kapat.
+
+    Başarıda ``OK`` (``""``), Hermes açık değilse ``NOT_OPEN``, pencere öne
+    getirilemezse ``NOT_FORWARD``, tuş gönderilemezse ``SEND_FAILED`` döner.
+    Öne getirilemeyen pencereye tuş gönderilmez.
+    """
+    user32 = user32 or ctypes.windll.user32
+    hwnd = found if found is not None else find_hermes_window(user32)
+    if hwnd is None:
+        return NOT_OPEN
+    if not _bring_forward(user32, hwnd):
+        _log.warning("could not bring Hermes forward; key not sent")
+        return NOT_FORWARD
+    time.sleep(0.2)
+    send = sender or (lambda: _send_hermes_key(user32))
     try:
         sent = send()
     except Exception:

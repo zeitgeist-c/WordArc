@@ -67,6 +67,29 @@ class TestTrigger(unittest.TestCase):
                 user32=user32, found=777, sender=lambda: 0)
         self.assertEqual(result, hermes_trigger.SEND_FAILED)
 
+    def test_forward_failure_sends_nothing(self):
+        user32 = mock.Mock()
+        user32.GetForegroundWindow.return_value = 999
+        user32.SetForegroundWindow.return_value = 0
+        user32.AttachThreadInput.return_value = 0
+        sender = mock.Mock(return_value=4)
+        with mock.patch.object(hermes_trigger.time, "sleep"):
+            result = hermes_trigger.trigger(
+                user32=user32, found=777, sender=sender)
+        self.assertEqual(result, hermes_trigger.NOT_FORWARD)
+        sender.assert_not_called()
+
+    def test_already_foreground_skips_activation(self):
+        user32 = mock.Mock()
+        user32.GetForegroundWindow.return_value = 777
+        sender = mock.Mock(return_value=4)
+        with mock.patch.object(hermes_trigger.time, "sleep"):
+            result = hermes_trigger.trigger(
+                user32=user32, found=777, sender=sender)
+        self.assertEqual(result, hermes_trigger.OK)
+        sender.assert_called_once_with()
+        user32.AttachThreadInput.assert_not_called()
+
 
 class TestSentKey(unittest.TestCase):
     def test_sends_alt_space(self):
