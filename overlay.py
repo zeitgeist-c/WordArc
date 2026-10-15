@@ -227,6 +227,10 @@ class Overlay(QWidget):
         if self.state in LIVE:
             # A meeting runs long enough to need an hours field.
             width = MIN_WIDTH + (24 if self.state == "meeting" else 0)
+            if self.message and self.state != "meeting":
+                metrics = QFontMetrics(self._label_font())
+                width = max(width, min(MAX_WIDTH,
+                                       metrics.horizontalAdvance(self.message) + 132))
         else:
             metrics = QFontMetrics(self._label_font())
             extra = 76 + (18 if self._can_dismiss else 0)
@@ -290,12 +294,46 @@ class Overlay(QWidget):
         self._draw_indicator(painter, accent)
 
         if self.state in LIVE:
-            self._draw_waveform(painter, accent)
+            if self.message and self.state != "meeting":
+                self._draw_live_caption(painter, accent)
+            else:
+                self._draw_waveform(painter, accent)
             self._draw_time(painter)
         else:
             self._draw_message(painter)
             if self._can_dismiss:
                 self._draw_dismiss(painter)
+
+    def _draw_live_caption(self, painter, accent):
+        """What has been heard so far, above the meter.
+
+        The words are the point of a live dictation, and this ribbon is the
+        only place the user is looking: the transcript used to be painted
+        nowhere at all while a recording was under way.
+        """
+        font = self._label_font()
+        metrics = QFontMetrics(font)
+        painter.setFont(font)
+        painter.setPen(TEXT)
+        box = QRectF(46, 3, self.width() - 46 - 62, 24)
+        text = metrics.elidedText(self.message, Qt.TextElideMode.ElideRight,
+                                  int(box.width()))
+        painter.drawText(
+            box, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft),
+            text,
+        )
+        # The meter keeps moving underneath, at half height, so the recording
+        # still looks alive while the caption takes the top line.
+        left, bar_w, step = self._bars()
+        mid = 41.0
+        painter.setPen(Qt.PenStyle.NoPen)
+        for i, level in enumerate(self.levels):
+            shaped = min(1.0, level ** 0.55)
+            h = 2.0 + shaped * 13.0
+            painter.setBrush(self._bar_colour(shaped, accent))
+            painter.drawRoundedRect(
+                QRectF(left + i * step, mid - h / 2, bar_w, h), 1.3, 1.3
+            )
 
     def _draw_indicator(self, painter, accent):
         cx, cy = 26.0, self.height() / 2

@@ -5,11 +5,13 @@ import os
 import logging
 import sys
 import threading
+import weakref
 
 from PyQt6.QtCore import (QEasingCurve, QLibraryInfo, QPoint, QPropertyAnimation,
                           QRect, QSize, Qt, QTimer, QEvent, QTranslator, QUrl, pyqtSignal)
 from PyQt6.QtGui import (QColor, QDesktopServices, QFont, QFontMetrics,
                          QGuiApplication, QIcon, QKeySequence, QShortcut, QPainter)
+from PyQt6 import sip
 from PyQt6.QtWidgets import (
     QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QFormLayout, QFrame, QGraphicsOpacityEffect, QGroupBox,
@@ -24,6 +26,7 @@ import audio
 import config as cfg
 import filetranscribe
 import i18n
+import livespeech
 import localspeech
 import meeting
 import sounds
@@ -606,14 +609,33 @@ class FitsOnScreenCombo(QComboBox):
             self._search_picker()
 
     def hidePopup(self):
-        popup = getattr(self, '_picker', None)
-        if popup is not None:
-            popup.close()
+        self._close_picker()
         super().hidePopup()
 
+    def _close_picker(self):
+        """Close and forget the live picker; safe when it is already gone.
+
+        The picker is a Qt.Popup: Qt destroys it on its own when it closes
+        (WA_DeleteOnClose) or when its owner window goes away, and the stale
+        Python reference then points at a deleted C++ object. Every touch of
+        that reference has to pass through here, or the process dies with an
+        access violation instead of an exception.
+        """
+        picker, self._picker = getattr(self, "_picker", None), None
+        if picker is not None and not sip.isdeleted(picker):
+            picker.close()
+
+    def _live_picker(self):
+        picker = getattr(self, "_picker", None)
+        if picker is None or sip.isdeleted(picker):
+            self._picker = None
+            return None
+        return picker
+
     def _search_picker(self):
-        if getattr(self, "_picker", None) is not None:
-            self._picker.close()
+        existing = self._live_picker()
+        if existing is not None:
+            existing.close()
         dialog = QFrame(self.window(), Qt.WindowType.Popup)
         self._picker = dialog
         dialog.setObjectName("selectionPopup")
@@ -654,12 +676,14 @@ class FitsOnScreenCombo(QComboBox):
             item = rows.currentItem()
             if item is not None and not item.isHidden():
                 self.setCurrentIndex(item.data(Qt.ItemDataRole.UserRole))
+                self._picker = None   # closed by its own click; the reference goes with it
                 dialog.close()
         custom = QPushButton(t("Use typed value"), dialog)
         custom.setVisible(self.isEditable())
         def use_custom():
             if search.text().strip():
                 self.setEditText(search.text().strip())
+                self._picker = None
                 dialog.close()
         custom.clicked.connect(use_custom)
         def accept_search():
@@ -671,16 +695,39 @@ class FitsOnScreenCombo(QComboBox):
         rows.itemClicked.connect(lambda _: choose())
         rows.itemActivated.connect(lambda _: choose())
         search.returnPressed.connect(accept_search)
-        QShortcut(QKeySequence(Qt.Key.Key_Escape), dialog, activated=dialog.close)
+        QShortcut(QKeySequence(Qt.Key.Key_Escape), dialog,
+                  activated=lambda: (setattr(self, "_picker", None), dialog.close()))
         enter = QShortcut(QKeySequence(Qt.Key.Key_Return), rows, activated=choose)
         enter.setContext(Qt.ShortcutContext.WidgetShortcut)
         layout.addWidget(search)
         layout.addWidget(rows, 1)
         layout.addWidget(custom)
-        row_height = max(34, rows.fontMetrics().height() + 18, *(rows.sizeHintForRow(i) for i in range(rows.count())))
+        # The rows' own heights, not a guess: the stylesheet padding and the
+        # installed delegate both decide how tall a row draws, and a hardcoded
+        # 34 let a 150% display push the last row past the popup edge where it
+        # could only be reached by scrolling.
+        row_height = max(rows.fontMetrics().height() + 18,
+                         *(rows.sizeHintForRow(i) for i in range(rows.count())),
+                         34)
         width = min(max(self.width(), 320), screen.width() - 16)
         visible_rows = min(self.count(), 6 if searchable else 8)
-        height = min(440, row_height * visible_rows + 32 + (48 if searchable else 0) + (44 if self.isEditable() else 0))
+        # Space the layout itself takes: its margins, plus whatever visible
+        # widget shares the column. The row count only gets the rest.
+        # isVisible() cannot be asked here: the dialog has not been shown yet,
+        # so every child reports False and the rows would be given a window
+        # that is too short for them — the last one ends up under the edge.
+        margins = layout.contentsMargins()
+        chrome = margins.top() + margins.bottom() + rows.frameWidth() * 2
+        if searchable:
+            chrome += layout.spacing() + search.sizeHint().height()
+        if self.isEditable():
+            chrome += layout.spacing() + custom.sizeHint().height()
+        height = min(440, row_height * visible_rows + chrome)
+        if self.count() > visible_rows:
+            # A list that scrolls draws the bar over its rows; without the
+            # extra width the widest row is elided for no reason.
+            width = min(screen.width() - 16,
+                        width + rows.verticalScrollBar().sizeHint().width())
         anchor = self.mapToGlobal(QPoint(0, self.height()))
         above = self.mapToGlobal(QPoint(0, 0)).y() - screen.top()
         below = screen.bottom() - anchor.y() + 1
@@ -690,10 +737,6 @@ class FitsOnScreenCombo(QComboBox):
         y = self.mapToGlobal(QPoint(0, 0)).y() - height if upwards else anchor.y()
         y = max(screen.top() + 8, min(y, screen.bottom() - height - 7))
         dialog.setGeometry(x, y, width, height)
-        def released():
-            if getattr(self, "_picker", None) is dialog:
-                self._picker = None
-        dialog.destroyed.connect(released)
         dialog.show()
         if searchable:
             search.setFocus()
@@ -1420,6 +1463,7 @@ class SettingsWindow(QDialog):
         self.transcribe_status.setVisible(not local and not live)
         if hasattr(self, "live_row"):
             self.live_row.setVisible(live)
+            self.live_model_note.setVisible(live)
         self.local_row.setVisible(local)
         self.local_status.setVisible(local)
         if hasattr(self, "local_privacy_note"):
@@ -1905,7 +1949,9 @@ class SettingsWindow(QDialog):
             self.transcribe_engine.addItem(t(label), value)
         self.transcribe_engine.setToolTip(t(
             "Local transcribes on this computer and sends no audio anywhere. "
-            "Cloud uses Gemini and needs an API key."))
+            "Cloud and Live use Gemini and need an API key: Cloud types up a "
+            "recording after it ends, Live streams your speech as you speak "
+            "and shows the words while you are still talking."))
         self.local_stt_model = FitsOnScreenCombo()
         self.local_stt_model.setProperty("searchable", True)
         for name in localspeech.model_names():
@@ -1995,6 +2041,17 @@ class SettingsWindow(QDialog):
         self.live_row = self._label_row(
             "Live transcript mode", self.live_transcription_mode)
         stt_body.addWidget(self.live_row)
+        # The live engine speaks through one fixed model, so there is nothing
+        # to choose; without saying so, the Cloud model box looks like the
+        # setting that applies and the user has no way to tell what answered.
+        self.live_model_note = QLabel("")
+        self.live_model_note.setObjectName("muted")
+        self.live_model_note.setWordWrap(True)
+        stt_body.addWidget(self.live_model_note)
+        self.live_model_note.setText(t(
+            "Live uses {model}; it cannot be changed. The model under "
+            "Transcript cleanup tidies the text afterwards.",
+            model=livespeech.MODEL.removeprefix("models/")))
         self.transcribe_status = QLabel("")
         self.transcribe_status.setObjectName("muted")
         self.transcribe_status.setWordWrap(True)
