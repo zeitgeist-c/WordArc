@@ -886,6 +886,8 @@ class WordArc:
             self.screenshot_controller.failed.connect(
                 self.settings_window.screenshot_failed)
             self.settings_window.cancel_requested.connect(self._window_cancel)
+            self.settings_window.shortcut_capture.connect(
+                self._on_shortcut_capture)
             self.settings_window.set_dictation_result(self._last_dictation)
             self._sync_workspace()
             self.settings_window.applied.connect(self._apply_settings)
@@ -969,11 +971,43 @@ class WordArc:
             if self.settings_window is not window:
                 return
             self.settings_window = None
+            if not self._quitting:
+                self._apply_hotkeys()
             if (not self._quitting
                     and (not self.conf["close_to_tray"]
                          or not QSystemTrayIcon.isSystemTrayAvailable())):
                 self.app.quit()
         QTimer.singleShot(0, finish_close)
+
+    def _on_shortcut_capture(self, active):
+        """Park the global shortcuts while a shortcut field listens for keys.
+
+        RegisterHotKey swallows its combinations everywhere, our own settings
+        window included: without this, a field could never capture a
+        combination that already belongs to an action. The shortcuts come
+        back as soon as the field stops listening.
+        """
+        evdev = getattr(self, "evdev", None)
+        if evdev is None:
+            return
+        if active:
+            evdev.stop()
+            cancel_hotkey = getattr(self, "cancel_hotkey", None)
+            if cancel_hotkey is not None:
+                cancel_hotkey.stop()
+        else:
+            self._apply_hotkeys()
+            if getattr(self, "cancel_hotkey", None) is not None:
+                self._refresh_cancel_hotkey()
+
+    def _apply_hotkeys(self):
+        evdev = getattr(self, "evdev", None)
+        if evdev is None:
+            return
+        evdev.stop()
+        evdev.start({"toggle": self.conf["shortcut"],
+                          "meeting": self.conf["meeting_shortcut"],
+                          "screenshot": self.conf.get("screenshot_shortcut", "")})
 
     def _apply_settings(self):
         theme.ThemeManager.apply(self.conf["theme_mode"], self.app)
@@ -981,10 +1015,7 @@ class WordArc:
         overlay.set_meter(self.conf.get("overlay_meter") or "spectrum")
         self._build_tray()
         self._refresh_tray()
-        self.evdev.stop()
-        self.evdev.start({"toggle": self.conf["shortcut"],
-                          "meeting": self.conf["meeting_shortcut"],
-                          "screenshot": self.conf.get("screenshot_shortcut", "")})
+        self._apply_hotkeys()
 
     def restart(self):
         """Replace this process with a fresh one, picking up code and settings.

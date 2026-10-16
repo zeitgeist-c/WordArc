@@ -67,7 +67,6 @@ REASONING_LEVELS = [
     ("Model's own default", ""), ("Minimal", "minimal"),
     ("Low", "low"), ("Medium", "medium"), ("High", "high"),
 ]
-PASTE_SHORTCUTS = ["ctrl+v", "ctrl+shift+v", "shift+insert"]
 AUDIO_FILTER = ("*.mp3 *.wav *.m4a *.ogg *.opus *.flac *.aac *.wma "
                 "*.mp4 *.mkv *.webm *.mov *.avi")
 
@@ -835,74 +834,166 @@ class FitsOnScreenCombo(QComboBox):
 
 
 class HotkeyEdit(QWidget):
-    """Press-to-assign shortcut field: focus it and press the combination.
+    """Press-to-assign shortcut field, game-style.
 
-    Any combination the Win32 RegisterHotKey path accepts (one key plus
-    Ctrl/Alt/Shift/Meta) is assigned by pressing it; typing the text still
-    works and the × button clears the shortcut.
+    Click the field and it starts listening — the box highlights; the next
+    combination pressed lands in it right away. Escape cancels the take,
+    Backspace or Delete clears the shortcut, and nothing is applied until the
+    settings window's Save button is pressed.
     """
+
+    capture_started = pyqtSignal()
+    capture_finished = pyqtSignal()
+
+    # Windows owns these; RegisterHotKey can never take them.
+    RESERVED = ("ctrl+alt+del", "ctrl+alt+delete")
 
     def __init__(self, placeholder="", parent=None):
         super().__init__(parent)
-        layout = QHBoxLayout(self)
+        self._placeholder = placeholder or t("Press shortcut keys…")
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(2)
         self.line = QLineEdit(self)
-        if placeholder:
-            self.line.setPlaceholderText(placeholder)
-        else:
-            self.line.setPlaceholderText(t("Press shortcut keys…"))
+        self.line.setReadOnly(True)
+        self.line.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.line.setPlaceholderText(self._placeholder)
         self.line.installEventFilter(self)
-        layout.addWidget(self.line, 1)
-        self.clear_button = QPushButton("×", self)
-        self.clear_button.setToolTip(t("Clear"))
-        self.clear_button.setMaximumWidth(28)
-        self.clear_button.clicked.connect(self.line.clear)
-        layout.addWidget(self.clear_button, 0)
+        layout.addWidget(self.line)
+        self.hint = QLabel("")
+        self.hint.setObjectName("muted")
+        self.hint.setWordWrap(True)
+        self.hint.hide()
+        layout.addWidget(self.hint)
+        self.setFocusProxy(self.line)
+        self._listening = False
+        self._value_before_listen = ""
 
     def currentText(self):
         return self.line.text()
 
     def setCurrentText(self, text):
         self.line.setText(text or "")
+        self._clear_hint()
 
     def clear(self):
         self.line.clear()
+        self._clear_hint()
+
+    def mousePressEvent(self, event):
+        self._start_listen()
+        self.line.setFocus(Qt.FocusReason.MouseFocusReason)
+        super().mousePressEvent(event)
+
+    def _clear_hint(self):
+        if self.hint.isVisible():
+            self.hint.hide()
+
+    def _note(self, message):
+        self.hint.setText(message)
+        self.hint.show()
+
+    def _start_listen(self):
+        """A click starts the capture; one combination ends it again."""
+        if self._listening:
+            return
+        self._listening = True
+        self._capture_assigned = False
+        self._value_before_listen = self.line.text()
+        self._clear_hint()
+        self.line.clear()
+        self.line.setPlaceholderText(t("Press the keys now…"))
+        self.line.setStyleSheet("border: 1px solid #9475EC;")
+        self.capture_started.emit()
+
+    def _stop_listen(self):
+        if not self._listening:
+            return
+        if not self._capture_assigned:
+            self.line.setText(self._value_before_listen)
+        self._listening = False
+        self.line.setPlaceholderText(self._placeholder)
+        self.line.setStyleSheet("")
+        self.capture_finished.emit()
 
     def eventFilter(self, obj, event):
-        if obj is self.line and event.type() == QEvent.Type.KeyPress:
-            try:
-                if self._capture(event):
-                    return True
-            except Exception:
-                logging.getLogger("wordarc.shortcut").exception(
-                    "could not capture the pressed keys")
+        if obj is not self.line:
+            return super().eventFilter(obj, event)
+        kind = event.type()
+        if kind == QEvent.Type.MouseButtonPress:
+            self._start_listen()
+        elif kind in (QEvent.Type.FocusOut, QEvent.Type.Hide):
+            self._stop_listen()
+        elif kind == QEvent.Type.ShortcutOverride:
+            if not self._listening:
+                return super().eventFilter(obj, event)
+            # Reserve the event here; assign only on KeyPress. Qt sends both
+            # events for one press, so assigning here used to capture twice.
+            event.accept()
+            return True
+        elif kind == QEvent.Type.KeyPress:
+            if (not self._listening and not event.isAutoRepeat() and event.key() in
+                    (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space)):
+                self._start_listen()
+                return True
+            if self._listening:
+                try:
+                    if self._capture(event):
+                        return True
+                except Exception:
+                    logging.getLogger("wordarc.shortcut").exception(
+                        "could not capture the pressed keys")
         return super().eventFilter(obj, event)
 
+    def _assign(self, text):
+        self._capture_assigned = True
+        self.line.setText(text)
+        self._clear_hint()
+        self._note(t("Press Save to apply."))
+        self._stop_listen()
+
     def _capture(self, event):
+        if event.isAutoRepeat():
+            return True
         key = event.key()
         mods = (event.modifiers() & (Qt.KeyboardModifier.ControlModifier
                 | Qt.KeyboardModifier.AltModifier
                 | Qt.KeyboardModifier.MetaModifier
                 | Qt.KeyboardModifier.ShiftModifier)).value
+        if key == Qt.Key.Key_Escape:
+            self.line.setText(self._value_before_listen)
+            self._clear_hint()
+            self._stop_listen()
+            return True
         if key in (Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt,
                    Qt.Key.Key_Meta, Qt.Key.Key_unknown):
             return True
-        if not mods:
-            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Tab,
-                       Qt.Key.Key_Escape):
-                return False
-            if not Qt.Key.Key_F1 <= key <= Qt.Key.Key_F12:
-                return False
-        elif (mods == Qt.KeyboardModifier.ShiftModifier.value
-              and not Qt.Key.Key_F1 <= key <= Qt.Key.Key_F12):
-            return False
+        if not mods and key in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete):
+            self._assign("")
+            return True
         text = QKeySequence(mods | int(key)).toString(
             QKeySequence.SequenceFormat.PortableText)
-        if not text or hotkey.parse_shortcut(text) == (0, 0):
-            return False
-        self.line.setText(text)
-        self.line.clearFocus()
+        if event.modifiers() & Qt.KeyboardModifier.KeypadModifier:
+            key_text = QKeySequence(int(key)).toString(
+                QKeySequence.SequenceFormat.PortableText)
+            if key_text in "0123456789*+-./" and len(key_text) == 1:
+                prefix = text[:-len(key_text)]
+                text = prefix + ("NumPlus" if key_text == "+"
+                                 else "Num" + key_text)
+        if text == "Print":
+            text = "PrintScreen"
+        elif text.endswith("+Print"):
+            text = text[:-len("+Print")] + "+PrintScreen"
+        if not text:
+            return True
+        if text.strip().lower().replace(" ", "") in self.RESERVED:
+            self._note(t("Windows reserves this combination: {shortcut}",
+                         shortcut=text))
+            return True
+        if hotkey.parse_shortcut(text) == (0, 0):
+            self._note(t("This key combination cannot be assigned."))
+            return True
+        self._assign(text)
         return True
 
 
@@ -965,6 +1056,9 @@ class SettingsWindow(QDialog):
     cancel_requested = pyqtSignal(str)
     applied = pyqtSignal()
     language_changed = pyqtSignal()
+    # True while a shortcut field is listening for keys: the global shortcuts
+    # have to be parked, or RegisterHotKey swallows the combination first.
+    shortcut_capture = pyqtSignal(bool)
 
     _models_loaded = pyqtSignal(list, str)
     _transcribe_models_loaded = pyqtSignal(list, str)
@@ -1847,10 +1941,9 @@ class SettingsWindow(QDialog):
             "Output", "Where the finished text goes.")
         self.auto_paste = QCheckBox(t("Paste the text into the focused window"))
         body.addWidget(self.auto_paste)
-        self.paste_shortcut = FitsOnScreenCombo()
-        self.paste_shortcut.addItems(PASTE_SHORTCUTS)
+        self.paste_shortcut = self._shortcut_box()
         self.paste_shortcut.setToolTip(
-            t("Terminals usually want ctrl+shift+v. Change this if pasting does nothing.")
+            t("Terminals usually want Ctrl+Shift+V. Change this if pasting does nothing.")
         )
         body.addWidget(self._label_row("Paste key", self.paste_shortcut))
         self.restore_clipboard = QCheckBox(t("Restore the previous clipboard after pasting"))
@@ -2537,7 +2630,7 @@ class SettingsWindow(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setSpacing(14)
-        intro = QLabel(t("Capture a region on the active screen, then copy or save it."))
+        intro = QLabel(t("Capture a region, write on it, then copy or save it."))
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
@@ -2655,10 +2748,14 @@ class SettingsWindow(QDialog):
         layout.addLayout(row)
         return box
 
-    @staticmethod
-    def _shortcut_box(placeholder=""):
-        """The field a global shortcut is pressed or typed in."""
-        return HotkeyEdit(placeholder)
+    def _shortcut_box(self, placeholder=""):
+        """The field a global shortcut is pressed in."""
+        edit = HotkeyEdit(placeholder)
+        edit.capture_started.connect(
+            lambda: self.shortcut_capture.emit(True))
+        edit.capture_finished.connect(
+            lambda: self.shortcut_capture.emit(False))
+        return edit
 
     @staticmethod
     def _row(*widgets):
@@ -2799,6 +2896,27 @@ class SettingsWindow(QDialog):
         "start recording" path saves quietly so the take uses what is on
         screen — a failure still blocks it, loudly, through warn_box.
         """
+        # Check before mutating settings: aliases such as Ctrl/Control and
+        # Print/PrintScreen resolve to the same Windows binding.
+        seen = {}
+        for label, field, fallback in (
+                ("Dictation", self.shortcut, "Ctrl+Space"),
+                ("Meeting", self.meeting_shortcut, ""),
+                ("Screenshot", self.screenshot_shortcut, "")):
+            shortcut = field.currentText().strip() or fallback
+            if not shortcut:
+                continue
+            binding = hotkey.parse_shortcut(shortcut)
+            if binding == (0, 0):
+                warn_box(self, t("Error"), t(
+                    "Could not parse the shortcut: {shortcut}", shortcut=shortcut))
+                return False
+            if binding in seen:
+                warn_box(self, t("Shortcut conflict"), t(
+                    "{shortcut} is assigned to both {first} and {second}.",
+                    shortcut=shortcut, first=t(seen[binding]), second=t(label)))
+                return False
+            seen[binding] = label
         conf = self.conf
         language_before = i18n.language()
         # Theme and header language apply on click and persist at once;
@@ -2809,7 +2927,8 @@ class SettingsWindow(QDialog):
         conf["mic_target"] = self.mic.currentData() or ""
         conf["language"] = self.language.currentData() or "auto"
         conf["auto_paste"] = self.auto_paste.isChecked()
-        conf["paste_shortcut"] = self.paste_shortcut.currentText().strip()
+        conf["paste_shortcut"] = (self.paste_shortcut.currentText().strip()
+                                      or "ctrl+v")
         conf["restore_clipboard"] = self.restore_clipboard.isChecked()
         conf["overlay_corner"] = self.corner.currentData() or "bottom-left"
         conf["screenshot_shortcut"] = self.screenshot_shortcut.currentText().strip()

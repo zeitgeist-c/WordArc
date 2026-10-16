@@ -60,7 +60,8 @@ UNTRANSLATED = {
     "Nvidia GPU", "CPU",
 }
 
-SOURCE_FILES = ("settings_ui.py", "screenshot_capture.py", "wordarc.py", "meeting.py", "worker.py",
+SOURCE_FILES = ("settings_ui.py", "screenshot_capture.py", "screenshot_editor.py",
+                "wordarc.py", "meeting.py", "worker.py",
                 "audio.py", "filetranscribe.py", "paste.py", "api.py",
                 "localspeech.py")
 
@@ -107,6 +108,24 @@ def _visible_literals(path):
                 if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
                     found.append((node.lineno, arg.value))
     return found
+
+
+class TestRuntimeLabels(unittest.TestCase):
+    """Labels built from constants at runtime that the literal scan misses."""
+
+    def test_screenshot_overlay_labels_have_turkish_entries(self):
+        import screenshot_capture
+        missing = [label for label
+                   in screenshot_capture.RegionOverlay.TOOL_LABELS.values()
+                   if label not in i18n.TR]
+        self.assertFalse(missing, f"TR karsiligi yok: {missing}")
+
+    def test_shortcut_field_strings_have_turkish_entries(self):
+        for label in ("Press shortcut keys…", "Press the keys now…",
+                      "Press Save to apply.",
+                      "Windows reserves this combination: {shortcut}",
+                      "This key combination cannot be assigned."):
+            self.assertIn(label, i18n.TR, f"TR karsiligi yok: {label!r}")
 
 
 class TestTranslationCoverage(unittest.TestCase):

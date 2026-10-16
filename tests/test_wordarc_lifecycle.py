@@ -78,6 +78,25 @@ def test_shutdown_stops_meeting_pipeline_without_missing_cancel_method():
     controller.cancel_hotkey.stop.assert_called_once_with()
 
 
+def test_shortcut_capture_parks_and_returns_the_global_hotkeys():
+    controller = wordarc.WordArc.__new__(wordarc.WordArc)
+    controller.evdev = mock.Mock()
+    controller.cancel_hotkey = mock.Mock()
+    controller._refresh_cancel_hotkey = mock.Mock()
+    controller.conf = {"shortcut": "Ctrl+Space", "meeting_shortcut": "",
+                       "screenshot_shortcut": "Ctrl+Alt+S"}
+
+    controller._on_shortcut_capture(True)
+    controller.evdev.stop.assert_called_once_with()
+    controller.cancel_hotkey.stop.assert_called_once_with()
+
+    controller._on_shortcut_capture(False)
+    controller.evdev.start.assert_called_once_with({
+        "toggle": "Ctrl+Space", "meeting": "",
+        "screenshot": "Ctrl+Alt+S"})
+    controller._refresh_cancel_hotkey.assert_called_once_with()
+
+
 def test_escape_is_global_only_while_recording():
     controller = wordarc.WordArc.__new__(wordarc.WordArc)
     controller.cancel_hotkey = mock.Mock()

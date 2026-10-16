@@ -309,6 +309,26 @@ TR = {
         "Etkin ekrandan görüntü alın ve kaydedin.",
     "Capture this screen": "Bu ekranı yakala",
     "Capture active window": "Etkin pencereyi yakala",
+    "Capture a region, write on it, then copy or save it.":
+        "Bölge seç, üzerine yaz, sonra kopyala ya da kaydet.",
+    "Pen": "Kalem",
+    "Line": "Çizgi",
+    "Arrow": "Ok",
+    "Rectangle": "Dikdörtgen",
+    "Ellipse": "Elips",
+    "Highlight": "Vurgu",
+    "Step": "Adım",
+    "Blur": "Bulanık",
+    "Pixelate": "Mozaik",
+    "Width": "Kalınlık",
+    "Fill": "Dolu",
+    "Redo": "Yinele",
+    "Edit text": "Metni düzenle",
+    "Font": "Yazı tipi",
+    "Size": "Boyut",
+    "Bold": "Kalın yazı",
+    "Italic": "Eğik",
+    "Underline": "Altı çizili",
     "No active window is available for capture.": "Yakalanacak etkin pencere bulunamadı.",
     "Choose where new screenshots are saved by default.":
         "Yeni ekran görüntülerinin kaydedileceği varsayılan konumu seçin.",
@@ -325,7 +345,13 @@ TR = {
     "Capture screenshot": "Ekran görüntüsü al",
     "Capture shortcut": "Ekran görüntüsü kısayolu",
     "Press shortcut keys…": "Kısayol tuşlarına basın…",
+    "Press the keys now…": "Şimdi tuşlara bas…",
+    "Press Save to apply.": "Etkinleştirmek için Kaydet'e bas.",
     "Clear": "Temizle",
+    "Windows reserves this combination: {shortcut}":
+        "Windows bu kombinasyonu kullanıyor: {shortcut}",
+    "This key combination cannot be assigned.":
+        "Bu tuş kombinasyonu atanamıyor.",
     "Select area…": "Alan seç…",
     "Capture full screen": "Tüm ekranı yakala",
     "Select screenshot area": "Ekran görüntüsü alanını seçin",
@@ -373,8 +399,8 @@ TR = {
     "Arabic": "Arapça",
     "Paste the text into the focused window": "Metni odaktaki pencereye yapıştır",
     "Paste key": "Yapıştırma tuşu",
-    "Terminals usually want ctrl+shift+v. Change this if pasting does nothing.":
-        "Terminaller genelde ctrl+shift+v ister. Yapıştırma çalışmıyorsa bunu değiştir.",
+    "Terminals usually want Ctrl+Shift+V. Change this if pasting does nothing.":
+        "Terminaller genelde Ctrl+Shift+V ister. Yapıştırma çalışmıyorsa bunu değiştir.",
     "Restore the previous clipboard after pasting":
         "Yapıştırdıktan sonra eski pano içeriğini geri koy",
     "Indicator corner": "Gösterge köşesi",
@@ -605,6 +631,8 @@ TR = {
     "The shortcut is registered with Windows and takes effect immediately.":
         "Kısayol Windows'a kaydedilir ve anında etkili olur.",
     "Shortcut conflict": "Kısayol çakışması",
+    "{shortcut} is assigned to both {first} and {second}.":
+        "{shortcut}, hem {first} hem de {second} için atanmış. Farklı tuşlar seçin.",
     "{shortcut} is also used by:\n\n{list}\n\nInstall anyway?":
         "{shortcut} şu girdilerde de kullanılıyor:\n\n{list}\n\nYine de kurulsun mu?",
     "Shortcut saved: {shortcut}\nKWin only reads this file at startup, so it "
