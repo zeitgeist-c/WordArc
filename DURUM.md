@@ -22,6 +22,11 @@ alıntısı editörüne Windows'un kendi tanıma motorunu kullanan **Metni ayık
 - Altyapı: `ocr.py` yeni modül; `wordarc.spec` hiddenimports, `check.ps1`,
   `requirements.txt`/`requirements-lock.txt` (winrt 3.2.1) ve paket
   doğrulayıcıya eklendi.
+- Build tuzağı: winrt tekerleği kendi `msvcp140.dll` kopyasını taşıyor;
+  onnxruntime ile aynı processte çift CRT yüklemesi 0xC0000005 ile çökertiyor
+  ve PyInstaller analizini öldürüyor. Spec, analizden önce o kopyayı siliyor
+  (Windows System32 ve Qt paketi zaten yeterli kopyayı sağlıyor); matrix testi
+  dokuz import sırasının hepsini doğruladı.
 - Gerçek kanıt: render edilmiş Türkçe metin `ocr.extract_text` ile uçtan uca
   okundu ("Merhaba Dünya 12345" dahil, Türkçe karakterler korundu).
 - Doğrulama: 599 test geçti, 1 atlandı, 12 alt test (yeni: `test_ocr.py`
