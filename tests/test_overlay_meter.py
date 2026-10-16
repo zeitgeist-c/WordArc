@@ -95,6 +95,50 @@ def _ribbon_counts(box):
 STYLES = ("bars", "spectrum", "wave", "capsule")
 
 
+def test_meter_uses_readable_decibels_for_quiet_microphones():
+    assert overlay._display_level(0.01) == pytest.approx(1 / 3)
+    assert overlay._display_level(0.1) == pytest.approx(2 / 3)
+    assert overlay._display_level(1) == 1
+    values = [overlay._display_level(p) for p in (0.001, 0.003, 0.01, 0.1, 0.5, 1)]
+    assert values == sorted(values)
+
+
+@pytest.mark.parametrize("value", [0, -1, 0.0001, 0.001, float("nan"), float("inf")])
+def test_silence_and_invalid_peaks_do_not_create_false_activity(value):
+    assert overlay._display_level(value) == 0
+
+
+@pytest.mark.parametrize("style", STYLES)
+def test_low_gain_voice_is_visible_in_the_actual_ribbon(style):
+    overlay.set_meter(style)
+    box = overlay.Overlay()
+    try:
+        box.show_recording()
+        silent, _ = _ribbon_counts(box)
+        for _ in range(overlay.BARS):
+            box.push_level(0.01)
+        quiet, _ = _ribbon_counts(box)
+        assert quiet > silent + 80, (style, silent, quiet)
+        assert max(box.levels) == pytest.approx(1 / 3)
+    finally:
+        box.close()
+        box.deleteLater()
+        overlay.set_meter("spectrum")
+
+
+def test_meeting_channels_share_the_curve_and_start_silent():
+    box = overlay.Overlay()
+    try:
+        box.push_levels(0.01, 0.1)
+        assert box.levels[-1] == pytest.approx(1 / 3)
+        assert box.levels2[-1] == pytest.approx(2 / 3)
+        box.show_meeting()
+        assert not any(box.levels) and not any(box.levels2)
+    finally:
+        box.close()
+        box.deleteLater()
+
+
 @pytest.mark.parametrize("style", STYLES)
 def test_every_style_draws_something(style):
     """Çizim var: göze görünür bir iz (dalga tek bloktur, çubuklar çok)."""

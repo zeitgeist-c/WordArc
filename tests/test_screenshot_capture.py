@@ -318,6 +318,131 @@ class TestScreenshotCapture(unittest.TestCase):
 
     # ---- controller ------------------------------------------------------
 
+    def _multi_screen_controller(self, count=4):
+        controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        screens = []
+        events = []
+        for index in range(count):
+            scale = (1, 1.25, 1.5, 2)[index]
+            geometry = QRect((index - 1) * 640, -120 if index == 2 else 0, 640, 480)
+            image = QImage(round(640 * scale), round(480 * scale),
+                           QImage.Format.Format_RGB32)
+            image.fill(QColor(("#123456", "#abcdef", "#128912", "#bb4488")[index]))
+            pixmap = screenshot_capture.QPixmap.fromImage(image)
+            pixmap.setDevicePixelRatio(scale)
+            screen = mock.Mock()
+            screen.geometry.return_value = geometry
+            def grab(_window, current=index, snapshot=pixmap):
+                events.append(("grab", current))
+                return snapshot
+            screen.grabWindow.side_effect = grab
+            screens.append(screen)
+        controller._screen = screens[0]
+        controller._mode = "region"
+        base = screenshot_capture.RegionOverlay
+        class TrackedOverlay(base):
+            def show(self):
+                events.append(("show", self.screen))
+                super().show()
+        with mock.patch.object(screenshot_capture.QGuiApplication, "screens",
+                               return_value=screens), \
+             mock.patch.object(screenshot_capture, "RegionOverlay", TrackedOverlay):
+            controller._capture_screen()
+        self.app.processEvents()
+        return controller, screens, events
+
+    def test_every_display_is_frozen_before_any_overlay_is_shown(self):
+        for count in (2, 3, 4):
+            with self.subTest(displays=count):
+                controller, screens, events = self._multi_screen_controller(count)
+                self.assertEqual(len(controller._overlays), count)
+                self.assertEqual([kind for kind, _ in events],
+                                 ["grab"] * count + ["show"] * count)
+                self.assertTrue(all(window.isVisible() for window in controller._overlays))
+                controller.shutdown()
+
+    def test_can_select_a_different_display_without_restarting_and_keep_its_scale(self):
+        controller, screens, _ = self._multi_screen_controller()
+        first, second, third, fourth = controller._overlays
+        self._drag(first, QPoint(20, 20), QPoint(119, 99))
+        self.assertTrue(first.toolbar.isVisible())
+        for index, overlay in enumerate((second, third, fourth), 1):
+            self._drag(overlay, QPoint(20, 20), QPoint(119, 99))
+            self.assertIs(controller._overlay, overlay)
+            self.assertTrue(first.selection.isNull())
+            image = overlay._export_image()
+            scale = (1, 1.25, 1.5, 2)[index]
+            self.assertEqual((image.width(), image.height()),
+                             (round(100 * scale), round(80 * scale)))
+            self.assertEqual(image.pixelColor(5, 5).name(),
+                             ("#abcdef", "#128912", "#bb4488")[index - 1])
+            self.assertTrue(all(s.grabWindow.call_count == 1 for s in screens))
+
+    def test_escape_on_any_display_closes_all_capture_windows(self):
+        controller, _, _ = self._multi_screen_controller()
+        windows = list(controller._overlays)
+        QTest.keyClick(windows[-1], Qt.Key.Key_Escape)
+        self.assertEqual(controller._overlays, [])
+        self.assertIsNone(controller._overlay)
+        self.assertTrue(all(not window.isVisible() for window in windows))
+
+    def test_failed_second_screen_leaves_no_partial_capture_windows(self):
+        controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
+        self.addCleanup(controller.deleteLater)
+        owner = screenshot_capture.QWidget()
+        owner.show()
+        self.addCleanup(owner.close)
+        controller._hidden_owner = owner
+        owner.hide()
+        good, bad = mock.Mock(), mock.Mock()
+        good.grabWindow.return_value = screenshot_capture.QPixmap(100, 100)
+        bad.grabWindow.return_value = screenshot_capture.QPixmap()
+        controller._screen = good
+        errors = []
+        controller.failed.connect(errors.append)
+        with mock.patch.object(screenshot_capture.QGuiApplication, "screens",
+                               return_value=[good, bad]):
+            controller._capture_screen()
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(controller._overlays, [])
+        self.assertIsNone(controller._overlay)
+        self.assertTrue(owner.isVisible())
+
+    def test_monitor_disconnect_cancels_the_entire_session(self):
+        controller, screens, _ = self._multi_screen_controller()
+        controller._screen_removed(screens[-1])
+        self.assertEqual(controller._overlays, [])
+        self.assertIsNone(controller._overlay)
+
+    def test_copy_from_other_display_closes_all_windows(self):
+        controller, _, _ = self._multi_screen_controller()
+        last = controller._overlays[-1]
+        self._drag(last, QPoint(20, 20), QPoint(119, 99))
+        with mock.patch.object(screenshot_capture, "copy_image_to_clipboard") as copy:
+            last._quick_copy()
+        self.assertEqual(copy.call_args.args[0].size(), QSize(200, 160))
+        self.assertIsNone(controller._overlay)
+        self.assertEqual(controller._overlays, [])
+
+    def test_native_dpr_snapshots_do_not_scale_annotations_twice(self):
+        for scale in (1.25, 1.5, 2):
+            with self.subTest(scale=scale):
+                image = QImage(round(100 * scale), round(100 * scale),
+                               QImage.Format.Format_RGB32)
+                image.fill(QColor("white"))
+                image.setDevicePixelRatio(scale)
+                model = screenshot_editor.AnnotationModel()
+                model.add({"type": "rect", "rect": QRect(10, 10, 10, 10),
+                           "color": QColor("black"), "width": 1, "fill": True})
+                result = model.render(image, scale)
+                self.assertEqual(result.devicePixelRatio(), 1)
+                self.assertLess(result.pixelColor(round(14 * scale),
+                                                   round(14 * scale)).red(), 200)
+                self.assertEqual(result.pixelColor(round(24 * scale),
+                                                    round(24 * scale)).name(), "#ffffff")
+
     def test_save_dialog_is_parented_to_overlay_and_cancel_preserves_it(self):
         overlay = self._make_overlay(selection=QRect(10, 10, 100, 80))
         controller = screenshot_capture.ScreenshotController(ScreenshotConfig())

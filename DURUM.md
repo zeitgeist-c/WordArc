@@ -1,9 +1,80 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-16
-Hazırlanan paket: 0.8.3 (`brand.py`)
+Hazırlanan paket: 0.8.4 (`brand.py`)
 Dal: master
-Git dönüş noktası: 3c2d9c7 / v0.8.2
+Git dönüş noktası: 908fad7 / v0.8.3
+
+## 2026-10-16 — 0.8.4 çoklu monitör yakalama ve gösterge çizimleme kapanışı
+
+Çalışma ağacında biriken iki kaynak düzeltme bu sürümde paketleniyor:
+çoklu monitör bölge yakalama (tüm ekranların görüntüsü önce alınır, her
+monitörde kendi geometri/DPI katmanı) ve düşük mikrofon seviyesinde
+logaritmik -60..0 dBFS gösterge eşlemesi. Kayıt ayrıntıları aşağıdaki iki
+kaynak notunda; bu kapanışa kadar `v0.8.3` EXE'si bu iki değişikliği
+içermiyordu.
+
+- Sürüm 0.8.3 → 0.8.4 (yalnız düzeltme, patch).
+- Doğrulama: tam test kapısı 580 geçti, 1 atlandı, 12 alt test; `check.ps1`
+  -Audit dahil geçti. `build.ps1` çıkış 0; `PACKAGE OK` +
+  `verify_release_package.py` doğruladı. Pakette `overlay._display_level` ve
+  çoklu monitör yolu (`screens`/`grabWindow`) bytecode düzeyinde kanıtlandı;
+  gömülü sürüm 0.8.4. İzole teslim EXE'si `--version` ile exit 0
+  ("WordArc version 0.8.4"), açılış dahil ~33 sn.
+- Teslim: `dist/WordArc-0.8.4.exe` ve `dist/WordArc-0.8.4.bat`.
+  EXE SHA256 `d3885d5b98819fc52f459009d666ba9505c54567a19912d91c539ae9671dad1c`.
+  Eski 0.8.2/0.8.3 EXE/BAT korundu.
+- `master` dalı, 0.8.3 kapanış zincirine (`c34b691`) yumuşak reset ile
+  düzeltildi; 0.7.x revert hattının üzerinde lineer tarih yeniden kuruldu.
+- GitHub: `origin/master` 0.8.0 öncesi durumdaydı; `master` + `v0.8.4`
+  push'u ve EXE/BAT assetli Release bu kapanışla tamamlandı.
+
+## 2026-10-16 — kaynakta düşük mikrofon seviyesinde gösterge görünürlüğü
+
+Kullanıcı evde kutu boyutunun normal, konuşma dalgasının ise şirkettekine
+göre küçük olduğunu doğruladı. Yerel ayarda Dalga ve Razer Seiren V3 Mini
+seçili. Şirket bilgisayarının mikrofon kazancı/ses örneği ölçülmedi; iki
+bilgisayar arasındaki kesin donanım farkı bağımsız doğrulanmış değildir.
+
+Doğrulanan kod sorunu: ham doğrusal PCM tepe seviyesi doğrudan çizime
+gidiyordu; Spectrum'ta %1 seviyede yarı yükseklik yaklaşık 2,48 piksel.
+Gösterge girdisi artık sabit -60..0 dBFS aralığında logaritmik eşleniyor.
+%1 ve %10 giriş, görünüm için sırasıyla 1/3 ve 2/3 seviyeye karşılık gelir.
+Kaydedilen PCM, mikrofon kazancı, ses tanıma/VAD ve kutu boyutu değişmez;
+sessizlik ve sonlu olmayan değerler sıfır gösterilir. Her dört biçim ile
+toplantının iki kanalı aynı eğriyi kullanır; ayar önizlemeleri zaten görünüm
+seviyesi ürettiği için yeniden eşlenmez.
+
+- Doğrulama: 580 test geçti, 1 atlandı, 12 alt test geçti. Düşük girişte
+  gerçek şerit çizimi, sessizlik, artan seviye sırası ve çift kanal kontrolü
+  var. Sentetik önce/sonra görseli `.cache/ui-tests/meter-comparison.png`.
+- Önceki çoklu monitör kaynak değişiklikleri korundu. Sürüm 0.8.3 kaldı;
+  yeni EXE/BAT, commit veya etiket oluşturulmadı. Mevcut EXE bu düzeltmeyi
+  henüz içermez. Gerçek şirket/ev mikrofonlarıyla karşılaştırmalı kabul yok.
+
+## 2026-10-16 — kaynakta çoklu monitör yakalama düzeltmesi
+
+Kullanıcı bildirimi: bölge yakalama yalnız kısayola basıldığı sıradaki ekranı
+hazırlıyor, diğer monitörde seçim için iptal/yeniden başlatma gerekiyordu.
+Artık bütün bağlı ekranların görüntüleri önce alınır; her monitörde kendi
+geometrisine/DPI'ına bağlı bir seçim katmanı açılır. Başka ekranda seçim
+yapmak aynı oturum içinde mümkündür; önceki seçim çubuğu gizlenir.
+Kopyalama, kaydetme, Esc, hata veya monitör çıkarma bütün katmanları temizler.
+Bu akış herhangi bir monitörde seçim yapmayı sağlar; monitör sınırlarını aşan
+tek dikdörtgen seçimi bu düzeltmenin kapsamında değildir. Aktif ekran/pencere
+yakalama modlarının kapsamı korunmuştur.
+
+Gerçek ekran görüntülerinin DPR metadatası çizim sırasında ikinci ölçek
+uyguluyordu; fiziksel piksel tuvalinin DPR'ı normalleştirildi. 100/125/150/200
+yüzde ölçek, negatif ekran konumu ve yukarı yerleşim sentetik testlere alındı.
+Yerel Qt envanteri iki monitör gördü: 2560×1440 / %125 ve solda 1920×1080 / %100.
+Bu envanter gerçek yakalama/elle kabulün kanıtı değildir.
+
+- Doğrulama: 568 test geçti, 1 atlandı, 12 alt test geçti; py_compile ve
+  diff boşluk kontrolü başarılı. 2/3/4 monitör oturumu, ekran değiştirme,
+  çözünürlük/renk korunması ve toplu kapanış otomatik doğrulandı.
+- Durum: kaynak düzeltmesi; sürüm değişmedi, yeni EXE/BAT, commit veya etiket
+  oluşturulmadı. Önceki `v0.8.3` ve teslim EXE'si bu yeni değişikliği içermez.
 
 ## 2026-10-16 — 0.8.3 kompakt yakalama ve kısayol kalitesi
 
