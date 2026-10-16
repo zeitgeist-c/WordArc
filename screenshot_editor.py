@@ -207,6 +207,11 @@ class AnnotationModel:
         width = max(1, int(item.get("width", DEFAULT_WIDTH)))
         kind = item["type"]
         if kind in ("rect", "ellipse"):
+            # A dragged draft still holds start/end; only committed items
+            # carry "rect". Reading it straight crashed every paint while a
+            # shape was being drawn (KeyError: 'rect' in the 0.8.4 logs).
+            rect = item.get("rect") or QRect(item["start"],
+                                             item["end"]).normalized()
             painter.setPen(QPen(color, width))
             if item.get("fill"):
                 fill = QColor(color)
@@ -215,9 +220,18 @@ class AnnotationModel:
             else:
                 painter.setBrush(Qt.BrushStyle.NoBrush)
             if kind == "rect":
-                painter.drawRect(item["rect"])
+                painter.drawRect(rect)
             else:
-                painter.drawEllipse(item["rect"])
+                painter.drawEllipse(rect)
+        elif kind in PIXEL_TOOLS:
+            # Blur/pixelate drafts get a dashed outline; the effect itself is
+            # applied when the item is committed and rendered.
+            rect = item.get("rect") or QRect(item["start"],
+                                             item["end"]).normalized()
+            pen = QPen(QColor(255, 255, 255, 200), 1, Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(rect)
         elif kind == "line":
             painter.setPen(QPen(color, width, Qt.PenStyle.SolidLine,
                                 Qt.PenCapStyle.RoundCap))
