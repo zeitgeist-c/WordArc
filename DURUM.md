@@ -7,6 +7,21 @@ Git dönüş noktası: be82cda / v0.8.4
 Yedek 2026-10-16: kompakt gruplu araç çubuğu (B düzeni, Dolu şekillerin yanında),
 sürüm 0.8.5; yerel commit + etiket, push/Release bu kapanışta.
 
+## 2026-10-16 — 0.8.5: taslak çizim çökmesi (KeyError: 'rect') ve paket kesimi
+
+Canlı 0.8.4 doğrulama logunda yakalandı: dikdörtgen/elips sürüklenirken her
+karede `KeyError: 'rect'` — `draw_item` yalnız bırakma anında oluşan `rect`
+anahtarını okuyordu, taslakta `start`/`end` duruyor. Şekil çizerken hiç
+görünmüyordu; bırakınca beliriyordu (0.8.3'den beri). Düzeltme: taslak
+dikdörtgeni `QRect(start, end).normalized()` ile türetiliyor; bulanık/
+pikselleştirme taslağı da sürüklerken kesikli çerçeveyle görünüyor.
+`tests/test_screenshot_editor_drafts.py` kalıcı regresyon testi eklendi.
+Kapılar: 601 passed, 1 skipped, 12 subtests.
+
+- 0.8.5 yeniden kesim EXE SHA256: `a54a13dfa5427be6eaa486644a2bbdb7a797a47e29e812caf96415e835e420b0`
+  (donmuş `screenshot_editor.draw_item` içinde `normalized` çağrısı kanıtlandı),
+  BAT SHA256: `4bd718f5e212a651e32e4bacdedf599d43adc447dc0e06599d8c2271ee4f6917`.
+
 ## 2026-10-16 — 0.8.5: ekran alıntısı araç çubuğu yeniden düzenlendi
 
 Kullanıcı onayıyla B düzeni uygulandı (alternatifler HTML maketle gösterildi,
