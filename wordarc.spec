@@ -6,6 +6,17 @@ from pathlib import Path
 import PyQt6
 from PyInstaller.utils.hooks import collect_dynamic_libs
 
+# The winrt wheels ship their own msvcp140.dll copy next to their .pyd files.
+# When onnxruntime loads its own copy of the same CRT into the same process,
+# the duplicate import crashes the process outright (0xC0000005) — and
+# PyInstaller's analysis child imports both, so the build dies before it ever
+# packages. Windows keeps a matching copy in System32 and the frozen app
+# carries the Qt bundle's copy, so the wheel's duplicate serves no one:
+# drop it from the build environment before any analysis subprocess starts.
+_WINRT_BUNDLED_CRT = Path(sysconfig.get_path('purelib')) / 'winrt' / 'msvcp140.dll'
+if _WINRT_BUNDLED_CRT.exists():
+    _WINRT_BUNDLED_CRT.unlink()
+
 # Qt's own strings (context menus, dialog buttons) come from this catalogue;
 # without it a Turkish interface still shows English in those places.
 _QT_TRANSLATIONS = os.path.join(os.path.dirname(PyQt6.__file__),
