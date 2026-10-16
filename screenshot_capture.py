@@ -160,6 +160,15 @@ class RegionOverlay(QWidget):
     def _screen_rect(self):
         return QRect(QPoint(0, 0), self._screen_size)
 
+    def _toolbar_sep(self, row):
+        sep = QFrame(self.toolbar)
+        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setFrameShadow(QFrame.Shadow.Plain)
+        sep.setFixedWidth(3)
+        sep.setFixedHeight(18)
+        sep.setStyleSheet("color: #4a5266;")
+        row.addWidget(sep)
+
     def _build_toolbar(self):
         self.toolbar = QFrame(self)
         self.toolbar.setObjectName("captureToolbar")
@@ -177,20 +186,25 @@ class RegionOverlay(QWidget):
             QToolButton:checked { background: #554477; border-color: #ae91ef; }
             QToolButton:pressed { background: #63518a; }
             QToolButton:disabled { background: transparent; border-color: transparent; }
-            QToolButton#screenshotOverlayCopy { background: #665096; }
-            QToolButton#screenshotOverlayCopy:hover { background: #8064b8; }
+            QToolButton#screenshotOverlayCopy,
+            QToolButton#screenshotOverlayOcr { background: #665096; }
+            QToolButton#screenshotOverlayCopy:hover,
+            QToolButton#screenshotOverlayOcr:hover { background: #8064b8; }
             QToolButton#screenshotOverlayCancel:hover { background: #823d4c; }
             QSpinBox {
                 background: #2d3341; color: #e9edf5; border: 1px solid #444b5c;
-                border-radius: 5px; padding: 3px; min-width: 42px;
+                border-radius: 5px; padding: 1px; min-width: 28px;
             }
             QToolTip { background: #20242e; color: #ffffff; border: 1px solid #59647b; }
         """)
         layout = QVBoxLayout(self.toolbar)
-        layout.setContentsMargins(7, 7, 7, 7)
-        layout.setSpacing(4)
-        tools = QHBoxLayout()
-        tools.setSpacing(2)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(3)
+
+        # Tools sit in meaning groups behind thin separators: navigation and
+        # freehand, shapes with the Fill switch that belongs to them,
+        # annotation, and the pixel effects. Grouping reads at a glance where
+        # the old flat run of eleven icons did not.
         self.tool_buttons = {}
         self._tool_group = QButtonGroup(self)
         self._tool_group.setExclusive(True)
@@ -202,11 +216,31 @@ class RegionOverlay(QWidget):
                 lambda _checked=False, tool=name: self._set_tool(tool))
             self._tool_group.addButton(button)
             self.tool_buttons[name] = button
-            tools.addWidget(button)
+
+        self.fill_check = self._toolbar_button("fill", "Fill")
+        self.fill_check.setCheckable(True)
+
+        tools = QHBoxLayout()
+        tools.setSpacing(2)
+        groups = (
+            ("select", "pen", "line", "arrow"),
+            ("rect", "ellipse"),
+            ("highlight", "text", "step"),
+            ("blur", "pixelate"),
+        )
+        for index, group in enumerate(groups):
+            if index:
+                self._toolbar_sep(tools)
+            for name in group:
+                tools.addWidget(self.tool_buttons[name])
+            if group[-1] == "ellipse":
+                # Fill only ever paints the shape tools' interiors, so the
+                # switch lives inside their group instead of a far row.
+                tools.addWidget(self.fill_check)
         layout.addLayout(tools)
 
         options = QHBoxLayout()
-        options.setSpacing(4)
+        options.setSpacing(2)
         self.color_button = self._toolbar_button("color", "Color")
         self.color_button.setIcon(_tool_icon("color", self.color.name()))
         self.color_button.clicked.connect(self._choose_color)
@@ -216,21 +250,19 @@ class RegionOverlay(QWidget):
         self.width_box.setValue(DEFAULT_WIDTH)
         self.width_box.setToolTip(t("Width"))
         self.width_box.setAccessibleName(t("Width"))
-        self.width_box.setFixedWidth(58)
-        self.width_box.setFixedHeight(30)
+        self.width_box.setFixedWidth(40)
+        self.width_box.setFixedHeight(26)
         self.width_box.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.width_box.valueChanged.connect(self._set_width)
         options.addWidget(self.width_box)
-        self.fill_check = self._toolbar_button("fill", "Fill")
-        self.fill_check.setCheckable(True)
-        options.addWidget(self.fill_check)
-        options.addStretch(1)
+        self._toolbar_sep(options)
         self.undo_button = self._toolbar_button("undo", "Undo", "Ctrl+Z")
         self.undo_button.clicked.connect(self._undo)
         options.addWidget(self.undo_button)
         self.redo_button = self._toolbar_button("redo", "Redo", "Ctrl+Y")
         self.redo_button.clicked.connect(self._redo)
         options.addWidget(self.redo_button)
+        self._toolbar_sep(options)
         self.copy_button = self._toolbar_button("copy", "Copy", "Ctrl+C")
         self.copy_button.setObjectName("screenshotOverlayCopy")
         self.copy_button.clicked.connect(self._quick_copy)
@@ -257,8 +289,8 @@ class RegionOverlay(QWidget):
     def _toolbar_button(self, icon, label, shortcut=""):
         button = QToolButton(self.toolbar)
         button.setIcon(_tool_icon(icon))
-        button.setIconSize(QSize(19, 19))
-        button.setFixedSize(30, 30)
+        button.setIconSize(QSize(17, 17))
+        button.setFixedSize(26, 26)
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button.setToolTip(t(label) + (f" ({shortcut})" if shortcut else ""))
         button.setAccessibleName(t(label))
