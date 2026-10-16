@@ -184,6 +184,16 @@ class TestSettingsSmoke(unittest.TestCase):
             loaded.deleteLater()
             self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
+    def test_duplicate_shortcuts_are_rejected_before_changing_config(self):
+        window = self.window
+        window.shortcut.setCurrentText("Ctrl+Print")
+        window.screenshot_shortcut.setCurrentText("Control+PrintScreen")
+        before = dict(window.conf.data)
+        with mock.patch.object(settings_ui, "warn_box") as warning:
+            self.assertFalse(window._save(quiet=True))
+        warning.assert_called_once()
+        self.assertEqual(window.conf.data, before)
+
     def test_capture_controller_shutdown_does_not_restore_hidden_window(self):
         owner = settings_ui.QWidget()
         owner.show()
@@ -195,13 +205,11 @@ class TestSettingsSmoke(unittest.TestCase):
         owner.close()
         controller.deleteLater()
 
-    def test_screenshot_values_save_from_preview_without_global_settings_save(self):
+    def test_screenshot_values_save_from_the_overlay_without_global_settings_save(self):
         image = QImage(12, 8, QImage.Format.Format_RGB32)
         image.fill(QColor("#235577"))
-        preview = screenshot_capture.ScreenshotPreview(image, self.window.conf)
         controller = screenshot_capture.ScreenshotController(self.window.conf)
-        controller._preview = preview
-        preview.saved.connect(controller._queue_save_preferences)
+        self.addCleanup(controller.deleteLater)
         controller.preferences_saved.connect(
             lambda folder, fmt: (self.window.screenshot_directory.setText(folder),
                                  settings_ui.SettingsWindow._select_data(
@@ -211,15 +219,14 @@ class TestSettingsSmoke(unittest.TestCase):
             target = str(pathlib.Path(folder) / "capture.png")
             with mock.patch.object(screenshot_capture.QFileDialog, "getSaveFileName",
                                    return_value=(target, "PNG image (*.png)")):
-                preview._save()
+                controller._on_overlay_save(image)
+            self.app.processEvents()
             self.app.processEvents()
             self.assertTrue(pathlib.Path(target).is_file())
             self.assertEqual(self.window.screenshot_directory.text(), folder)
             self.assertEqual(self.window.screenshot_format.currentData(), "PNG")
             self.window.conf.save.assert_called_once_with()
-        preview.close()
         controller.close()
-        controller.deleteLater()
 
     def test_gemini_keys_can_be_reordered_without_showing_secrets(self):
         window = self.window

@@ -4,6 +4,7 @@ import ctypes
 import ctypes.wintypes as w
 import time
 
+import hotkey
 from i18n import t
 
 user32 = ctypes.windll.user32
@@ -29,7 +30,9 @@ user32.OpenClipboard.argtypes = [ctypes.c_void_p]
 user32.EmptyClipboard.restype = w.BOOL
 user32.CloseClipboard.restype = w.BOOL
 
-# Virtual-key codes for the names that appear in paste shortcuts.
+# Virtual-key codes for the names that appear in paste shortcuts. Kept for
+# display/tests; press() resolves the shortcut through hotkey.parse_shortcut,
+# so every combination the shortcut field can hold also works here.
 VKEYS = {
     "ctrl": 0x11, "control": 0x11, "shift": 0x10, "alt": 0x12,
     "menu": 0x12, "super": 0x5B, "meta": 0x5B, "win": 0x5B,
@@ -131,12 +134,19 @@ def copy_bytes(data):
 
 def press(shortcut="ctrl+v", delay=0.12):
     """Send a key combination via SendInput. Raises PasteError on bad key."""
+    mods, vk = hotkey.parse_shortcut(shortcut)
+    if not vk:
+        raise PasteError(t("Unknown key: {key}", key=shortcut))
     codes = []
-    for key in (k.strip().lower() for k in shortcut.split("+")):
-        code = VKEYS.get(key)
-        if code is None:
-            raise PasteError(t("Unknown key: {key}", key=key))
-        codes.append(code)
+    if mods & hotkey.MOD_CONTROL:
+        codes.append(0x11)  # VK_CONTROL
+    if mods & hotkey.MOD_ALT:
+        codes.append(0x12)  # VK_MENU
+    if mods & hotkey.MOD_SHIFT:
+        codes.append(0x10)  # VK_SHIFT
+    if mods & hotkey.MOD_WIN:
+        codes.append(0x5B)  # VK_LWIN
+    codes.append(vk)
 
     time.sleep(delay)  # let focus settle, as on Linux
 

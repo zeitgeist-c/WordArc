@@ -1,310 +1,403 @@
-"""Optional in-preview annotation editor for captured screenshots."""
+"""Annotation model and the text dialog used by the screenshot overlay.
+
+The captured screen stays where it is: this model draws shapes, arrows, pen
+strokes, highlighter marks, numbered steps, blur/pixelate patches and text in
+the same coordinates as the frozen screen, so the overlay editor renders it
+straight onto the image that gets copied or saved.
+"""
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, QRect, Qt, QSize, QTimer, pyqtSignal
-from PyQt6.QtGui import (
-    QColor, QFont, QImage, QPainter, QPen, QPixmap,
-)
-from PyQt6.QtWidgets import QInputDialog, QWidget
+from PyQt6.QtCore import QPoint, QRect, Qt
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPen
+from PyQt6.QtWidgets import (QColorDialog, QDialog, QDialogButtonBox,
+                             QFontComboBox, QHBoxLayout, QLabel, QLineEdit,
+                             QPushButton, QSpinBox, QToolButton, QVBoxLayout)
 
 from i18n import t
 
+TOOLS = ("select", "pen", "line", "arrow", "rect", "ellipse", "highlight",
+         "text", "step", "blur", "pixelate")
 
-def _display_rect(base: QImage, size: QSize) -> QRect:
-    if base.isNull():
-        return QRect()
-    scaled = base.size().scaled(size, Qt.AspectRatioMode.KeepAspectRatio)
-    x = (size.width() - scaled.width()) // 2
-    y = (size.height() - scaled.height()) // 2
-    return QRect(x, y, scaled.width(), scaled.height())
+REGION_TOOLS = ("rect", "ellipse", "blur", "pixelate")
+LINE_TOOLS = ("line", "arrow", "highlight")
+PIXEL_TOOLS = ("blur", "pixelate")
+
+DEFAULT_COLOR = "#e53935"
+DEFAULT_WIDTH = 3
+STEP_RADIUS = 15
 
 
-class AnnotationCanvas(QWidget):
-    """Draw arrows, shapes and text on top of a captured image."""
+def clone_item(item):
+    """A detached copy; QFont/QColor objects are not deep-copyable."""
+    out = {}
+    for key, value in item.items():
+        if isinstance(value, QRect):
+            out[key] = QRect(value)
+        elif isinstance(value, QPoint):
+            out[key] = QPoint(value)
+        elif isinstance(value, QColor):
+            out[key] = QColor(value)
+        elif isinstance(value, QFont):
+            out[key] = QFont(value)
+        elif isinstance(value, list):
+            out[key] = [QPoint(point) if isinstance(point, QPoint) else point
+                        for point in value]
+        else:
+            out[key] = value
+    return out
 
-    changed = pyqtSignal()
 
-    TOOLS = ("select", "rect", "ellipse", "arrow", "line", "pen",
-             "highlight", "blur", "text", "step")
+def _distance_to_segment(point, start, end):
+    px, py = point.x(), point.y()
+    x1, y1 = start.x(), start.y()
+    x2, y2 = end.x(), end.y()
+    dx, dy = x2 - x1, y2 - y1
+    if dx == 0 and dy == 0:
+        return ((px - x1) ** 2 + (py - y1) ** 2) ** 0.5
+    position = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy)
+                                / (dx * dx + dy * dy)))
+    cx, cy = x1 + position * dx, y1 + position * dy
+    return ((px - cx) ** 2 + (py - cy) ** 2) ** 0.5
 
-    def __init__(self, image, parent=None):
-        super().__init__(parent)
-        self.base = image.copy() if not image.isNull() else QImage()
-        self.annotations: list[dict] = []
-        self.tool = "rect"
-        self.color = QColor("#e53935")
-        self.stroke_width = 3
-        self._current = None
-        self._step_count = 0
-        self._text_point = None
-        self.setMinimumSize(280, 180)
-        self.setSizePolicy(
-            self.sizePolicy().Policy.Expanding,
-            self.sizePolicy().Policy.Expanding)
-        self.setMouseTracking(True)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-    def set_tool(self, tool: str):
-        self.tool = tool if tool in self.TOOLS else self.tool
-        self._current = None
-        self.update()
+def _draw_arrow_head(painter, start, end, color, width):
+    size = max(11.0, width * 3.5)
+    dx, dy = end.x() - start.x(), end.y() - start.y()
+    length = max(1.0, (dx * dx + dy * dy) ** 0.5)
+    ux, uy = dx / length, dy / length
+    left = QPoint(int(end.x() - size * ux + size * 0.5 * uy),
+                  int(end.y() - size * uy - size * 0.5 * ux))
+    right = QPoint(int(end.x() - size * ux - size * 0.5 * uy),
+                   int(end.y() - size * uy + size * 0.5 * ux))
+    painter.setBrush(color)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawPolygon(QPoint(end), left, right)
 
-    def set_color(self, color: QColor):
-        self.color = color
-        self.update()
 
-    def set_stroke_width(self, width: int):
-        self.stroke_width = max(1, int(width))
-        self.update()
+class AnnotationModel:
+    """Ordered annotations plus undo/redo, filled by the overlay editor."""
 
-    def undo(self):
-        if self.annotations:
-            item = self.annotations.pop()
-            if item.get("type") == "step":
-                self._step_count = max(0, self._step_count - 1)
-            self.changed.emit()
-            self.update()
+    MAX_HISTORY = 100
 
-    def reset(self):
-        self.annotations.clear()
-        self._step_count = 0
-        self.changed.emit()
-        self.update()
+    def __init__(self):
+        self.items: list[dict] = []
+        self.selected = None
+        self._undo: list[list[dict]] = []
+        self._redo: list[list[dict]] = []
 
-    def rendered_image(self) -> QImage:
-        if self.base.isNull():
-            return self.base.copy()
-        image = self.base.copy().convertToFormat(
-            QImage.Format.Format_ARGB32)
-        painter = QPainter(image)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        # Blurs go first: they modify the underlying pixels.
-        for item in self.annotations:
-            if item["type"] == "blur":
-                self._draw_blur(painter, image, item)
-        for item in self.annotations:
-            if item["type"] != "blur":
-                self._draw_item(painter, item)
-        if self._current is not None:
-            if self._current["type"] == "blur":
-                self._draw_blur(painter, image, self._current)
-            else:
-                self._draw_item(painter, self._current)
-        painter.end()
-        return image
+    # ---- history ---------------------------------------------------------
 
-    def _draw_blur(self, painter, image, item):
-        rect = item["rect"]
-        if rect.width() < 4 or rect.height() < 4:
-            return
-        collapsed = rect.intersected(image.rect())
-        if collapsed.width() < 2 or collapsed.height() < 2:
-            return
-        region = image.copy(collapsed)
-        block = max(4, min(collapsed.width(), collapsed.height()) // 12)
-        tiny = region.scaled(
-            max(1, collapsed.width() // block),
-            max(1, collapsed.height() // block),
-            Qt.AspectRatioMode.IgnoreAspectRatio,
-            Qt.TransformationMode.FastTransformation)
-        pixelated = tiny.scaled(
-            collapsed.size(), Qt.AspectRatioMode.IgnoreAspectRatio,
-            Qt.TransformationMode.FastTransformation)
-        painter.drawImage(collapsed.topLeft(), pixelated)
+    def _snapshot(self):
+        self._undo.append([clone_item(item) for item in self.items])
+        if len(self._undo) > self.MAX_HISTORY:
+            self._undo.pop(0)
+        self._redo.clear()
 
-    def _draw_item(self, painter, item):
-        color = item.get("color", self.color)
-        width = item.get("width", self.stroke_width)
+    def begin(self):
+        """Snapshot before an interactive edit (drag, resize, nudge)."""
+        self._snapshot()
+
+    def add(self, item: dict):
+        self._snapshot()
+        self.items.append(item)
+        self.selected = len(self.items) - 1
+
+    def remove_selected(self) -> bool:
+        if self.selected is None:
+            return False
+        self._snapshot()
+        del self.items[self.selected]
+        self.selected = None
+        return True
+
+    def _restore(self, source, target) -> bool:
+        target.append([clone_item(item) for item in self.items])
+        self.items = source.pop()
+        self.selected = None
+        return True
+
+    def undo(self) -> bool:
+        if not self._undo:
+            return False
+        return self._restore(self._undo, self._redo)
+
+    def redo(self) -> bool:
+        if not self._redo:
+            return False
+        return self._restore(self._redo, self._undo)
+
+    def clear(self) -> bool:
+        if not self.items:
+            return False
+        self._snapshot()
+        self.items.clear()
+        self.selected = None
+        return True
+
+    def next_step(self) -> int:
+        numbers = [item.get("number", 0) for item in self.items
+                   if item["type"] == "step"]
+        return (max(numbers) if numbers else 0) + 1
+
+    # ---- geometry --------------------------------------------------------
+
+    @staticmethod
+    def text_rect(item) -> QRect:
+        font = item.get("font") or QFont()
+        rect = QFontMetrics(font).boundingRect(item.get("text", ""))
+        rect.moveTopLeft(item["pos"])
+        return rect
+
+    @classmethod
+    def item_rect(cls, item) -> QRect:
         kind = item["type"]
-        if kind == "rect":
+        if kind in REGION_TOOLS:
+            return QRect(item["rect"])
+        if kind in LINE_TOOLS:
+            return QRect(item["start"], item["end"]).normalized()
+        if kind == "pen":
+            points = item.get("points") or []
+            if not points:
+                return QRect()
+            xs = [point.x() for point in points]
+            ys = [point.y() for point in points]
+            return QRect(min(xs), min(ys), max(xs) - min(xs),
+                         max(ys) - min(ys))
+        if kind == "text":
+            return cls.text_rect(item)
+        if kind == "step":
+            radius = int(item.get("radius", STEP_RADIUS))
+            center = item["pos"]
+            return QRect(center.x() - radius, center.y() - radius,
+                         radius * 2, radius * 2)
+        return QRect()
+
+    def hit_test(self, pos: QPoint, tolerance: int = 6):
+        for index in range(len(self.items) - 1, -1, -1):
+            item = self.items[index]
+            kind = item["type"]
+            if kind in LINE_TOOLS:
+                reach = max(tolerance, item.get("width", DEFAULT_WIDTH) + 4)
+                if _distance_to_segment(pos, item["start"], item["end"]) <= reach:
+                    return index
+            elif kind == "pen":
+                reach = max(tolerance, item.get("width", DEFAULT_WIDTH) + 4)
+                points = item.get("points") or []
+                if any(_distance_to_segment(pos, a, b) <= reach
+                       for a, b in zip(points, points[1:])):
+                    return index
+                if points and (pos - points[0]).manhattanLength() <= reach:
+                    return index
+            elif kind == "step":
+                center = item["pos"]
+                radius = int(item.get("radius", STEP_RADIUS))
+                if (pos - center).manhattanLength() <= radius * 1.4:
+                    return index
+            else:
+                if self.item_rect(item).adjusted(-3, -3, 3, 3).contains(pos):
+                    return index
+        return None
+
+    # ---- painting --------------------------------------------------------
+
+    @staticmethod
+    def draw_item(painter, item):
+        color = item.get("color", QColor(DEFAULT_COLOR))
+        width = max(1, int(item.get("width", DEFAULT_WIDTH)))
+        kind = item["type"]
+        if kind in ("rect", "ellipse"):
             painter.setPen(QPen(color, width))
-            painter.drawRect(item["rect"])
-        elif kind == "ellipse":
-            painter.setPen(QPen(color, width))
-            painter.drawEllipse(item["rect"])
+            if item.get("fill"):
+                fill = QColor(color)
+                fill.setAlpha(90)
+                painter.setBrush(fill)
+            else:
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+            if kind == "rect":
+                painter.drawRect(item["rect"])
+            else:
+                painter.drawEllipse(item["rect"])
         elif kind == "line":
-            painter.setPen(QPen(color, width,
-                                Qt.PenStyle.SolidLine,
+            painter.setPen(QPen(color, width, Qt.PenStyle.SolidLine,
                                 Qt.PenCapStyle.RoundCap))
             painter.drawLine(item["start"], item["end"])
         elif kind == "arrow":
-            pen = QPen(color, width, Qt.PenStyle.SolidLine,
-                      Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-            painter.setPen(pen)
+            painter.setPen(QPen(color, width, Qt.PenStyle.SolidLine,
+                                Qt.PenCapStyle.RoundCap,
+                                Qt.PenJoinStyle.RoundJoin))
             painter.drawLine(item["start"], item["end"])
-            self._draw_arrow_head(painter, item["start"],
-                                  item["end"], color)
+            _draw_arrow_head(painter, item["start"], item["end"], color, width)
         elif kind == "pen":
-            pen = QPen(color, width, Qt.PenStyle.SolidLine,
-                      Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-            painter.setPen(pen)
-            points = item.get("points", [])
+            painter.setPen(QPen(color, width, Qt.PenStyle.SolidLine,
+                                Qt.PenCapStyle.RoundCap,
+                                Qt.PenJoinStyle.RoundJoin))
+            points = item.get("points") or []
             for a, b in zip(points, points[1:]):
                 painter.drawLine(a, b)
         elif kind == "highlight":
-            pen = QPen(QColor(255, 200, 0, 220), 1)
-            painter.setPen(pen)
-            painter.setBrush(QColor(255, 220, 0, 90))
-            painter.drawRect(item["rect"])
-            painter.setBrush(Qt.BrushStyle.NoBrush)
+            marker = QColor(color)
+            marker.setAlpha(110)
+            painter.setPen(QPen(marker, max(12, width * 5),
+                                Qt.PenStyle.SolidLine,
+                                Qt.PenCapStyle.RoundCap))
+            painter.drawLine(item["start"], item["end"])
+        elif kind == "text":
+            font = item.get("font") or QFont()
+            painter.setPen(QPen(color, 1))
+            painter.setFont(font)
+            metrics = QFontMetrics(font)
+            painter.drawText(item["pos"].x(),
+                             item["pos"].y() + metrics.ascent(),
+                             item.get("text", ""))
         elif kind == "step":
-            number = item.get("number", 1)
             center = item["pos"]
-            radius = 14
+            radius = int(item.get("radius", STEP_RADIUS))
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(item.get("color", QColor("#e53935")))
+            painter.setBrush(color)
             painter.drawEllipse(center, radius, radius)
-            painter.setPen(QPen(QColor("white"), 1))
-            font = QFont("Arial", 10, QFont.Weight.Bold)
+            painter.setPen(QPen(QColor("white"), max(1, radius // 8)))
+            font = QFont()
+            font.setPixelSize(int(radius * 1.2))
+            font.setBold(True)
             painter.setFont(font)
             painter.drawText(QRect(center.x() - radius, center.y() - radius,
-                            radius * 2, radius * 2),
-                             Qt.AlignmentFlag.AlignCenter, str(number))
-        elif kind == "text":
-            painter.setPen(QPen(color, 1))
-            font = QFont("Arial", item.get("size", 16))
-            painter.setFont(font)
-            painter.drawText(item["pos"], item.get("text", ""))
+                                   radius * 2, radius * 2),
+                             int(Qt.AlignmentFlag.AlignCenter),
+                             str(item.get("number", 1)))
 
-    def _draw_arrow_head(self, painter, start, end, color):
-        import math
-        arrow_size = 12
-        dx = end.x() - start.x()
-        dy = end.y() - start.y()
-        length = max(1.0, (dx * dx + dy * dy) ** 0.5)
-        ux, uy = dx / length, dy / length
-        left_x = end.x() - arrow_size * ux + arrow_size * 0.5 * uy
-        left_y = end.y() - arrow_size * uy - arrow_size * 0.5 * ux
-        right_x = end.x() - arrow_size * ux - arrow_size * 0.5 * uy
-        right_y = end.y() - arrow_size * uy + arrow_size * 0.5 * ux
-        painter.setBrush(color)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawPolygon(QPoint(int(end.x()), int(end.y())),
-                              QPoint(int(left_x), int(left_y)),
-                              QPoint(int(right_x), int(right_y)))
+    @classmethod
+    def draw_selection(cls, painter, item, color="#9475EC"):
+        painter.save()
+        painter.setPen(QPen(QColor(color), 1, Qt.PenStyle.DashLine))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(cls.item_rect(item).adjusted(-3, -3, 3, 3))
+        painter.restore()
 
-    def _display_rect(self) -> QRect:
-        return _display_rect(self.base, self.size())
+    # ---- rendering -------------------------------------------------------
 
-    def _to_image(self, pos: QPoint) -> QPoint | None:
-        rect = self._display_rect()
-        if rect.isNull() or rect.width() <= 0 or rect.height() <= 0:
-            return None
-        x = rect.left() + int((pos.x() - rect.left()) *
-            self.base.width() / rect.width())
-        y = rect.top() + int((pos.y() - rect.top()) *
-            self.base.height() / rect.height())
-        x = max(0, min(self.base.width() - 1, x))
-        y = max(0, min(self.base.height() - 1, y))
-        return QPoint(x, y)
+    def render(self, image: QImage, scale: float = 1.0) -> QImage:
+        out = image.convertToFormat(QImage.Format.Format_ARGB32)
+        if out.isNull():
+            return out
+        # Preserve drawing order: a later privacy patch must also cover text
+        # and shapes added before it. End painting before modifying pixels.
+        for item in self.items:
+            if item["type"] in PIXEL_TOOLS:
+                self._apply_pixel_effect(out, item, scale)
+            else:
+                painter = QPainter(out)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+                painter.scale(scale, scale)
+                self.draw_item(painter, item)
+                painter.end()
+        return out
 
-    def _same_point(self, a, b):
-        return abs(a.x() - b.x()) + abs(a.y() - b.y()) <= 2
-
-    def mousePressEvent(self, event):
-        if self.base.isNull():
+    @staticmethod
+    def _apply_pixel_effect(image, item, scale):
+        rect = QRect(item["rect"])
+        if scale != 1.0:
+            rect = QRect(round(rect.x() * scale), round(rect.y() * scale),
+                         round(rect.width() * scale),
+                         round(rect.height() * scale))
+        rect = rect.intersected(image.rect())
+        if rect.isEmpty():
             return
-        if event.button() != Qt.MouseButton.LeftButton:
-            return
-        pt = self._to_image(event.position().toPoint())
-        if pt is None:
-            return
-        if self.tool == "step":
-            self._step_count += 1
-            self.annotations.append({
-                "type": "step", "pos": pt,
-                "number": self._step_count, "color": self.color})
-            self.changed.emit()
-            self.update()
-            return
-        if self.tool == "text":
-            self._text_point = pt
-            QTimer.singleShot(0, self._ask_text)
-            return
-        if self.tool == "pen":
-            self._current = {"type": "pen", "points": [pt],
-                             "color": self.color, "width": self.stroke_width}
+        region = image.copy(rect)
+        if item["type"] == "pixelate":
+            block = max(4, min(rect.width(), rect.height()) // 12)
+            tiny = region.scaled(
+                max(1, rect.width() // block), max(1, rect.height() // block),
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.FastTransformation)
+            patch = tiny.scaled(
+                rect.size(), Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.FastTransformation)
         else:
-            self._current = {"type": self.tool, "start": pt, "end": pt,
-                             "color": self.color, "width": self.stroke_width}
-        if self.tool == "highlight":
-            self._current["color"] = QColor(255, 220, 0, 220)
-        self.update()
-
-    def mouseMoveEvent(self, event):
-        if self.base.isNull():
-            return
-        if self._current is None:
-            return
-        pt = self._to_image(event.position().toPoint())
-        if pt is None:
-            return
-        if self._current["type"] == "pen":
-            self._current["points"].append(pt)
-        else:
-            self._current["end"] = pt
-        self.update()
-
-    def mouseReleaseEvent(self, event):
-        if event.button() != Qt.MouseButton.LeftButton:
-            return
-        if self._current is None:
-            return
-        item = self._current
-        self._current = None
-        if item["type"] in ("rect", "ellipse", "highlight", "blur"):
-            start = item["start"]
-            end = item["end"]
-            if self._same_point(start, end):
-                self.update()
-                return
-            item["rect"] = QRect(start, end).normalized()
-            item.pop("start", None)
-            item.pop("end", None)
-        elif item["type"] in ("line", "arrow"):
-            if self._same_point(item["start"], item["end"]):
-                self.update()
-                return
-        if item["type"] == "pen":
-            if len(item.get("points", [])) < 2:
-                self.update()
-                return
-        self.annotations.append(item)
-        self.changed.emit()
-        self.update()
-
-    def _ask_text(self):
-        pt = self._text_point
-        self._text_point = None
-        if pt is None:
-            return
-        text, accepted = QInputDialog.getText(
-            self, t("Add text"), t("Text:"))
-        if not accepted or not text.strip():
-            return
-        self.annotations.append({
-            "type": "text", "pos": pt, "text": text,
-            "color": self.color, "size": max(10, self.stroke_width * 5)})
-        self.changed.emit()
-        self.update()
-
-    def paintEvent(self, _event):
-        painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor("#1e1e1e"))
-        image = self.rendered_image()
-        if image.isNull():
-            painter.end()
-            return
-        rect = self._display_rect()
-        painter.drawImage(rect, image)
-        # Tool cursor hint
-        painter.setPen(QPen(QColor("white"), 1, Qt.PenStyle.DashLine))
+            tiny = region.scaled(
+                max(1, rect.width() // 18), max(1, rect.height() // 18),
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
+            patch = tiny.scaled(
+                rect.size(), Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
+        painter = QPainter(image)
+        painter.drawImage(rect.topLeft(), patch)
         painter.end()
 
-    def sizeHint(self):
-        if self.base.isNull():
-            return QSize(320, 200)
-        return QSize(max(320, self.base.width() // 2),
-                     max(200, self.base.height() // 2))
 
+class TextDialog(QDialog):
+    """Text plus the font options: family, size, style and colour."""
+
+    def __init__(self, parent=None, text="", font=None, color=None):
+        super().__init__(parent)
+        self.setWindowTitle(t("Edit text") if text else t("Add text"))
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(t("Text")))
+        self.edit = QLineEdit(text)
+        layout.addWidget(self.edit)
+        row = QHBoxLayout()
+        self.font_box = QFontComboBox()
+        if font is not None:
+            self.font_box.setCurrentFont(font)
+        row.addWidget(self.font_box, 1)
+        self.size_box = QSpinBox()
+        self.size_box.setRange(8, 144)
+        size = font.pointSize() if font is not None else 0
+        self.size_box.setValue(size if size > 0 else 16)
+        row.addWidget(self.size_box)
+        self.bold = QToolButton()
+        self.bold.setText("B")
+        self.bold.setCheckable(True)
+        self.bold.setToolTip(t("Bold"))
+        bold_font = self.bold.font()
+        bold_font.setBold(True)
+        self.bold.setFont(bold_font)
+        self.bold.setChecked(bool(font.bold()) if font is not None else False)
+        row.addWidget(self.bold)
+        self.italic = QToolButton()
+        self.italic.setText("I")
+        self.italic.setCheckable(True)
+        self.italic.setToolTip(t("Italic"))
+        italic_font = self.italic.font()
+        italic_font.setItalic(True)
+        self.italic.setFont(italic_font)
+        self.italic.setChecked(bool(font.italic()) if font is not None else False)
+        row.addWidget(self.italic)
+        self.underline = QToolButton()
+        self.underline.setText("U")
+        self.underline.setCheckable(True)
+        self.underline.setToolTip(t("Underline"))
+        underline_font = self.underline.font()
+        underline_font.setUnderline(True)
+        self.underline.setFont(underline_font)
+        self.underline.setChecked(bool(font.underline()) if font is not None
+                                  else False)
+        row.addWidget(self.underline)
+        self.color = QColor(color) if isinstance(color, QColor) and color.isValid() \
+            else QColor(DEFAULT_COLOR)
+        self.color_button = QPushButton(t("Color"))
+        self.color_button.clicked.connect(self._choose_color)
+        row.addWidget(self.color_button)
+        layout.addLayout(row)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                                   | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self.edit.setFocus()
+
+    def _choose_color(self):
+        color = QColorDialog.getColor(self.color, self, t("Color"))
+        if color.isValid():
+            self.color = color
+
+    def values(self):
+        font = QFont(self.font_box.currentFont())
+        font.setPointSize(int(self.size_box.value()))
+        font.setBold(self.bold.isChecked())
+        font.setItalic(self.italic.isChecked())
+        font.setUnderline(self.underline.isChecked())
+        return self.edit.text(), font, QColor(self.color)

@@ -1,9 +1,56 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-16
-Hazırlanan paket: 0.8.2 (`brand.py`)
+Hazırlanan paket: 0.8.3 (`brand.py`)
 Dal: master
-Git dönüş noktası: 7efa3be / v0.8.1
+Git dönüş noktası: 3c2d9c7 / v0.8.2
+
+## 2026-10-16 — 0.8.3 kompakt yakalama ve kısayol kalitesi
+
+Önceki turda hazırlanan simgeli araç çubuğu, yerinde düzenleme ve bas-ata
+kısayol değişiklikleri bu sürüme dahil. LightShot/ScreenForge/ShareX/Flameshot
+resmi belgeleriyle karşılaştırma ve kapsam: `docs/screenshot-quality-0.8.3.md`.
+
+- Ctrl+A tam ekran seçimi; araç tuşları; oklarla hassas seçim taşıma;
+  geri alınabilir Shift+Delete temizleme ve geçmiş durumuna uygun düğmeler.
+- Bulanıklaştırmada özgün detay geri karıştırılmıyor; işlemler çizim sırasına
+  uyuyor. Kaydet penceresi üstteki editöre bağlı; iptalde çizimler korunur.
+  Saydam JPEG beyaz zemine aktarılır.
+- Pause/medya/gezinme/numpad/F13–F24 ve tek tuş atama. Eşdeğer genel
+  kısayolların çakışması ayarları değiştirmeden reddedilir. Atama sırasında
+  genel kayıt iptal tuşu da askıya alınır.
+- Tam test kapısı: 561 test geçti, 1 atlandı, 6 alt test geçti.
+  Yerel Windows kayıt/WM_HOTKEY/temizleme yolu iki ardışık geçici kayıtta geçti.
+- Sınırlar: gerçek çoklu monitör/karma DPI ve fiziksel tuşla masaüstü kabulü
+  yapılmadı. Pause başka programda kayıtlıysa mevcut çakışma bildirimi geçerli.
+- Resmi `build.ps1` test/compile/import/bağımlılık/paket kapıları geçti;
+  bağımlılık denetiminde bilinen açık yok. EXE içinde güncel sürüm, kaynak
+  bytecode'u (hotkey/paste dahil), CUDA ve native payload hash'leri doğrulandı.
+  İzole teslim EXE'si `--version` ile exit 0 verdi; çıkarma dahil 25,787 saniye.
+- Teslim: `dist/WordArc-0.8.3.exe` ve `dist/WordArc-0.8.3.bat`.
+  EXE SHA256 `1aa837c88204d0b9b873b1b7548e313dad9c2c8dd96f105e220c9159e32d5aa8`.
+  Önceki 0.8.2 EXE/BAT korundu.
+- Yedek 2026-10-16: kaynak ve sürüm otomasyonu yerel sürüm commit'ine
+  kaydedilecek; `v0.8.3`, push ve Release kapanışı bekliyor.
+
+## 2026-10-16 — kaynakta kompakt yakalama çubuğu ve kısayol düzeltmesi
+
+Yakalama çubuğu 366 × 80 mantıksal piksel boyutunda, iki sıralı simge
+düğmeleriyle düzenlendi. Araç adları/işlem kısayolları ipuçlarında; seçili
+araç ve renk görünür. Dört ekran köşesinde yerleşim kontrol edildi.
+Ortak `HotkeyEdit` Pause, tek harf, gezinme/medya tuşları, F13–F24 ve
+sayısal tuş takımını kabul ediyor. Atama yalnız KeyPress'te, bir kez yapılır;
+dinleme biter. Esc, odak kaybı veya gizlenme tamamlanmamış atamayı geri alır.
+Backspace/Delete temizler; değişiklik Ayarlar'daki Kaydet ile uygulanır.
+
+- Doğrulama: 552 test geçti, 1 atlandı, 6 alt test geçti; py_compile ve
+  diff boşluk kontrolü başarılı. Arayüz offscreen görüntüyle incelendi.
+- Windows yerel kaydında Pause için hata 1409 (başka uygulamada kayıtlı),
+  kontrol kombinasyonu Ctrl+Alt+Shift+F10 için başarılı kayıt/kaldırma görüldü.
+  Fiziksel tuşla uçtan uca masaüstü denemesi yapılmadı.
+- Bu kayıt kaynak düzeltmesidir; yeni sürüm/EXE, commit veya etiket üretilmedi.
+  Başlangıçtaki kaydedilmemiş çalışma korundu; aşağıdaki 0.8.2 paket kanıtı
+  bu yeni kaynak değişikliklerinin paketlendiği anlamına gelmez.
 
 ## 2026-10-16 — 0.8.2 ekran editörü ve bas-ata kısayollar
 
