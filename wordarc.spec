@@ -44,7 +44,7 @@ hiddenimports = ['unicodedata', 'soundcard', 'faster_whisper', 'ctranslate2',
                   'av', 'av.audio.resampler', 'screenshot_capture', 'screenshot_editor',
                   # Windows OCR (ocr.py imports these inside functions; the
                   # compiled projections must ride along explicitly).
-                  'ocr', 'winrt', 'winrt._winrt', 'winrt.runtime', 'winrt.system',
+                  'ocr', 'update', 'winrt', 'winrt._winrt', 'winrt.runtime', 'winrt.system',
                   'winrt.windows.foundation', 'winrt.windows.foundation.collections',
                   'winrt.windows.graphics.imaging', 'winrt.windows.media.ocr',
                   'winrt.windows.storage.streams', 'winrt.windows.globalization']

@@ -1056,6 +1056,9 @@ class SettingsWindow(QDialog):
     cancel_requested = pyqtSignal(str)
     applied = pyqtSignal()
     language_changed = pyqtSignal()
+    update_check_requested = pyqtSignal()
+    update_install_requested = pyqtSignal()
+    update_cancel_requested = pyqtSignal()
     # True while a shortcut field is listening for keys: the global shortcuts
     # have to be parked, or RegisterHotKey swallows the combination first.
     shortcut_capture = pyqtSignal(bool)
@@ -1079,6 +1082,8 @@ class SettingsWindow(QDialog):
         self.cuda_recovery.changed.connect(self._cuda_changed)
         self._download_stop = threading.Event()
         self._download_name = None
+        self._update_info = None
+        self._update_cancel = threading.Event()
         self._local_snapshots = {}
         self._local_pending = set()
         self._local_inspected.connect(self._on_local_inspected)
@@ -2084,6 +2089,36 @@ class SettingsWindow(QDialog):
         ))
         body.addWidget(self.close_to_tray)
         layout.addWidget(startup_box)
+
+        updates, body = self._section_card(
+            "Updates", "Newer versions of WordArc.")
+        self.update_status = QLabel("")
+        self.update_status.setWordWrap(True)
+        self.update_status.setObjectName("muted")
+        body.addWidget(self.update_status)
+        self.update_progress = QProgressBar()
+        self.update_progress.setRange(0, 100)
+        self.update_progress.setVisible(False)
+        body.addWidget(self.update_progress)
+        update_row = QHBoxLayout()
+        self.update_check_button = QPushButton(t("Check for updates"))
+        self.update_check_button.clicked.connect(
+            self.update_check_requested.emit)
+        self.update_install_button = QPushButton(t("Download and install"))
+        self.update_install_button.clicked.connect(
+            self.update_install_requested.emit)
+        self.update_install_button.setVisible(False)
+        self.update_cancel_button = QPushButton(t("Cancel"))
+        self.update_cancel_button.clicked.connect(
+            self.update_cancel_requested.emit)
+        self.update_cancel_button.setVisible(False)
+        update_row.addWidget(self.update_check_button)
+        update_row.addWidget(self.update_install_button)
+        update_row.addWidget(self.update_cancel_button)
+        update_row.addStretch(1)
+        body.addLayout(update_row)
+        self.show_update_current()
+        layout.addWidget(updates)
 
         support, body = self._section_card(
             "Support", "When something breaks.")
@@ -3517,6 +3552,76 @@ class SettingsWindow(QDialog):
     def _open_diagnostics(self):
         cfg.LOG_DIR.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(cfg.LOG_DIR)))
+
+    # ---- updates ---------------------------------------------------------
+
+    def show_update_current(self):
+        """Idle line: what version is installed, when it was last checked."""
+        import update as update_mod
+        if self._update_info is not None:
+            return  # an offer is already on screen; do not bury it
+        stamp = str(self.conf.get("update_last_check", "") or "")
+        if stamp and not update_mod.last_check_is_old(stamp):
+            when = stamp.replace("T", " ")
+            self.update_status.setText(t("Up to date — version {version}. Last check: {time}.").format(
+                version=BRAND.version, time=when))
+        else:
+            self.update_status.setText(t("Running version {version}.").format(
+                version=BRAND.version))
+        self.update_check_button.setVisible(True)
+        self.update_check_button.setEnabled(True)
+        self.update_install_button.setVisible(False)
+        self.update_cancel_button.setVisible(False)
+        self.update_progress.setVisible(False)
+
+    def show_update_checking(self):
+        self.update_status.setText(t("Checking…"))
+        self.update_check_button.setEnabled(False)
+
+    def show_update_available(self, info):
+        self._update_info = info
+        size_mb = max(1, round(info.size / (1024 * 1024)))
+        self.update_status.setText(t(
+            "New version {version} is ready to download ({size} MB).").format(
+                version=info.version, size=size_mb))
+        self.update_check_button.setVisible(False)
+        self.update_install_button.setVisible(True)
+        self.update_cancel_button.setVisible(True)
+        self.update_progress.setVisible(False)
+
+    def show_update_latest(self):
+        self.update_status.setText(t(
+            "You are on the newest version ({version}).").format(
+                version=BRAND.version))
+        self.update_check_button.setEnabled(True)
+
+    def show_update_error(self, message):
+        self.update_status.setText(message)
+        self.update_check_button.setVisible(True)
+        self.update_check_button.setEnabled(True)
+        self.update_install_button.setVisible(False)
+        self.update_cancel_button.setVisible(False)
+        self.update_progress.setVisible(False)
+
+    def show_update_progress(self, done, total):
+        self.update_progress.setVisible(True)
+        self.update_progress.setEnabled(True)
+        self.update_progress.setRange(0, 100)
+        if total:
+            self.update_progress.setValue(round(done * 100 / total))
+        self.update_status.setText(t("Downloading update… {done} / {total} MB").format(
+            done=round(done / (1024 * 1024)), total=round(total / (1024 * 1024))))
+
+    def show_update_installing(self):
+        self.update_progress.setRange(0, 0)  # checksum pass
+        self.update_status.setText(t("Verifying the download…"))
+        self.update_cancel_button.setVisible(False)
+
+    def show_update_ready(self, version):
+        self.update_progress.setVisible(False)
+        self.update_status.setText(t(
+            "Version {version} is ready. WordArc will restart to finish.").format(
+                version=version))
 
     # ---- minutes ---------------------------------------------------------
 

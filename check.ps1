@@ -12,7 +12,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $Python -m compileall -q .
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-& $Python -c "import api, audio, audio_capture, brand, brand_migration, config, credential_store, diagnostics, filetranscribe, hotkey, i18n, livespeech, localspeech, meeting, ocr, operation, overlay, paste, screenshot_capture, settings_ui, sounds, startup, theme, trayicon, vad, verbatim, wordarc, worker; print('all imports ok')"
+& $Python -c "import api, audio, audio_capture, brand, brand_migration, config, credential_store, diagnostics, filetranscribe, hotkey, i18n, livespeech, localspeech, meeting, ocr, update, operation, overlay, paste, screenshot_capture, settings_ui, sounds, startup, theme, trayicon, vad, verbatim, wordarc, worker; print('all imports ok')"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if ($Audit) {

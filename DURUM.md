@@ -4,8 +4,11 @@ Güncelleme: 2026-10-16
 Hazırlanan paket: 0.8.5 (`brand.py`)
 Dal: master
 Git dönüş noktası: be82cda / v0.8.4
-Yedek 2026-10-16: kompakt gruplu araç çubuğu (B düzeni, Dolu şekillerin yanında),
-sürüm 0.8.5; yerel commit + etiket, push/Release bu kapanışta.
+Yedek 2026-10-16: kompakt gruplu araç çubuğu (B düzeni, Dolu şekillerin yanında)
++ taslak çizim düzeltmesi, sürüm 0.8.5; push + etiket + Release yapıldı.
+Halka açık dağıtım deposu açıldı: `zeitgeist-c/WordArc-Releases` (public; yalnız
+EXE/BAT asset'li Release, kod YOK). Arkadaş indirme linki ve güncelleme kontrolü
+(0.8.6) buradan; kaynak depo private kalıyor.
 
 ## 2026-10-16 — 0.8.5: taslak çizim çökmesi (KeyError: 'rect') ve paket kesimi
 
