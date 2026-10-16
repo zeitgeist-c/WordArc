@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from PyQt6.QtCore import QPoint, QRect, QEvent, QTimer
+from PyQt6.QtCore import QPoint, QRect, QEvent, QTimer, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QImage
 from PyQt6.QtWidgets import QApplication, QComboBox
 
@@ -41,7 +41,7 @@ class TestSettingsSmoke(unittest.TestCase):
             mock.patch.object(settings_ui.audio, "list_sources", return_value=[]),
             mock.patch.object(settings_ui.audio, "refresh_devices"),
             mock.patch.object(settings_ui.audio, "list_monitors", return_value=[]),
-            mock.patch.object(settings_ui.startup, "is_enabled", return_value=False),
+            mock.patch.object(settings_ui.startup, "is_enabled", return_value=True),
             mock.patch.object(localspeech.vulkan_speech, "available", return_value=False),
         ]
         for patcher in self.patchers:
@@ -77,7 +77,10 @@ class TestSettingsSmoke(unittest.TestCase):
 
         self.assertEqual(window.tabs.currentIndex(), 0)
         self.assertFalse(window.history_enabled.isChecked())
-        self.assertFalse(window.start_with_windows.isChecked())
+        self.assertTrue(window.start_with_windows.isChecked())
+        flags = window.windowFlags()
+        self.assertTrue(flags & Qt.WindowType.WindowMinimizeButtonHint)
+        self.assertTrue(flags & Qt.WindowType.WindowMaximizeButtonHint)
         self.assertTrue(window.close_to_tray.isChecked())
         self.assertEqual(window.gemini_keys_list.count(), 0)
         self.assertEqual(window.transcribe_model.currentText(),
@@ -146,7 +149,7 @@ class TestSettingsSmoke(unittest.TestCase):
              mock.patch.object(settings_ui, "info_box"):
             window._save()
         self.assertEqual(window.conf.data, before)
-        startup_set.assert_called_once_with(False)
+        startup_set.assert_called_once_with(True)
         cfg.credential_store.write_all.assert_called_once_with([])
         applied.assert_called_once_with()
 
@@ -789,7 +792,7 @@ class TestTheWindowSurvivesABadAudioLibrary(unittest.TestCase):
                                    "Invalid stream pointer [PaErrorCode -9988]")), \
              mock.patch.object(settings_ui.audio, "list_sources", return_value=[]), \
              mock.patch.object(settings_ui.audio, "list_monitors", return_value=[]), \
-             mock.patch.object(settings_ui.startup, "is_enabled", return_value=False):
+             mock.patch.object(settings_ui.startup, "is_enabled", return_value=True):
             window = settings_ui.SettingsWindow(cfg.Config(), "wordarc toggle")
         try:
             self.assertEqual(window.tabs.count(), 5)
@@ -1059,7 +1062,7 @@ class TestDropdownsStayOnScreen(unittest.TestCase):
              mock.patch.object(settings_ui.audio, "list_sources", return_value=[]), \
              mock.patch.object(settings_ui.audio, "refresh_devices"), \
              mock.patch.object(settings_ui.audio, "list_monitors", return_value=[]), \
-             mock.patch.object(settings_ui.startup, "is_enabled", return_value=False):
+             mock.patch.object(settings_ui.startup, "is_enabled", return_value=True):
             window = settings_ui.SettingsWindow(cfg.Config(), "wordarc toggle")
         try:
             protected = window.findChildren(settings_ui.FitsOnScreenCombo)

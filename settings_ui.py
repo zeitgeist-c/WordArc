@@ -1103,6 +1103,12 @@ class SettingsWindow(QDialog):
         # Small screens must be able to shrink the window: the floor sits
         # well below the opening size and every tab scrolls vertically.
         self.setMinimumSize(520, 400)
+        # A bare QDialog offers only the cross on Windows. The window is a
+        # full workspace with scrollable tabs: it minimises and maximises
+        # like any other window, so ask for the standard title-bar buttons.
+        self.setWindowFlags(self.windowFlags()
+                            | Qt.WindowType.WindowMinimizeButtonHint
+                            | Qt.WindowType.WindowMaximizeButtonHint)
         if os.environ.get("QT_QPA_PLATFORM", "") != "offscreen":
             screen = QGuiApplication.primaryScreen()
             if screen is not None:

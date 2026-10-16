@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
+import threading
 from pathlib import Path
 
 from PyQt6.QtCore import QPoint, QRect, QSize, QStandardPaths, Qt, QTimer, pyqtSignal
@@ -19,6 +20,7 @@ from PyQt6.QtWidgets import (QButtonGroup, QColorDialog, QDialog,
                              QFileDialog, QFrame, QHBoxLayout, QToolButton, QSpinBox,
                              QVBoxLayout, QWidget)
 
+import ocr
 from i18n import t
 from screenshot_editor import (DEFAULT_COLOR, DEFAULT_WIDTH, LINE_TOOLS,
                                REGION_TOOLS, STEP_RADIUS, TOOLS,
@@ -42,6 +44,7 @@ def _tool_icon(name, color="#e9edf5"):
         "undo": '<path d="m8 4-5 5 5 5M3 9h11a6 6 0 0 1 0 12"/>',
         "redo": '<path d="m16 4 5 5-5 5M21 9H10a6 6 0 0 0 0 12"/>',
         "copy": '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V3H3v13h5"/>',
+        "ocr": '<path d="M4 7V4h16v3M4 17v3h16v-3M8 9h9M8 13h6"/>',
         "save": '<path d="M4 3h13l4 4v14H3V3zM7 3v6h10V3M7 21v-8h10v8"/>',
         "cancel": '<path d="m6 6 12 12M18 6 6 18"/>',
         "color": f'<circle cx="12" cy="12" r="8" fill="{color}" stroke="#ffffff"/>',
@@ -96,6 +99,7 @@ class RegionOverlay(QWidget):
 
     copy_requested = pyqtSignal(QImage)
     save_requested = pyqtSignal(QImage)
+    ocr_requested = pyqtSignal(QImage)
     cancelled = pyqtSignal()
     activated = pyqtSignal()
 
@@ -231,6 +235,13 @@ class RegionOverlay(QWidget):
         self.copy_button.setObjectName("screenshotOverlayCopy")
         self.copy_button.clicked.connect(self._quick_copy)
         options.addWidget(self.copy_button)
+        self.ocr_button = self._toolbar_button("ocr", "Extract text (OCR)")
+        self.ocr_button.setObjectName("screenshotOverlayOcr")
+        self.ocr_button.clicked.connect(self._quick_ocr)
+        # A machine without the WinRT projections or an OCR language pack
+        # still captures; it just never sees a button that cannot work.
+        self.ocr_button.setVisible(ocr.is_available())
+        options.addWidget(self.ocr_button)
         self.save_button = self._toolbar_button("save", "Save", "Ctrl+S")
         self.save_button.setObjectName("screenshotOverlaySave")
         self.save_button.clicked.connect(self._quick_save)
@@ -321,6 +332,12 @@ class RegionOverlay(QWidget):
         if image is None:
             return
         self.save_requested.emit(image)
+
+    def _quick_ocr(self):
+        image = self._export_image()
+        if image is None:
+            return
+        self.ocr_requested.emit(image)
 
     def _undo(self):
         if self.model.undo():
@@ -855,6 +872,7 @@ class ScreenshotController(QWidget):
 
     failed = pyqtSignal(str)
     preferences_saved = pyqtSignal(str, str)
+    ocr_done = pyqtSignal(str)
 
     def __init__(self, conf, parent=None):
         super().__init__(None)
@@ -875,6 +893,7 @@ class ScreenshotController(QWidget):
         self._save_timer.setSingleShot(True)
         self._save_timer.timeout.connect(self._save_preferences)
         self._pending_save_preferences = None
+        self._ocr_thread = None
         self.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
         QGuiApplication.instance().screenRemoved.connect(self._screen_removed)
 
@@ -946,6 +965,7 @@ class ScreenshotController(QWidget):
                     lambda current=overlay: self._activate_overlay(current))
                 overlay.copy_requested.connect(self._on_overlay_copy)
                 overlay.save_requested.connect(self._on_overlay_save)
+                overlay.ocr_requested.connect(self._on_overlay_ocr)
                 overlay.cancelled.connect(self._cancel_overlay)
                 if screen is self._screen or self._overlay is None:
                     self._overlay = overlay
@@ -983,6 +1003,33 @@ class ScreenshotController(QWidget):
         copy_image_to_clipboard(image)
         self._close_overlay()
         self._restore_owner()
+
+    def _on_overlay_ocr(self, image):
+        # Recognition runs on a worker thread: a full-screen selection keeps
+        # the Windows engine busy for a second or two, and the frozen desktop
+        # must stay responsive meanwhile. The overlay closes right away —
+        # results arrive as a clipboard write plus a tray note.
+        if self._ocr_thread is not None and self._ocr_thread.is_alive():
+            return
+        self._close_overlay()
+        self._restore_owner()
+
+        language = ""
+        try:
+            language = str(self.conf.get("ui_language", ""))
+        except Exception:
+            pass
+
+        def work():
+            try:
+                text = ocr.extract_text(image, language)
+            except ocr.OcrUnavailable as exc:
+                self.failed.emit(str(exc))
+                return
+            self.ocr_done.emit(text)
+
+        self._ocr_thread = threading.Thread(target=work, daemon=True)
+        self._ocr_thread.start()
 
     def _on_overlay_save(self, image):
         # Parent the native file dialog to the topmost editor. Otherwise it

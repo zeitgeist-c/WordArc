@@ -256,6 +256,7 @@ class WordArc:
         self.screenshot_controller.failed.connect(self._on_screenshot_failed)
         self.screenshot_controller.preferences_saved.connect(
             self._on_screenshot_preferences_saved)
+        self.screenshot_controller.ocr_done.connect(self._on_screenshot_ocr)
         self._apply_settings()
         self.tray.show()
 
@@ -308,9 +309,12 @@ class WordArc:
         self._set_icon("audio-input-microphone")
 
     def _tray_clicked(self, reason):
+        # A left click opens the window; recording starts from the hotkey or
+        # the right-click menu. Booting a take on a stray click surprised the
+        # user more often than it helped.
         if reason != QSystemTrayIcon.ActivationReason.Trigger:
             return
-        self._toggle()
+        self.open_settings()
 
     def _set_icon(self, name):
         import trayicon
@@ -412,6 +416,16 @@ class WordArc:
         if self.tray.isVisible():
             self.tray.showMessage(BRAND.name, message,
                                   QSystemTrayIcon.MessageIcon.Warning, 5000)
+
+    def _on_screenshot_ocr(self, text):
+        # Queued in from the OCR worker thread; safe on the GUI thread.
+        if not text:
+            self._on_screenshot_failed(t("No readable text found in the capture."))
+            return
+        QApplication.clipboard().setText(text)
+        if self.tray.isVisible():
+            self.tray.showMessage(BRAND.name, t("Text extracted — copied to the clipboard."),
+                                  QSystemTrayIcon.MessageIcon.Information, 4000)
 
     def _on_screenshot_preferences_saved(self, directory, image_format):
         window = self.settings_window
@@ -1201,6 +1215,27 @@ def _should_open_settings(command, has_api_keys, tray_available):
             or not tray_available)
 
 
+def ensure_startup_registration(conf):
+    """Create the Windows Run entry once when the setting says 'on'.
+
+    Schema 5 made "start with Windows" the default, so an install that joined
+    it through the migration must also register itself: the version just
+    installed has to boot with the next sign-in. A box the user left off reads
+    False and is never re-registered, and an existing entry is left untouched.
+    """
+    if not conf["start_with_windows"]:
+        return False
+    try:
+        if startup.is_enabled():
+            return False
+        startup.set_enabled(True)
+    except startup.StartupError as exc:
+        logging.getLogger("wordarc.startup").warning(
+            "Windows startup registration failed: %s", exc)
+        return False
+    return True
+
+
 def main():
     if "--local-stt-check" in sys.argv:
         from local_stt_diagnostic import run
@@ -1286,6 +1321,7 @@ def main():
         print("wordarc: no system tray found, running anyway")
 
     conf = cfg.Config()
+    ensure_startup_registration(conf)
     # Device discovery can wait on a GPU driver for tens of seconds. Settings
     # resolves it in a worker; startup must not probe on the GUI thread.
     logging.getLogger("wordarc.startup").info(

@@ -35,6 +35,82 @@ def _controller(close_to_tray):
     return controller
 
 
+def test_tray_left_click_opens_window_instead_of_recording():
+    from PyQt6.QtWidgets import QSystemTrayIcon
+
+    controller = _controller(True)
+    controller._toggle = mock.Mock()
+    controller.open_settings = mock.Mock()
+
+    controller._tray_clicked(QSystemTrayIcon.ActivationReason.Trigger)
+
+    controller.open_settings.assert_called_once_with()
+    controller._toggle.assert_not_called()
+
+
+def test_other_tray_reasons_stay_inert():
+    from PyQt6.QtWidgets import QSystemTrayIcon
+
+    controller = _controller(True)
+    controller._toggle = mock.Mock()
+    controller.open_settings = mock.Mock()
+
+    controller._tray_clicked(QSystemTrayIcon.ActivationReason.MiddleClick)
+
+    controller.open_settings.assert_not_called()
+    controller._toggle.assert_not_called()
+
+
+def test_ocr_result_lands_in_the_clipboard_or_the_warning_tray():
+    from PyQt6.QtWidgets import QApplication
+
+    controller = _controller(True)
+    messages = []
+    controller.tray = mock.Mock()
+    controller.tray.isVisible.return_value = True
+    controller.tray.showMessage.side_effect = \
+        lambda *_a, **_k: messages.append(_a[1])
+    clipboard = mock.Mock()
+    with mock.patch.object(wordarc.QApplication, "clipboard",
+                           return_value=clipboard):
+        controller._on_screenshot_ocr("ayıklanan metin")
+    clipboard.setText.assert_called_once_with("ayıklanan metin")
+    assert len(messages) == 1
+
+    clipboard.reset_mock()
+    messages.clear()
+    with mock.patch.object(wordarc.QApplication, "clipboard",
+                           return_value=clipboard):
+        controller._on_screenshot_ocr("")
+    clipboard.setText.assert_not_called()
+    assert len(messages) == 1, "boş sonuç uyarı olarak bildirilmeli"
+
+
+def test_startup_registration_runs_once_and_respects_the_switch():
+    with mock.patch.object(wordarc.startup, "is_enabled", return_value=False), \
+         mock.patch.object(wordarc.startup, "set_enabled") as set_enabled:
+        assert wordarc.ensure_startup_registration({"start_with_windows": True})
+    set_enabled.assert_called_once_with(True)
+
+    with mock.patch.object(wordarc.startup, "is_enabled", return_value=True), \
+         mock.patch.object(wordarc.startup, "set_enabled") as set_enabled:
+        assert not wordarc.ensure_startup_registration({"start_with_windows": True})
+    set_enabled.assert_not_called()
+
+    with mock.patch.object(wordarc.startup, "is_enabled") as is_enabled, \
+         mock.patch.object(wordarc.startup, "set_enabled") as set_enabled:
+        assert not wordarc.ensure_startup_registration({"start_with_windows": False})
+    is_enabled.assert_not_called()
+    set_enabled.assert_not_called()
+
+
+def test_startup_registration_failure_never_blocks_boot():
+    with mock.patch.object(wordarc.startup, "is_enabled",
+                           side_effect=wordarc.startup.StartupError("locked")), \
+         mock.patch.object(wordarc.startup, "set_enabled"):
+        assert not wordarc.ensure_startup_registration({"start_with_windows": True})
+
+
 def test_window_close_respects_close_to_tray_setting():
     with mock.patch.object(wordarc.QTimer, "singleShot",
                            side_effect=lambda _delay, callback: callback()), \

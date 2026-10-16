@@ -518,5 +518,101 @@ class TestScreenshotCapture(unittest.TestCase):
             self.assertEqual(conf["screenshot_format"], "JPEG")
 
 
+class TestOcrExtraction(unittest.TestCase):
+    """The editor's Extract text button, its worker hop, and the module gate."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def _overlay(self, ocr_available=True):
+        screen = self.app.primaryScreen()
+        if screen is None:
+            self.skipTest("Qt reports no screen")
+        size = screen.geometry().size()
+        image = QImage(size.width(), size.height(),
+                       QImage.Format.Format_RGB32)
+        image.fill(QColor("#123456"))
+        pixmap = screenshot_capture.QPixmap.fromImage(image)
+        patcher = None
+        if not ocr_available:
+            patcher = mock.patch.object(screenshot_capture.ocr, "is_available",
+                                        return_value=False)
+            patcher.start()
+        try:
+            overlay = screenshot_capture.RegionOverlay(
+                screen, pixmap, QRect(10, 10, 120, 80))
+            overlay.show()
+            self.app.processEvents()
+        finally:
+            if patcher is not None:
+                patcher.stop()
+        self.addCleanup(overlay.close)
+        self.addCleanup(overlay.deleteLater)
+        return overlay
+
+    def test_ocr_button_emits_the_crop(self):
+        overlay = self._overlay()
+        got = []
+        overlay.ocr_requested.connect(got.append)
+        QTest.mouseClick(overlay.ocr_button, Qt.MouseButton.LeftButton)
+        self.app.processEvents()
+        self.assertEqual(len(got), 1)
+        self.assertLessEqual(got[0].width(), overlay.screenshot.width())
+
+    def test_button_hidden_without_windows_ocr(self):
+        overlay = self._overlay(ocr_available=False)
+        self.assertFalse(overlay.ocr_button.isVisible())
+        self.assertTrue(overlay.copy_button.isVisible())
+
+    def test_controller_hands_the_image_to_ocr_off_the_gui_thread(self):
+        controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        done = []
+        controller.ocr_done.connect(done.append)
+        image = QImage(20, 10, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        joined = []
+        real_start = screenshot_capture.threading.Thread.start
+
+        def track_start(thread):
+            joined.append(thread)
+            real_start(thread)
+        with mock.patch.object(screenshot_capture.ocr, "extract_text",
+                               return_value="merhaba"), \
+             mock.patch.object(screenshot_capture.threading.Thread, "start",
+                               track_start):
+            controller._on_overlay_ocr(image)
+            for thread in joined:
+                thread.join(5)
+            self.app.processEvents()
+        self.assertEqual(done, ["merhaba"])
+
+    def test_ocr_failure_travels_the_failed_signal(self):
+        controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        errors = []
+        controller.failed.connect(errors.append)
+        image = QImage(20, 10, QImage.Format.Format_RGB32)
+        real_start = screenshot_capture.threading.Thread.start
+        joined = []
+
+        def track_start(thread):
+            joined.append(thread)
+            real_start(thread)
+        with mock.patch.object(
+                screenshot_capture.ocr, "extract_text",
+                side_effect=screenshot_capture.ocr.OcrUnavailable("yok")), \
+             mock.patch.object(screenshot_capture.threading.Thread, "start",
+                               track_start):
+            controller._on_overlay_ocr(image)
+            for thread in joined:
+                thread.join(5)
+            self.app.processEvents()
+        self.assertEqual(errors, ["yok"])
+
+
 if __name__ == "__main__":
     unittest.main()
