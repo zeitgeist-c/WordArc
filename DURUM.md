@@ -30,8 +30,12 @@ resmi belgeleriyle karşılaştırma ve kapsam: `docs/screenshot-quality-0.8.3.m
 - Teslim: `dist/WordArc-0.8.3.exe` ve `dist/WordArc-0.8.3.bat`.
   EXE SHA256 `1aa837c88204d0b9b873b1b7548e313dad9c2c8dd96f105e220c9159e32d5aa8`.
   Önceki 0.8.2 EXE/BAT korundu.
-- Yedek 2026-10-16: kaynak ve sürüm otomasyonu yerel sürüm commit'ine
-  kaydedilecek; `v0.8.3`, push ve Release kapanışı bekliyor.
+- Yerel yedek 2026-10-16: kaynak ve sürüm otomasyonu commit `908fad7`;
+  `v0.8.3` aynı commit'e bağlı. Önceki kaynak değişiklikleri dahil edildi.
+- GitHub yedeği tamamlanmadı: otomatik onay denetimi
+  `zeitgeist-c/WordArc` için `master` + `v0.8.3` push ve EXE/BAT Release
+  aktarımını, bu hedefler için ayrıca açık kullanıcı onayı gerektiği
+  gerekçesiyle reddetti. Dış aktarım/yayın yapılmadı; kullanıcı onayı bekliyor.
 
 ## 2026-10-16 — kaynakta kompakt yakalama çubuğu ve kısayol düzeltmesi
 
