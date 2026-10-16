@@ -35,6 +35,13 @@ alıntısı editörüne Windows'un kendi tanıma motorunu kullanan **Metni ayık
   yürümesi, pano/uyarı bildirimleri).
 - "Dolu" düğmesi dikdörtgen/elips seçiliyken içini yarı saydam renklerle
   doldurur; ipucu metni Türkçe çevirisiyle birlikte araç çubuğunda duruyor.
+- Teslim (nihai 0.8.4 kesimi): `dist/WordArc-0.8.4.exe` ve `.bat`.
+  EXE SHA256 `244666bd59a19d5bb3f6a4b70976bf2d57b63c57ab24481278edcd32e3a30d15`
+  (önceki `d3885d5b…` kesiminin yerini aldı; paketteki `msvcp140` ikizi
+  yalnız build ortamından silindi, paketin kendi çalışma zamanı Qt'nin
+  taşıdığı kopyadır ve 9 import sırası matrix'i bu EXE ile doğrulandı).
+  Canlı doğrulama: `background` açılışı çalıştı → `HKCU Run` girdisi EXE'nin
+  kendisini gösteriyor, log v0.8.4 (frozen), UI 2,3 sn.
 
 ## 2026-10-16 — 0.8.4 yeniden kesim: tepsi tıklaması, otomatik başlatma varsayılanı, pencere düğmeleri
 
