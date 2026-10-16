@@ -436,6 +436,7 @@ DEFAULTS = {
     "file_cleanup": True,
     "file_cleanup_prompt": "",      # empty -> language-specific default
     "file_last_dir": "",
+    "update_last_check": "",        # last successful update check (ISO stamp)
 
     # --- meetings ---------------------------------------------------------
     "meeting_mic_target": "",       # empty -> whatever dictation records with

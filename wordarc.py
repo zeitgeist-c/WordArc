@@ -20,6 +20,7 @@ import os
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
 from brand import BRAND, set_windows_app_id
 
@@ -179,6 +180,52 @@ class _LiveFinisher(QObject):
         self.ready.emit(text, self._duration, self._rms, self._operation_id)
 
 
+class _UpdateWorker(QObject):
+    """Ask the public release repo off the GUI thread; report via signals."""
+
+    checked = pyqtSignal(object)        # UpdateInfo or None (already latest)
+    failed = pyqtSignal(str)
+    progress = pyqtSignal(int, int)     # bytes done, bytes total
+    installed = pyqtSignal(str, str)    # version, new exe path
+
+    def __init__(self, current, parent=None):
+        super().__init__(parent)
+        self._current = current
+        self._cancel = threading.Event()
+
+    def cancel(self):
+        self._cancel.set()
+
+    def run(self):
+        import update as update_mod
+        try:
+            info = update_mod.check_for_update(self._current)
+        except update_mod.UpdateError as exc:
+            self.failed.emit(str(exc))
+            return
+        self.checked.emit(info)
+
+    def install(self, info):
+        import update as update_mod
+        dest = update_mod.install_path(Path(sys.executable), info.version)
+        try:
+            update_mod.download(info, dest, progress=self._progress,
+                                cancel=self._cancel)
+        except update_mod.UpdateError as exc:
+            if str(exc) == "cancelled":
+                logging.getLogger("wordarc.update").info(
+                    "update download cancelled")
+                return
+            self.failed.emit(str(exc))
+            return
+        self.installed.emit(info.version, str(dest))
+
+    def _progress(self, done, total):
+        # Coalesce: one emit per megabyte keeps the GUI thread free.
+        if done % (1024 * 1024) < 256 * 1024 or done == total:
+            self.progress.emit(done, total)
+
+
 class WordArc:
     def __init__(self, app, conf=None):
         self.app = app
@@ -251,6 +298,15 @@ class WordArc:
 
         self.tray = QSystemTrayIcon()
         self.tray.activated.connect(self._tray_clicked)
+        # Once a day, quietly: a frozen install asks the public release repo
+        # for the newest tag and only then knocks on the tray. The timer fires
+        # the check on its own thread, so a slow network never slows boot.
+        self._update_thread = None
+        self._update_cancel = threading.Event()
+        self._update_timer = QTimer()
+        self._update_timer.setSingleShot(True)
+        self._update_timer.timeout.connect(self._update_startup_check)
+        self._update_timer.start(30_000)
         self.screenshot_controller = screenshot_capture.ScreenshotController(
             self.conf, self.settings_window)
         self.screenshot_controller.failed.connect(self._on_screenshot_failed)
@@ -888,6 +944,114 @@ class WordArc:
         else:
             self.cancel_meeting()
 
+    # ---- updates ---------------------------------------------------------
+
+    def _updates_possible(self):
+        """Update flow needs a real installed exe, not a source checkout."""
+        return bool(getattr(sys, "frozen", False))
+
+    def _update_startup_check(self):
+        # The first silent check runs 30 s after boot; after that only once
+        # per day, and never from a source checkout.
+        if not self._updates_possible():
+            return
+        import update as update_mod
+        stamp = str(self.conf.get("update_last_check", "") or "")
+        if not update_mod.last_check_is_old(stamp):
+            return
+        self._run_update_check(tray=True)
+
+    def _update_check(self):
+        self._run_update_check(tray=False)
+
+    def _run_update_check(self, tray):
+        import update as update_mod
+        if self._update_thread is not None and self._update_thread.is_alive():
+            return
+        if not self._updates_possible():
+            if not tray and self.settings_window is not None:
+                self.settings_window.show_update_error(
+                    t("Updates are only available in the installed program."))
+            return
+        self._update_manual = not tray
+        if not tray and self.settings_window is not None:
+            self.settings_window.show_update_checking()
+        worker = _UpdateWorker(BRAND.version)
+        worker.checked.connect(self._update_checked)
+        worker.failed.connect(self._update_failed)
+        self._update_worker = worker
+        self._update_thread = threading.Thread(target=worker.run, daemon=True)
+        self._update_thread.start()
+
+    def _update_checked(self, info):
+        import update as update_mod
+        self.conf["update_last_check"] = update_mod.now_stamp()
+        try:
+            self.conf.save()
+        except OSError:
+            pass
+        manual = getattr(self, "_update_manual", False)
+        window = self.settings_window
+        if info is None:
+            if manual and window is not None:
+                window.show_update_latest()
+            return
+        if window is not None:
+            window.show_update_available(info)
+        elif self.tray.isVisible():
+            self.tray.showMessage(
+                BRAND.name,
+                t("Version {version} is out. Check it from Settings ▸ Updates."
+                  ).format(version=info.version),
+                QSystemTrayIcon.MessageIcon.Information, 10000)
+
+    def _update_failed(self, message):
+        window = self.settings_window
+        translated = t(message)
+        if window is not None:
+            window.show_update_error(translated)
+        elif getattr(self, "_update_manual", False) and self.tray.isVisible():
+            self.tray.showMessage(BRAND.name, translated,
+                                  QSystemTrayIcon.MessageIcon.Warning, 8000)
+
+    def _update_install(self):
+        window = self.settings_window
+        info = getattr(window, "_update_info", None) if window else None
+        if info is None or not self._updates_possible():
+            return
+        worker = _UpdateWorker(BRAND.version)
+        worker.progress.connect(self._update_progress)
+        worker.failed.connect(self._update_failed)
+        worker.installed.connect(self._update_installed)
+        self._update_worker = worker
+        self._update_thread = threading.Thread(target=worker.install,
+                                               args=(info,), daemon=True)
+        self._update_thread.start()
+        if window is not None:
+            window.show_update_installing()
+
+    def _update_cancel_download(self):
+        worker = getattr(self, "_update_worker", None)
+        if worker is not None:
+            worker.cancel()
+        if self.settings_window is not None:
+            self.settings_window.show_update_current()
+
+    def _update_progress(self, done, total):
+        if self.settings_window is not None:
+            self.settings_window.show_update_progress(done, total)
+
+    def _update_installed(self, version, new_exe):
+        import update as update_mod
+        if self.tray.isVisible():
+            self.tray.showMessage(
+                BRAND.name,
+                t("Version {version} downloaded. WordArc is restarting.").format(
+                    version=version),
+                QSystemTrayIcon.MessageIcon.Information, 5000)
+        update_mod.spawn_swap(os.getpid(), Path(new_exe))
+        self.restart()
+
     def open_settings(self):
         if self.settings_window is None:
             self.settings_window = SettingsWindow(
@@ -907,6 +1071,12 @@ class WordArc:
             self.settings_window.applied.connect(self._apply_settings)
             self.settings_window.language_changed.connect(self._reopen_settings)
             self.settings_window.finished.connect(self._settings_closed)
+            self.settings_window.update_check_requested.connect(
+                self._update_check)
+            self.settings_window.update_install_requested.connect(
+                self._update_install)
+            self.settings_window.update_cancel_requested.connect(
+                self._update_cancel_download)
         # The language change rebuilds the window and hands over where the old
         # one was; it is applied before show(), so the window never appears at
         # its opening size first. It travels on the instance rather than in the
