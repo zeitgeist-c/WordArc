@@ -10,6 +10,29 @@ Halka açık dağıtım deposu açıldı: `zeitgeist-c/WordArc-Releases` (public
 EXE/BAT asset'li Release, kod YOK). Arkadaş indirme linki ve güncelleme kontrolü
 (0.8.6) buradan; kaynak depo private kalıyor.
 
+## 2026-10-16 — 0.8.6: kendi kendini güncelleme (public WordArc-Releases)
+
+Kullanıcı onayıyla iki iş birden: arkadaşlara link (yalnız sürümlerin olduğu
+public depo) + program içi güncelleme butonu. Kurulum dosyası gerekmez; mevcut
+tek EXE yapısıyla çalışır.
+
+- `update.py`: `zeitgeist-c/WordArc-Releases` (public; EXE/BAT asset'i, kod yok)
+  üzerinden `releases/latest` sorgusu — tokensız, kimlik gömülü değil. Semver
+  karşılaştırma; indirmede boyut + GitHub asset digest'iyle SHA256 doğrulaması
+  (tutmazsa dosya silinir, program eski haliyle çalışmaya devam eder).
+- Akış: açılıştan 30 sn sonra ve sonra günde bir sessiz kontrol; yeni sürüm
+  varsa tepsi bildirimi. Ayarlar ▸ Güncellemeler: durum satırı, elle denetle,
+  ilerleme çubuğuyla "İndir ve kur", İptal. Kurulum = yeni EXE yanına iner,
+  swap BETİĞİ eski süreç kapanınca yeni EXE'yi başlatır (`--restarted`).
+- En güncel daima `releases/latest`ten gelir: 0.8.1 kurulu bir makine aradaki
+  sürümleri görmeden doğrudan en yeniye atlar (test: `is_newer`).
+- Boş public depoya release açılamıyor (HTTP 422); README commit'i ile açıldı.
+- Kaynak depo private kalır. `update` modülü spec/check/verify kayıtlarında.
+- Kapılar: 614 passed, 1 skipped, 12 subtests; check.ps1 -Audit temiz.
+- 0.8.6 EXE SHA256: `473b12f65eb3f15affc849dcbca231477ef4d748766a0a1aa2fdb29779ca29b5`
+  (donuk arşivde `update` modülü ve beş ana fonksiyon kanıtlandı),
+  BAT SHA256: `2b1a0143c9ccddf703f3ac286e0c0b0f4a486d1134630aa28847e88f30cefee6`.
+
 ## 2026-10-16 — 0.8.5: taslak çizim çökmesi (KeyError: 'rect') ve paket kesimi
 
 Canlı 0.8.4 doğrulama logunda yakalandı: dikdörtgen/elips sürüklenirken her
