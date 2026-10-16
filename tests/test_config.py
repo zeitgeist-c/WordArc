@@ -31,7 +31,8 @@ class TestConfigLoadSave(unittest.TestCase):
         c = cfg.Config()
         self.assertEqual(c["language"], "tr")
         self.assertEqual(c["theme_mode"], "dark")
-        self.assertEqual(c["config_schema"], 4)
+        self.assertEqual(c["config_schema"], 5)
+        self.assertTrue(c["start_with_windows"])
         self.assertTrue(c["close_to_tray"])
         self.assertEqual(c["screenshot_shortcut"], "Ctrl+Alt+S")
         self.assertEqual(c["screenshot_directory"], "")
@@ -40,6 +41,20 @@ class TestConfigLoadSave(unittest.TestCase):
         cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         cfg.CONFIG_FILE.write_text(json.dumps({"theme_mode": "neon"}), encoding="utf-8")
         self.assertEqual(cfg.Config()["theme_mode"], "dark")
+    def test_start_with_windows_migrates_once_and_off_stays_off(self):
+        cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        # A schema-4 config that never opted in joins the new default once.
+        cfg.CONFIG_FILE.write_text(json.dumps(
+            {"config_schema": 4, "start_with_windows": False}), encoding="utf-8")
+        self.assertTrue(cfg.Config()["start_with_windows"])
+        # Saving that turn persists schema 5 with True.
+        cfg.Config().save()
+        # A user who then turns it off keeps it off across restarts.
+        c = cfg.Config()
+        c["start_with_windows"] = False
+        c.save()
+        self.assertFalse(cfg.Config()["start_with_windows"])
+
     def test_local_device_defaults_to_auto_and_bad_values_migrate(self):
         self.assertEqual(cfg.Config()["local_stt_device"], "auto")
         cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)

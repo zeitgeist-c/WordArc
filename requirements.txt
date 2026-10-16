@@ -2,6 +2,15 @@ PyQt6>=6.11,<6.12
 sounddevice>=0.5.5,<0.6
 SoundCard>=0.4.6,<0.5
 numpy>=1.26,<3
+# Windows OCR for the screenshot editor (Metni ayıkla). The recogniser itself
+# ships with Windows; these are only the language projections for it.
+winrt-runtime==3.2.1
+winrt-Windows.Foundation==3.2.1
+winrt-Windows.Foundation.Collections==3.2.1
+winrt-Windows.Globalization==3.2.1
+winrt-Windows.Graphics.Imaging==3.2.1
+winrt-Windows.Media.Ocr==3.2.1
+winrt-Windows.Storage.Streams==3.2.1
 # Local speech to text (Settings → Speech to text → Local). Everything else in
 # the app runs without it; this is what a machine that transcribes on its own
 # needs installed.

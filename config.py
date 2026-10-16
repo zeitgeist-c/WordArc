@@ -32,7 +32,7 @@ RECORDINGS_DIR = DATA_DIR / "recordings"
 MEETINGS_DIR = DATA_DIR / "meetings"
 MEETINGS_FILE = DATA_DIR / "meetings.jsonl"
 LOG_DIR = DATA_DIR / "logs"
-CONFIG_SCHEMA = 4
+CONFIG_SCHEMA = 5
 _history_lock = threading.RLock()
 _meeting_lock = threading.RLock()
 _rotation_lock = threading.RLock()
@@ -393,7 +393,7 @@ DEFAULTS = {
     "config_schema": CONFIG_SCHEMA,
     "ui_language": "tr",                # tr | en | auto
     "theme_mode": "dark",               # dark | light
-    "start_with_windows": False,
+    "start_with_windows": True,
     "close_to_tray": True,
     "gemini_api_key": "",
     "gemini_next_slot": 0,      # round-robin: sıradaki bulut işlemi hangi API slotundan başlar
@@ -597,6 +597,12 @@ class Config:
         # keeps that behaviour. New installs default to disabled.
         if "config_schema" not in stored and "history_limit" in stored:
             self.data["history_enabled"] = True
+        # Schema 5 turned "start with Windows" into the default. Existing
+        # installs join it once; a box the user turns off afterwards is never
+        # re-enabled, because saving persists False and the schema is already 5.
+        if (stored.get("config_schema", 1) < 5
+                and stored.get("start_with_windows") is False):
+            self.data["start_with_windows"] = True
         if self.data.get("theme_mode") not in ("dark", "light"):
             self.data["theme_mode"] = "dark"
         if self.data.get("local_stt_device") not in ("auto", "cuda", "vulkan", "cpu"):

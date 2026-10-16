@@ -355,6 +355,13 @@ TR = {
     "Select area…": "Alan seç…",
     "Capture full screen": "Tüm ekranı yakala",
     "Select screenshot area": "Ekran görüntüsü alanını seçin",
+    "Extract text (OCR)": "Metni ayıkla (OCR)",
+    "No readable text found in the capture.":
+        "Alınan görüntüde okunabilir metin bulunamadı.",
+    "Text extracted — copied to the clipboard.":
+        "Metin ayıklandı — panoya kopyalandı.",
+    "Could not read text from the capture.":
+        "Alınan görüntüden metin okunamadı.",
     "Drag to select · Esc to cancel": "Alanı seçmek için sürükleyin · İptal için Esc",
     "Drag handles to adjust · double-click to confirm":
         "Kenar tutamaçlarıyla ayarlayın · onaylamak için çift tıklayın",

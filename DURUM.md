@@ -5,6 +5,56 @@ Hazırlanan paket: 0.8.4 (`brand.py`)
 Dal: master
 Git dönüş noktası: 908fad7 / v0.8.3
 
+## 2026-10-16 — 0.8.4 yeniden kesim: ekran alıntısında OCR (metni ayıkla)
+
+Kullanıcı isteği: editör araç çubuğundaki "Dolu" düğmesinin ne olduğu
+bilinmiyordu (adlandırma sorunu; ayrıca aşağıda açıklanan OCR eklendi). Ekran
+alıntısı editörüne Windows'un kendi tanıma motorunu kullanan **Metni ayıkla
+(OCR)** düğmesi geldi:
+
+- Seçili bölgedeki metin tanınır, panoya kopyalanır, tepsi bildirimi gelir;
+  okunabilir metin yoksa uyarı bildirimi gösterilir. Motor iş parçacığında
+  çalışır; donmuş masaüstü beklerken kilitlenmez.
+- Motor `Windows.Media.Ocr` (WinRT): model indirmesi yok, makinede kurulu
+  dil paketleriyle tanır. Bu makinede `tr` ve `en-US` doğrulandı; arayüz dili
+  Türkçe ise Türkçe tanıyıcı tercih edilir. Projeksiyonlar veya dil paketi
+  yoksa düğme hiç görünmez; yakalama akışı etkilenmez.
+- Altyapı: `ocr.py` yeni modül; `wordarc.spec` hiddenimports, `check.ps1`,
+  `requirements.txt`/`requirements-lock.txt` (winrt 3.2.1) ve paket
+  doğrulayıcıya eklendi.
+- Gerçek kanıt: render edilmiş Türkçe metin `ocr.extract_text` ile uçtan uca
+  okundu ("Merhaba Dünya 12345" dahil, Türkçe karakterler korundu).
+- Doğrulama: 599 test geçti, 1 atlandı, 12 alt test (yeni: `test_ocr.py`
+  motor seçimi/satır birleştirme/uyumsuzluk sarmaları, OCR düğmesi olayı,
+  düğmenin gizlenmesi, iplik köprüsü, başarısızlığın `failed` sinyalinden
+  yürümesi, pano/uyarı bildirimleri).
+- "Dolu" düğmesi dikdörtgen/elips seçiliyken içini yarı saydam renklerle
+  doldurur; ipucu metni Türkçe çevirisiyle birlikte araç çubuğunda duruyor.
+
+## 2026-10-16 — 0.8.4 yeniden kesim: tepsi tıklaması, otomatik başlatma varsayılanı, pencere düğmeleri
+
+Kullanıcı isteğiyle üç davranış değişikliği; sürüm numarası değişmeden aynı
+0.8.4 yeniden kesildi (kullanıcı açıkça sürüm yükseltmeden yedek istedi):
+
+- Sistem tepsisindeki simgeye sol tık artık kaydı BAŞLATMIYOR; Ayarlar
+  penceresini açıyor. Kayıt kısayol tuşuyla veya sağ tık menüsündeki
+  "Kaydı başlat" ile yapılıyor.
+- "Windows başladığında WordArc'ı başlat" yeni kurulumlarda varsayılan açık.
+  Şema 4 → 5 göçü, daha önce hiç kapatmamış eski kurulumları bir kez dahil
+  eder; sonra kapatan bir daha açılmaz. Ayar açıksa ve kayıt defteri girdisi
+  yoksa açılışta girdi bir kez oluşturulur — kurulan sürümün kendisi bir
+  sonraki oturum açılışta Windows'la gelir (`ensure_startup_registration`).
+- Ayarlar penceresi `QDialog` varsayılanı olan yalnız-çarpı başlık çubuğu
+  yerine küçült ve büyüt düğmeleriyle açılıyor
+  (`WindowMinimizeButtonHint | WindowMaximizeButtonHint`).
+
+- Doğrulama: 585 test geçti, 1 atlandı, 12 alt test (yeni: sol tık → pencere,
+  diğer tepsi nedenleri hareketsiz, kayıt bir kez + ayar saygısı + hata
+  açılışı engellemez, şema 5 göcü ve kapalı kalma, pencere bayrakları);
+  `check.ps1` geçti. EXE paketi PYZ/`--version` ile kanıtlanır.
+- Aynı `v0.8.4` etiketi ve Release assetleri yeni EXE/BAT ile değiştirildi;
+  Release notundaki SHA256 güncel paketle birebir doğrulandı.
+
 ## 2026-10-16 — 0.8.4 çoklu monitör yakalama ve gösterge çizimleme kapanışı
 
 Çalışma ağacında biriken iki kaynak düzeltme bu sürümde paketleniyor:
