@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QPoint, QRect, QSize, QStandardPaths, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (QColor, QCursor, QFont, QGuiApplication, QIcon, QImage,
-                         QPainter, QPen, QPixmap)
+                         QPainter, QPen, QPixmap, QScreen)
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (QButtonGroup, QColorDialog, QDialog,
                              QFileDialog, QFrame, QHBoxLayout, QToolButton, QSpinBox,
@@ -97,6 +97,7 @@ class RegionOverlay(QWidget):
     copy_requested = pyqtSignal(QImage)
     save_requested = pyqtSignal(QImage)
     cancelled = pyqtSignal()
+    activated = pyqtSignal()
 
     HANDLE = 10
     MIN_SIDE = 6
@@ -139,6 +140,8 @@ class RegionOverlay(QWidget):
         self._handle_item = None
         self._rendered = None
 
+        if isinstance(screen, QScreen):
+            self.setScreen(screen)
         self.setGeometry(screen.geometry())
         self.setCursor(Qt.CursorShape.CrossCursor)
         self.setMouseTracking(True)
@@ -627,6 +630,8 @@ class RegionOverlay(QWidget):
             return
         if event.button() != Qt.MouseButton.LeftButton:
             return
+        self.setFocus(Qt.FocusReason.MouseFocusReason)
+        self.activated.emit()
         pos = event.position().toPoint()
         if not self.selection.isNull():
             for key, rect in self._handle_rects().items():
@@ -856,6 +861,7 @@ class ScreenshotController(QWidget):
         self.conf = conf
         self._owner = parent
         self._overlay = None
+        self._overlays = []
         self._screen = None
         self._mode = "region"
 
@@ -870,9 +876,11 @@ class ScreenshotController(QWidget):
         self._save_timer.timeout.connect(self._save_preferences)
         self._pending_save_preferences = None
         self.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
+        QGuiApplication.instance().screenRemoved.connect(self._screen_removed)
 
     def start(self, mode="region", parent=None):
-        if self._overlay is not None:
+        self._capture_timer.stop()
+        if self._overlay is not None or self._hidden_owner is not None:
             self._cancel_overlay()
         screen = (QGuiApplication.screenAt(QCursor.pos())
                   or QGuiApplication.primaryScreen())
@@ -911,9 +919,18 @@ class ScreenshotController(QWidget):
 
     def _capture_screen(self):
         try:
-            pixmap = self._screen.grabWindow(0)
-            if pixmap.isNull():
-                raise OSError(t("Windows could not capture the screen."))
+            screens = (QGuiApplication.screens() if self._mode == "region"
+                       else [self._screen])
+            if not screens:
+                raise OSError(t("No screen is available for capture."))
+            # Freeze ALL displays before showing any overlay. Otherwise a
+            # previous overlay can be captured on a neighbouring display.
+            captures = []
+            for screen in screens:
+                pixmap = screen.grabWindow(0)
+                if pixmap.isNull():
+                    raise OSError(t("Windows could not capture the screen."))
+                captures.append((screen, pixmap))
             selection = None
             if self._mode == "screen":
                 selection = QRect(QPoint(0, 0), self._screen.geometry().size())
@@ -922,17 +939,45 @@ class ScreenshotController(QWidget):
                 if selection is None:
                     raise OSError(
                         t("No active window is available for capture."))
-            self._overlay = RegionOverlay(self._screen, pixmap, selection)
-            self._overlay.copy_requested.connect(self._on_overlay_copy)
-            self._overlay.save_requested.connect(self._on_overlay_save)
-            self._overlay.cancelled.connect(self._cancel_overlay)
-            self._overlay.show()
-            self._overlay.raise_()
+            for screen, pixmap in captures:
+                overlay = RegionOverlay(screen, pixmap, selection)
+                self._overlays.append(overlay)
+                overlay.activated.connect(
+                    lambda current=overlay: self._activate_overlay(current))
+                overlay.copy_requested.connect(self._on_overlay_copy)
+                overlay.save_requested.connect(self._on_overlay_save)
+                overlay.cancelled.connect(self._cancel_overlay)
+                if screen is self._screen or self._overlay is None:
+                    self._overlay = overlay
+            for overlay in self._overlays:
+                overlay.show()
+                overlay.raise_()
             self._overlay.activateWindow()
             self._overlay.setFocus()
         except Exception as exc:
+            self._close_overlay()
             self._restore_owner()
             self.failed.emit(str(exc))
+
+    def _activate_overlay(self, current):
+        """Choose a display without cancelling/restarting the capture session."""
+        if current is self._overlay:
+            return
+        for overlay in self._overlays:
+            if overlay is current:
+                continue
+            overlay.selection = QRect()
+            overlay.model.selected = None
+            overlay.toolbar.hide()
+            overlay.update()
+        self._overlay = current
+        current.activateWindow()
+
+    def _screen_removed(self, screen):
+        if (self._capture_timer.isActive() or self._overlays
+                or self._overlay is not None):
+            self._capture_timer.stop()
+            self._cancel_overlay()
 
     def _on_overlay_copy(self, image):
         copy_image_to_clipboard(image)
@@ -963,9 +1008,12 @@ class ScreenshotController(QWidget):
 
     def _close_overlay(self):
         overlay, self._overlay = self._overlay, None
-        if overlay is not None:
-            overlay.close()
-            overlay.deleteLater()
+        overlays, self._overlays = self._overlays, []
+        if overlay is not None and overlay not in overlays:
+            overlays.append(overlay)
+        for window in overlays:
+            window.close()
+            window.deleteLater()
 
     def _restore_owner(self, *_):
         owner, self._hidden_owner = self._hidden_owner, None

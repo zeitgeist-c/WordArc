@@ -175,6 +175,19 @@ def meter():
     return _METER
 
 
+def _display_level(peak):
+    """Map a PCM peak to a readable meter, without changing recorded audio.
+
+    Microphone gain differs widely across devices. A linear 1% peak looked
+    almost silent even though it is -40 dBFS. Use a fixed -60..0 dBFS display
+    range; do not auto-amplify background noise or invent motion in silence.
+    Drawing/previews consume the resulting normalized display levels.
+    """
+    if not math.isfinite(peak) or peak <= 0.001:
+        return 0.0
+    return min(1.0, max(0.0, (20.0 * math.log10(peak) + 60.0) / 60.0))
+
+
 class MeterPreview(QWidget):
     """Bir stil seçeneğinin gerçek çizimiyle canlı önizlemesi.
 
@@ -401,11 +414,11 @@ class Overlay(QWidget):
         return self.isVisible() and not self._concealed
 
     def push_level(self, level):
-        self.levels = self.levels[1:] + [level]
+        self.levels = self.levels[1:] + [_display_level(level)]
 
     def push_levels(self, mine, theirs):
-        self.levels = self.levels[1:] + [mine]
-        self.levels2 = self.levels2[1:] + [theirs]
+        self.levels = self.levels[1:] + [_display_level(mine)]
+        self.levels2 = self.levels2[1:] + [_display_level(theirs)]
 
     def set_seconds(self, seconds):
         self.seconds = seconds

@@ -280,6 +280,9 @@ class AnnotationModel:
         out = image.convertToFormat(QImage.Format.Format_ARGB32)
         if out.isNull():
             return out
+        # QScreen snapshots carry DPR metadata. Coordinates below already
+        # scale explicitly to physical pixels: QPainter must not scale twice.
+        out.setDevicePixelRatio(1.0)
         # Preserve drawing order: a later privacy patch must also cover text
         # and shapes added before it. End painting before modifying pixels.
         for item in self.items:
