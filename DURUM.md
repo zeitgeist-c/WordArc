@@ -1,9 +1,29 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-16
-Hazırlanan paket: 0.8.4 (`brand.py`)
+Hazırlanan paket: 0.8.5 (`brand.py`)
 Dal: master
-Git dönüş noktası: 908fad7 / v0.8.3
+Git dönüş noktası: be82cda / v0.8.4
+Yedek 2026-10-16: kompakt gruplu araç çubuğu (B düzeni, Dolu şekillerin yanında),
+sürüm 0.8.5; yerel commit + etiket, push/Release bu kapanışta.
+
+## 2026-10-16 — 0.8.5: ekran alıntısı araç çubuğu yeniden düzenlendi
+
+Kullanıcı onayıyla B düzeni uygulandı (alternatifler HTML maketle gösterildi,
+"B'yi uygula" seçildi):
+
+- Araçlar ince dikey ayraçlarla dört anlama grubuna ayrıldı: `seçim kalem çizgi
+  ok │ dikdörtgen elips DOLU │ vurgu metin adım │ bulanık piksel`. Dolu, yalnız
+  şekillerin içini boyadığı için alt satırdan alınıp dikdörtgen/elipsin hemen
+  sağına taşındı.
+- Alt satır: `renk kalınlık │ geri ileri │ panoya OCR kaydet iptal`; OCR düğmesi
+  panoya yapıştır gibi mor zemine alındı.
+- Kompakt ölçüler: düğme 30→26 px, ikon 19→17 px, satır aralığı 4→3, kalınlık
+  kutusu 58×30→40×26. Araç çubuğu 366×80 → 363×69 (offscreen çekimle ölçüldü ve
+  ekran görüntüsüyle gözle doğrulandı).
+- 17 özelliğin tamamı korundu; kısayol tuşları ve ipuçları değişmedi. OCR
+  yokluğunda gizlenme davranışı aynen duruyor.
+- Kapılar: 599 passed, 1 skipped, 12 subtests; `check.ps1 -Audit` temiz.
 
 ## 2026-10-16 — 0.8.4 yeniden kesim: ekran alıntısında OCR (metni ayıkla)
 
