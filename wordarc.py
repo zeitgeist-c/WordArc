@@ -1043,14 +1043,38 @@ class WordArc:
 
     def _update_installed(self, version, new_exe):
         import update as update_mod
+        window = self.settings_window
+        if window is not None:
+            window.show_update_ready(version)
         if self.tray.isVisible():
             self.tray.showMessage(
                 BRAND.name,
                 t("Version {version} downloaded. WordArc is restarting.").format(
                     version=version),
                 QSystemTrayIcon.MessageIcon.Information, 5000)
-        update_mod.spawn_swap(os.getpid(), Path(new_exe))
-        self.restart()
+        try:
+            update_mod.spawn_swap(os.getpid(), Path(new_exe),
+                                  Path(sys.executable))
+        except OSError:
+            logging.getLogger("wordarc.update").exception("swap handoff failed")
+            self._update_failed(t("Update failed"))
+            return
+        self._quit_for_update()
+
+    def _quit_for_update(self):
+        """Quit so the swap batch can boot the new exe.
+
+        Unlike restart(), nothing is relaunched here: the swap batch starts
+        the new version after this process exits. Relaunching sys.executable
+        instead would boot the OLD version a second time.
+        """
+        if self.settings_window is not None:
+            self.settings_window.close()
+        self.shutdown()
+        for name in SERVER_NAMES:
+            QLocalServer.removeServer(name)
+        _release_instance_mutex()
+        self.app.quit()
 
     def open_settings(self):
         if self.settings_window is None:

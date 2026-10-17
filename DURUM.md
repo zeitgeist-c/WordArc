@@ -1,19 +1,46 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-17
-Hazırlanan paket: 0.8.7 (`brand.py`)
+Hazırlanan paket: 0.8.8 (`brand.py`)
 Dal: master
-Git dönüş noktası: 63141d6 / v0.8.6
-Yedek 2026-10-17: ekran alıntısı OCR motoru RapidOCR oldu (Windows OCR yedek);
-sürüm 0.8.7.
+Git dönüş noktası: f383fb3 / v0.8.7
+Yedek 2026-10-17: güncelleme sonrası geçiş onarımı (swap el sıkışması +
+eski sürüm temizliği); sürüm 0.8.8.
 Halka açık dağıtım deposu açıldı: `zeitgeist-c/WordArc-Releases` (public; yalnız
 EXE/BAT asset'li Release, kod YOK). Arkadaş indirme linki ve güncelleme kontrolü
 (0.8.6) buradan; kaynak depo private kalıyor.
 
+## 2026-10-17 — 0.8.8: güncelleme sonrası geçiş onarımı
+
+0.8.7'de "İndir ve kur" %100'de takılıp eski sürüm yerinde kalıyordu; logda
+`wordarc.py:1052 → update.py:173 spawn_swap → OSError: [WinError 87]`.
+İki kök neden vardı:
+
+- `spawn_swap`, `DETACHED_PROCESS | CREATE_NEW_CONSOLE` bayraklarını birlikte
+  veriyordu; bu kombinasyon WinError 87 ile patlıyor, exception slot'tan
+  taşınca `restart()` hiç çalışmıyordu — arayüz %100'de donuyordu.
+- `restart()` eski exe'yi (`sys.executable`) yeniden başlatıyordu; swap
+  betiği de yeni exe'yi açınca çift işlem kalıyordu (iki adet 0.8.7).
+
+Düzeltme (`update.py`, `wordarc.py`):
+
+- Swap betiği yalnız `CREATE_NEW_CONSOLE` ile başlatılıyor; el sıkışma
+  başarısız olursa arayüz "Güncelleme başarısız" gösterip açık kalıyor
+  (donma yok).
+- Geçişte eski exe yeniden başlatılmıyor: `_quit_for_update()` yalnız
+  kapanıyor, swap betiği çıkışı bekleyip yeni exe'yi `--restarted` ile
+  açıyor, ardından eski sürüm exe + sürüm BAT'ını silip kendini siliyor.
+  Yeni sürüm klasörde tek kalıyor.
+- İndirme bitince durum satırı "hazır, yeniden başlayacak" diyor
+  (`show_update_ready` daha önce hiç çağrılmıyormuş).
+
+Kanıt: 5 yeni test (bayrak kombosu, eski exe/BAT silme satırları, eskiyi
+yeniden başlatmama, hata yolunda donmama) — ...
+
 ## 2026-10-17 — 0.8.7: OCR motoru RapidOCR (Windows OCR yedekte)
 
 Windows.Media.Ocr küçük ekran puntoında Türkçe metni bozuyordu ("tamamlamdi",
-"lalacaklı" vakaları). Dört gerçekçi kırpma vakalı bench (scriv: e-fatura,
+"lalacaklı" vakaları). Dört gerçekçi kırpma vakalı bench (ör. e-fatura,
 küçük punto mutabakat, kontrast, arayüz): RapidOCR 4/4 %100 kelime isabeti;
 Windows OCR küçük puntoda %81,8; Tesseract ek ~250 MB kurulum istedi. Seçim:
 RapidOCR (PP-OCRv6 det/rec + yön sınıflayıcı, ONNX Runtime üzerinde —
