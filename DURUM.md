@@ -35,7 +35,12 @@ Düzeltme (`update.py`, `wordarc.py`):
   (`show_update_ready` daha önce hiç çağrılmıyormuş).
 
 Kanıt: 5 yeni test (bayrak kombosu, eski exe/BAT silme satırları, eskiyi
-yeniden başlatmama, hata yolunda donmama) — ...
+yeniden başlatmama, hata yolunda donmama) — 624 passed, 1 skipped,
+12 subtests; check.ps1 -Audit temiz.
+- 0.8.8 EXE SHA256: `8a0913635618538719749b17604cf496c5bf99fde1f4d92f61b0b7a8367c3c7b`
+  (donuk arşivde entry script'te `_quit_for_update`, `update` modülünde yalnız
+  `CREATE_NEW_CONSOLE`, gömülü sürüm 0.8.8 kanıtlandı),
+  BAT SHA256: `100f52f670563f71de26b5c0adbcb6bac16f78ddb7dd32762329323827c7ac4f`.
 
 ## 2026-10-17 — 0.8.7: OCR motoru RapidOCR (Windows OCR yedekte)
 
