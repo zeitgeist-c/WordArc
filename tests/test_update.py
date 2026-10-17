@@ -113,6 +113,35 @@ class SwapTests(unittest.TestCase):
             self.assertIn("del ", body)
             self.assertTrue(popen.called)
 
+    def test_swap_launches_detached_without_the_winerror87_flag_combo(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            new_exe = Path(tmp) / "WordArc-9.9.9.exe"
+            with mock.patch("update.subprocess.Popen") as popen:
+                update.spawn_swap(4242, new_exe)
+            _, kwargs = popen.call_args
+            self.assertEqual(kwargs.get("creationflags"),
+                             getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+
+    def test_swap_removes_the_superseded_exe_and_its_version_bat(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            new_exe = Path(tmp) / "WordArc-9.9.9.exe"
+            old_exe = Path(tmp) / "WordArc-9.9.8.exe"
+            with mock.patch("update.subprocess.Popen"):
+                update.spawn_swap(4242, new_exe, old_exe)
+            body = (Path(tmp) / "wordarc-swap.bat").read_text(encoding="ascii")
+            self.assertIn(f'del "{old_exe}"', body)
+            self.assertIn(f'del "{Path(tmp) / "WordArc-9.9.8.bat"}"', body)
+            self.assertIn(f'start "" "{new_exe}" --restarted', body)
+
+    def test_swap_without_old_exe_deletes_nothing_else(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            new_exe = Path(tmp) / "WordArc-9.9.9.exe"
+            with mock.patch("update.subprocess.Popen"):
+                update.spawn_swap(4242, new_exe, new_exe)
+            body = (Path(tmp) / "wordarc-swap.bat").read_text(encoding="ascii")
+            self.assertNotIn(f'del "{new_exe}"', body)
+
 
 class LifecycleTests(unittest.TestCase):
     """WordArc's tray/signal wiring, without Qt threads or the network."""
@@ -164,6 +193,36 @@ class LifecycleTests(unittest.TestCase):
         controller.settings_window = mock.Mock()
         controller._run_update_check(tray=False)
         controller.settings_window.show_update_error.assert_called_once()
+
+    def test_installed_update_quits_without_relaunching_the_old_exe(self):
+        import wordarc
+        controller = self._controller()
+        controller.settings_window = mock.Mock()
+        controller.shutdown = mock.Mock()
+        controller.app = mock.Mock()
+        with mock.patch("update.spawn_swap") as swap, \
+             mock.patch("wordarc._release_instance_mutex") as release, \
+             mock.patch.object(wordarc.subprocess, "Popen") as popen:
+            controller._update_installed("9.9.9", "C:/app/WordArc-9.9.9.exe")
+        controller.settings_window.show_update_ready.assert_called_once_with(
+            "9.9.9")
+        self.assertTrue(swap.called)
+        # swap is mocked, so any Popen here could only be the old exe being
+        # relaunched — which must not happen (it left a duplicate behind).
+        popen.assert_not_called()
+        controller.app.quit.assert_called_once_with()
+        release.assert_called_once_with()
+
+    def test_failed_swap_handoff_reports_instead_of_sticking_at_100_percent(self):
+        import wordarc
+        controller = self._controller()
+        controller.settings_window = mock.Mock()
+        controller.app = mock.Mock()
+        with mock.patch("update.spawn_swap",
+                         side_effect=OSError("boom")):
+            controller._update_installed("9.9.9", "C:/app/WordArc-9.9.9.exe")
+        controller.settings_window.show_update_error.assert_called_once()
+        controller.app.quit.assert_not_called()
 
 
 if __name__ == "__main__":

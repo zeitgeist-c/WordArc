@@ -156,25 +156,35 @@ def install_path(current_exe: Path, version: str) -> Path:
     return current_exe.with_name(f"{BRAND.name}-{version}.exe")
 
 
-def spawn_swap(old_pid: int, new_exe: Path) -> None:
+def spawn_swap(old_pid: int, new_exe: Path, old_exe: Path | None = None) -> None:
     """Hand the running exe over to the fresh copy.
 
     Windows will not replace a running exe; the batch waits for this process
     to exit, boots the new exe the way a restart would, then deletes itself.
+    When ``old_exe`` is given and differs from the new one, the batch also
+    removes the superseded exe (plus its version BAT) so only the new
+    version remains on disk.
     """
+    lines = [
+        "@echo off\r\n",
+        ":wait\r\n",
+        f'tasklist /FI "PID eq {old_pid}" 2>NUL | find " {old_pid} " >NUL\r\n',
+        "if not errorlevel 1 (timeout /t 1 /nobreak >NUL & goto wait)\r\n",
+        f'start "" "{new_exe}" --restarted\r\n',
+    ]
+    if old_exe is not None and Path(old_exe) != Path(new_exe):
+        old_exe = Path(old_exe)
+        lines.append(f'del "{old_exe}"\r\n')
+        old_bat = old_exe.with_name(old_exe.stem + ".bat")
+        if old_bat.name.startswith(BRAND.name + "-"):
+            lines.append(f'del "{old_bat}"\r\n')
+    lines.append('del "%~f0"\r\n')
     script = new_exe.with_name(f"{BRAND.slug}-swap.bat")
-    script.write_text(
-        "@echo off\r\n"
-        ":wait\r\n"
-        f'tasklist /FI "PID eq {old_pid}" 2>NUL | find " {old_pid} " >NUL\r\n'
-        "if not errorlevel 1 (timeout /t 1 /nobreak >NUL & goto wait)\r\n"
-        f'start "" "{new_exe}" --restarted\r\n'
-        'del "%~f0"\r\n',
-        encoding="ascii")
-    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | \
-        getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
-    subprocess.Popen(["cmd", "/c", str(script)], creationflags=flags,
-                     close_fds=True)
+    script.write_text("".join(lines), encoding="ascii")
+    # CREATE_NEW_CONSOLE alone: combining it with DETACHED_PROCESS makes
+    # Popen fail with WinError 87, which used to leave the UI stuck at 100%.
+    subprocess.Popen(["cmd", "/c", str(script)], close_fds=True,
+                     creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
     log.info("swap armed: pid=%s new=%s", old_pid, new_exe)
 
 
