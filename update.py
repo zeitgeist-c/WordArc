@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from brand import BRAND
+from i18n import t
 
 RELEASE_REPO = "zeitgeist-c/WordArc-Releases"
 API_LATEST = f"https://api.github.com/repos/{RELEASE_REPO}/releases/latest"
@@ -48,7 +49,8 @@ def parse_version(text: str) -> tuple:
     """'v0.8.10' / '0.8.10-beta' -> (0, 8, 10); non-numeric tails stop."""
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", str(text or ""))
     if not match:
-        raise UpdateError(f"Version number not understood: {text!r}")
+        raise UpdateError(t("Version number not understood: {version}")
+                          .format(version=repr(text)))
     return tuple(int(part) for part in match.groups())
 
 
@@ -74,7 +76,8 @@ def parse_release(payload: dict, version_prefix: str = "v") -> UpdateInfo:
             size=int(asset.get("size") or 0),
             page_url=str(payload.get("html_url") or ""),
         )
-    raise UpdateError(f"The newest release has no {exe_name} asset.")
+    raise UpdateError(t("The newest release has no {asset} asset.")
+                      .format(asset=exe_name))
 
 
 def fetch_latest() -> UpdateInfo:

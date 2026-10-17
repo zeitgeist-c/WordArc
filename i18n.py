@@ -379,6 +379,8 @@ TR = {
     "The update download was interrupted.": "Güncelleme indirmesi yarıda kesildi.",
     "The download ended before the file was complete.": "İndirme dosya tamamlanmadan bitti.",
     "The checksum of the downloaded file does not match.": "İndirilen dosyanın sağlama toplamı uyuşmuyor.",
+    "The newest release has no {asset} asset.": "Yayınlanan en yeni sürümde {asset} dosyası yok.",
+    "Version number not understood: {version}": "Sürüm numarası anlaşılamadı: {version}",
     "No readable text found in the capture.":
         "Alınan görüntüde okunabilir metin bulunamadı.",
     "Text extracted — copied to the clipboard.":
