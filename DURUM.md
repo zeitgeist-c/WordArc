@@ -1,14 +1,44 @@
 # WordArc — durum
 
-Güncelleme: 2026-10-16
-Hazırlanan paket: 0.8.5 (`brand.py`)
+Güncelleme: 2026-10-17
+Hazırlanan paket: 0.8.7 (`brand.py`)
 Dal: master
-Git dönüş noktası: be82cda / v0.8.4
-Yedek 2026-10-16: kompakt gruplu araç çubuğu (B düzeni, Dolu şekillerin yanında)
-+ taslak çizim düzeltmesi, sürüm 0.8.5; push + etiket + Release yapıldı.
+Git dönüş noktası: 63141d6 / v0.8.6
+Yedek 2026-10-17: ekran alıntısı OCR motoru RapidOCR oldu (Windows OCR yedek);
+sürüm 0.8.7.
 Halka açık dağıtım deposu açıldı: `zeitgeist-c/WordArc-Releases` (public; yalnız
 EXE/BAT asset'li Release, kod YOK). Arkadaş indirme linki ve güncelleme kontrolü
 (0.8.6) buradan; kaynak depo private kalıyor.
+
+## 2026-10-17 — 0.8.7: OCR motoru RapidOCR (Windows OCR yedekte)
+
+Windows.Media.Ocr küçük ekran puntoında Türkçe metni bozuyordu ("tamamlamdi",
+"lalacaklı" vakaları). Dört gerçekçi kırpma vakalı bench (scriv: e-fatura,
+küçük punto mutabakat, kontrast, arayüz): RapidOCR 4/4 %100 kelime isabeti;
+Windows OCR küçük puntoda %81,8; Tesseract ek ~250 MB kurulum istedi. Seçim:
+RapidOCR (PP-OCRv6 det/rec + yön sınıflayıcı, ONNX Runtime üzerinde —
+onnxruntime yerel konuşmadan zaten pakette).
+
+- `ocr.py`: RapidOCR ana motor, Windows OCR yedek. Motor hiç yoksa buton eski
+  davrandığı gibi gizli; RapidOCR çalışma anında patlarsa loglanır ve Windows
+  OCR devralır. Model yükleme ilk çağrıda (~1,5 sn), sonrası ~0,5 sn; tek
+  kilitli paylaşılan motor örneği.
+- `requirements.txt` + `requirements-lock.txt`: rapidocr 3.10.0,
+  opencv-python-headless, pyclipper, shapely, omegaconf, colorlog + transitif
+  zincir (requests ailesi, pillow, pyyaml, tqdm, six — kilit, rapidocr'ın
+  çalışma zamanında import ettiği PIL/tqdm/yaml/six'i de içeriyor;
+  pip-audit/SBOM coverage
+  için zorunlu).
+- `wordarc.spec`: `collect_data_files('rapidocr')` (config + 3 .onnx ≈ 32 MB)
+  ve rapidocr hiddenimports. Not: `rapidocr.inference_engine.main` diye modül
+  yok, doğrusu `rapidocr.main` — denetimde düzeltildi.
+- Kanıt: gölge konsol probe'u (`ocr-check.spec` + `tools/ocr_probe.py`) — model
+  ve cv2 paket içinde, `FROZEN_OCR_OK`. Testler: 6 yeni OCR testiyle
+  619 passed, 1 skipped.
+- `build/` altındaki eski sürüm PyInstaller ara çıktıları temizlendi (~18 GB;
+  0.6.11–0.8.5 workpath'leri, 0.6.8 probe dizinleri, previous-delivery 0.6.4
+  EXE — hepsi yeniden üretilebilir, git dışı).
+
 
 ## 2026-10-16 — 0.8.6: kendi kendini güncelleme (public WordArc-Releases)
 
