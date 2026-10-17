@@ -34,7 +34,12 @@ onnxruntime yerel konuşmadan zaten pakette).
   yok, doğrusu `rapidocr.main` — denetimde düzeltildi.
 - Kanıt: gölge konsol probe'u (`ocr-check.spec` + `tools/ocr_probe.py`) — model
   ve cv2 paket içinde, `FROZEN_OCR_OK`. Testler: 6 yeni OCR testiyle
-  619 passed, 1 skipped.
+  619 passed, 1 skipped, 12 subtests; check.ps1 -Audit temiz (urllib3 2.8.0'a
+  çekildi — 3 PYSEC).
+- 0.8.7 EXE SHA256: `322fbf75f65b5fb9a58b7e2312dc9879505b8f32339515dcde506f8a4c7cc330`
+  (donuk arşivde `ocr._recognize_rapid`, 3 `.onnx` + rapidocr config'leri ve
+  gömülü sürüm 0.8.7 kanıtlandı),
+  BAT SHA256: `a9b8274df299cbaf17c114fed93d3e156e9c79d81ea1eec7a47c5059b7971924`.
 - `build/` altındaki eski sürüm PyInstaller ara çıktıları temizlendi (~18 GB;
   0.6.11–0.8.5 workpath'leri, 0.6.8 probe dizinleri, previous-delivery 0.6.4
   EXE — hepsi yeniden üretilebilir, git dışı).
