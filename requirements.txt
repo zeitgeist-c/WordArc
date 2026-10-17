@@ -2,8 +2,18 @@ PyQt6>=6.11,<6.12
 sounddevice>=0.5.5,<0.6
 SoundCard>=0.4.6,<0.5
 numpy>=1.26,<3
-# Windows OCR for the screenshot editor (Metni ayıkla). The recogniser itself
-# ships with Windows; these are only the language projections for it.
+# Primary OCR for the screenshot editor (Metni ayıkla): RapidOCR — PaddleOCR
+# models on ONNX Runtime. onnxruntime is already present for local speech;
+# these add the recogniser itself plus its small geometry/config helpers.
+rapidocr==3.10.0
+opencv-python-headless==4.11.0.86
+pyclipper==1.4.0
+shapely==2.2.0
+omegaconf==2.4.0
+colorlog==6.12.0
+# Windows OCR is the fallback engine (ocr.py) for machines without the ONNX
+# stack. The recogniser itself ships with Windows; these are only the
+# language projections for it.
 winrt-runtime==3.2.1
 winrt-Windows.Foundation==3.2.1
 winrt-Windows.Foundation.Collections==3.2.1

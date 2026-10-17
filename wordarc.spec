@@ -4,7 +4,7 @@ import sysconfig
 from pathlib import Path
 
 import PyQt6
-from PyInstaller.utils.hooks import collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 # The winrt wheels ship their own msvcp140.dll copy next to their .pyd files.
 # When onnxruntime loads its own copy of the same CRT into the same process,
@@ -23,6 +23,9 @@ _QT_TRANSLATIONS = os.path.join(os.path.dirname(PyQt6.__file__),
                                 "Qt6", "translations")
 datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand'),
          ('assets/sounds', 'assets/sounds'),
+         # RapidOCR reads config.yaml/default_models.yaml and its .onnx models
+         # from package data at runtime; import analysis cannot see them.
+         *collect_data_files('rapidocr'),
          (os.path.join(_QT_TRANSLATIONS, 'qtbase_tr.qm'),
           'PyQt6/Qt6/translations')]
 binaries = collect_dynamic_libs('ctranslate2')
@@ -42,9 +45,17 @@ for dll in list((_SITE / 'nvidia').glob('*/bin/*.dll')) + list((_SITE / 'nvidia'
 hiddenimports = ['unicodedata', 'soundcard', 'faster_whisper', 'ctranslate2',
                   'onnxruntime', 'tokenizers', 'huggingface_hub',
                   'av', 'av.audio.resampler', 'screenshot_capture', 'screenshot_editor',
+                  # RapidOCR (ocr.py primary engine). Its ONNX inference engine
+                  # is picked by name at runtime, so plain analysis misses it;
+                  # cv2 is the headless wheel (no Qt/GUI conflict).
+                  'ocr', 'update', 'rapidocr', 'rapidocr.main',
+                  'rapidocr.inference_engine',
+                  'rapidocr.inference_engine.base',
+                  'rapidocr.inference_engine.onnxruntime', 'cv2', 'shapely',
+                  'pyclipper', 'omegaconf', 'yaml',
                   # Windows OCR (ocr.py imports these inside functions; the
                   # compiled projections must ride along explicitly).
-                  'ocr', 'update', 'winrt', 'winrt._winrt', 'winrt.runtime', 'winrt.system',
+                  'winrt', 'winrt._winrt', 'winrt.runtime', 'winrt.system',
                   'winrt.windows.foundation', 'winrt.windows.foundation.collections',
                   'winrt.windows.graphics.imaging', 'winrt.windows.media.ocr',
                   'winrt.windows.storage.streams', 'winrt.windows.globalization']

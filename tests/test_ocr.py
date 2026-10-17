@@ -90,16 +90,66 @@ class TestRecognitionPlumbing(unittest.TestCase):
         self.assertEqual(text, "bir\niki")
 
 
+class TestRapidPrimary(unittest.TestCase):
+    """RapidOCR is the primary engine; Windows OCR is the fallback."""
+
+    def _white_image(self):
+        from PyQt6.QtGui import QColor
+        image = QImage(4, 4, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        return image
+
+    def test_rapid_result_wins(self):
+        with mock.patch.object(ocr, "_recognize_rapid", return_value="rapid metni"), \
+             mock.patch.object(ocr, "_recognize", side_effect=AssertionError("winrt calismamali")):
+            self.assertEqual(ocr.extract_text(self._white_image(), "tr"), "rapid metni")
+
+    def test_windows_takes_over_when_rapid_is_absent(self):
+        async def win(*_a, **_k):
+            return "windows metni"
+        with mock.patch.object(ocr, "_recognize_rapid",
+                               side_effect=ocr.OcrUnavailable("yok")), \
+             mock.patch.object(ocr, "_recognize", win):
+            self.assertEqual(ocr.extract_text(self._white_image(), "tr"), "windows metni")
+
+    def test_windows_takes_over_when_rapid_glitches(self):
+        async def win(*_a, **_k):
+            return "windows metni"
+        with mock.patch.object(ocr, "_recognize_rapid",
+                               side_effect=RuntimeError("model patladi")), \
+             mock.patch.object(ocr, "_recognize", win):
+            self.assertEqual(ocr.extract_text(self._white_image(), "tr"), "windows metni")
+
+    def test_rapid_ready_false_refuses_cleanly(self):
+        saved = (ocr._rapid_engine, ocr._rapid_failed)
+        ocr._rapid_engine, ocr._rapid_failed = None, False
+        try:
+            with mock.patch.object(ocr, "_rapid_ready", return_value=False):
+                with self.assertRaises(ocr.OcrUnavailable):
+                    ocr._get_rapid_engine()
+        finally:
+            ocr._rapid_engine, ocr._rapid_failed = saved
+
+    def test_is_available_true_when_only_rapid_is_present(self):
+        with mock.patch.object(ocr, "_rapid_ready", return_value=True), \
+             mock.patch.object(ocr, "_imports",
+                               side_effect=ocr.OcrUnavailable("winrt yok")):
+            self.assertTrue(ocr.is_available())
+
+
 class TestUnavailableGracefully(unittest.TestCase):
     def test_missing_projections_raise_ocr_unavailable(self):
-        with mock.patch.object(ocr, "_imports",
+        with mock.patch.object(ocr, "_recognize_rapid",
+                               side_effect=ocr.OcrUnavailable("yok")), \
+             mock.patch.object(ocr, "_imports",
                                side_effect=ocr.OcrUnavailable("yok")):
             image = QImage(4, 4, QImage.Format.Format_RGB32)
             with self.assertRaises(ocr.OcrUnavailable):
                 ocr.extract_text(image, "tr")
 
     def test_is_available_never_raises(self):
-        with mock.patch.object(ocr, "_imports", side_effect=RuntimeError("boom")):
+        with mock.patch.object(ocr, "_rapid_ready", return_value=False), \
+             mock.patch.object(ocr, "_imports", side_effect=RuntimeError("boom")):
             self.assertFalse(ocr.is_available())
 
     def test_extract_text_reports_a_clean_failure_when_the_engine_breaks(self):
@@ -108,7 +158,9 @@ class TestUnavailableGracefully(unittest.TestCase):
         async def boom(*_args, **_kwargs):
             raise RuntimeError("WinRT blew up")
         broken.side_effect = lambda *a: boom()
-        with mock.patch.object(ocr, "_recognize", broken):
+        with mock.patch.object(ocr, "_recognize_rapid",
+                               side_effect=ocr.OcrUnavailable("yok")), \
+             mock.patch.object(ocr, "_recognize", broken):
             image = QImage(4, 4, QImage.Format.Format_RGB32)
             image.fill(__import__("PyQt6.QtGui", fromlist=["QColor"]).QColor("white"))
             with self.assertRaises(ocr.OcrUnavailable):
