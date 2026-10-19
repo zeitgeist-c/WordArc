@@ -1039,6 +1039,7 @@ TR.update({
     "Unsupported file type: {suffix}": "Desteklenmeyen dosya türü: {suffix}",
     "Reading file {done} of {total}: {name}": "Dosya okunuyor {done}/{total}: {name}",
     "Files": "Dosyalar",
+    "Recent": "Son okumalar",
     "Text and PDF files to turn into audio, in order.": "Sese çevrilecek metin ve PDF dosyaları, sırayla.",
     "Add files…": "Dosya ekle…",
     "Convert all to audio": "Tümünü sese çevir",

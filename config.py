@@ -393,6 +393,7 @@ DEFAULTS = {
     "config_schema": CONFIG_SCHEMA,
     "ui_language": "tr",                # tr | en | auto
     "theme_mode": "dark",               # dark | light
+    "settings_size": [],                # remembered settings window [w, h]; [] = auto
     "start_with_windows": True,
     "close_to_tray": True,
     "gemini_api_key": "",
@@ -431,8 +432,8 @@ DEFAULTS = {
     "tts_format": "opus",            # opus | mp3 | wav
     "tts_speed": 1.0,                # 1.0 | 1.5 | 2.0
     "tts_autoplay": False,           # play as soon as a file save finishes
-    "tts_shortcut": "Ctrl+Shift+O",  # read the selected text anywhere
-    "tts_stop_shortcut": "Ctrl+Shift+X",
+    "tts_shortcut": "",                # empty -> tab only; set to grab a key
+    "tts_stop_shortcut": "",
     "tts_last_dir": "",
     "overlay_corner": "bottom-left",
     "overlay_meter": "spectrum",   # bars | spectrum | wave | capsule
@@ -615,6 +616,17 @@ class Config:
             self.data["theme_mode"] = "dark"
         if self.data.get("local_stt_device") not in ("auto", "cuda", "vulkan", "cpu"):
             self.data["local_stt_device"] = "auto"
+        size = self.data.get("settings_size")
+        if (not isinstance(size, list) or len(size) != 2
+                or not all(isinstance(v, int) and v > 0 for v in size)):
+            self.data["settings_size"] = []
+        # Reading-aloud keys used to grab globals by default; one of them
+        # collides on some machines and toasted on every start. They are
+        # opt-in now: stored old defaults fall back to tab-only.
+        if self.data.get("tts_shortcut") == "Ctrl+Shift+O":
+            self.data["tts_shortcut"] = ""
+        if self.data.get("tts_stop_shortcut") == "Ctrl+Shift+X":
+            self.data["tts_stop_shortcut"] = ""
         self.data["config_schema"] = CONFIG_SCHEMA
 
     def _migrate_plaintext_secret(self):

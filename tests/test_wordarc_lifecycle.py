@@ -61,6 +61,35 @@ def test_other_tray_reasons_stay_inert():
     controller._toggle.assert_not_called()
 
 
+def test_hotkey_failure_names_the_action():
+    controller = _controller(True)
+    controller.conf = {"shortcut": "ScrollLock", "meeting_shortcut": "",
+                       "screenshot_shortcut": "Ctrl+Alt+S",
+                       "tts_shortcut": "", "tts_stop_shortcut": ""}
+    messages = []
+    controller.tray = mock.Mock()
+    controller.tray.isVisible.return_value = True
+    controller.tray.showMessage.side_effect = \
+        lambda *_a, **_k: messages.append(_a[1])
+    controller._on_hotkey_failed("...kullanıyor olabilir: Ctrl+Alt+S")
+    assert len(messages) == 1
+    assert messages[0].endswith("(Ekran görüntüsü)")
+
+
+def test_hotkey_failure_without_match_passes_through():
+    controller = _controller(True)
+    controller.conf = {"shortcut": "ScrollLock", "meeting_shortcut": "",
+                       "screenshot_shortcut": "Ctrl+Alt+S",
+                       "tts_shortcut": "", "tts_stop_shortcut": ""}
+    messages = []
+    controller.tray = mock.Mock()
+    controller.tray.isVisible.return_value = True
+    controller.tray.showMessage.side_effect = \
+        lambda *_a, **_k: messages.append(_a[1])
+    controller._on_hotkey_failed("...kullanıyor olabilir: Ctrl+F9")
+    assert messages == ["...kullanıyor olabilir: Ctrl+F9"]
+
+
 def test_ocr_result_lands_in_the_clipboard_or_the_warning_tray():
     from PyQt6.QtWidgets import QApplication
 

@@ -60,6 +60,18 @@ class TestConfigLoadSave(unittest.TestCase):
         cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         cfg.CONFIG_FILE.write_text(json.dumps({"local_stt_device": "gpu"}), encoding="utf-8")
         self.assertEqual(cfg.Config()["local_stt_device"], "auto")
+    def test_bad_window_size_resets_to_auto(self):
+        cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        cfg.CONFIG_FILE.write_text(json.dumps({"settings_size": [1600]}), encoding="utf-8")
+        self.assertEqual(cfg.Config()["settings_size"], [])
+        cfg.CONFIG_FILE.write_text(json.dumps({"settings_size": [1600, 900]}), encoding="utf-8")
+        self.assertEqual(cfg.Config()["settings_size"], [1600, 900])
+    def test_old_reading_defaults_migrate_to_tab_only(self):
+        cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        cfg.CONFIG_FILE.write_text(json.dumps({"tts_shortcut": "Ctrl+Shift+O", "tts_stop_shortcut": "Ctrl+Shift+X"}), encoding="utf-8")
+        migrated = cfg.Config()
+        self.assertEqual(migrated["tts_shortcut"], "")
+        self.assertEqual(migrated["tts_stop_shortcut"], "")
     def test_save_then_load(self):
         stored = {"value": ""}
         with mock.patch.object(cfg.credential_store, "write",

@@ -53,7 +53,7 @@ class TestI18n(unittest.TestCase):
 # format-only strings that carry other text.
 UNTRANSLATED = {
     "Gemini", "Model", "Google Gemini", "Claude Code", "Codex",
-    "{action}: {preview}", "{name}: {preview}",
+    "{action}: {preview}", "{name}: {preview}", "{message} ({action})",
     # Model names, the same in both languages.
     "Whisper base", "Whisper small", "Whisper large-v3-turbo",
     # Compute device names, the same in both languages.

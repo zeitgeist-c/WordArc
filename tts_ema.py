@@ -211,10 +211,53 @@ def ensure_models(progress=None):
     if progress:
         progress(t("Downloading the Turkish voice model (~34 MB)…"))
     snapshot_download(repo_id=REPO, local_dir=str(root),
-                      allow_patterns=list(FILES))
+                      allow_patterns=list(FILES),
+                      tqdm_class=_SilentProgress)
     if not models_ready(root):
         raise RuntimeError(t("Voice model download failed."))
     return root
+
+
+class _SilentProgress:
+    """tqdm stand-in that never touches the terminal.
+
+    Windowed builds have no stderr; a real bar dies with
+    "'NoneType' object has no attribute 'write'". huggingface_hub only
+    needs a context manager with update().
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.total = kwargs.get("total")
+        self.n = kwargs.get("initial", 0) or 0
+
+    def __copy__(self):
+        return self
+
+    def __deepcopy__(self, memo):
+        return self
+
+    def __getattr__(self, name):
+        # Future huggingface_hub calls (set_description_str, …) stay silent.
+        # Numeric counters (n, total) are real attributes above so getattr
+        # defaults in the caller keep working.
+        def silent(*args, **kwargs):
+            pass
+        return silent
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def update(self, n=1):
+        try:
+            self.n += n or 0
+        except TypeError:
+            pass
+
+    def close(self):
+        pass
 
 
 class Engine:

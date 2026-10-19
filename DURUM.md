@@ -1,9 +1,14 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-19
-Hazırlanan paket: 0.8.9 (`brand.py`)
+Hazırlanan paket: 0.8.10 (`brand.py`)
 Dal: master
-Git dönüş noktası: 010024e / v0.8.8
+Git dönüş noktası: d5a4e6f / v0.8.9
+Yedek 2026-10-19: 0.8.10 — donmuş pakette sessiz model indirme (None stream +
+Hugging Face progress), ayarlar penceresi kaydırma + boyut hatırlama, okuma
+kısayolları isteğe bağlı + uyarıda iş adı; sürüm 0.8.10.
+- 0.8.10 EXE SHA256: `6a6fd0ccc8ccf08165af4114cce300c5268799c469b303e1cb9969df13949f93`
+  BAT SHA256: `355ec3eb657a664a7c152c8ed24b4e9801ce97d2d758d78ea4713a6b10c5c5e9`.
 Yedek 2026-10-19: Seslendir sekmesi (yerel Türkçe TTS: metin/dosya/ekran okuma + kaydetme); sürüm 0.8.9.
 Yedek 2026-10-19 (aynı sürüm üzerine): ses kartı kilitlenmesi düzeltmesi
 (süre korumalı oynatma; takılmada Durdur keser, hata mesajı gelir); paket yenilendi.
