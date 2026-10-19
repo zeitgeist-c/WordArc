@@ -26,3 +26,11 @@ winrt-Windows.Storage.Streams==3.2.1
 # needs installed.
 faster-whisper==1.2.1
 ctranslate2==4.8.2
+# Reading aloud (Speak tab): EMA Lightning Turkish TTS as ONNX graphs.
+# onnxruntime and huggingface_hub already ride along for local speech; this
+# adds only the small Rust text normalizer (native module, pinned for frozen
+# packaging).
+normalizer-tr==0.8.0
+# File reading for the Speak tab (PDF/MD/TXT to speech). Single native
+# module, pinned for frozen packaging.
+pymupdf==1.26.4

@@ -160,7 +160,9 @@ def test_shortcut_capture_parks_and_returns_the_global_hotkeys():
     controller.cancel_hotkey = mock.Mock()
     controller._refresh_cancel_hotkey = mock.Mock()
     controller.conf = {"shortcut": "Ctrl+Space", "meeting_shortcut": "",
-                       "screenshot_shortcut": "Ctrl+Alt+S"}
+                       "screenshot_shortcut": "Ctrl+Alt+S",
+                       "tts_shortcut": "Ctrl+Shift+O",
+                       "tts_stop_shortcut": "Ctrl+Shift+X"}
 
     controller._on_shortcut_capture(True)
     controller.evdev.stop.assert_called_once_with()
@@ -169,7 +171,8 @@ def test_shortcut_capture_parks_and_returns_the_global_hotkeys():
     controller._on_shortcut_capture(False)
     controller.evdev.start.assert_called_once_with({
         "toggle": "Ctrl+Space", "meeting": "",
-        "screenshot": "Ctrl+Alt+S"})
+        "screenshot": "Ctrl+Alt+S",
+        "speak": "Ctrl+Shift+O", "speak_stop": "Ctrl+Shift+X"})
     controller._refresh_cancel_hotkey.assert_called_once_with()
 
 

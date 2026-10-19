@@ -427,6 +427,13 @@ DEFAULTS = {
     "screenshot_shortcut": "Ctrl+Alt+S",
     "screenshot_directory": "",
     "screenshot_format": "PNG",
+    # --- reading aloud (EMA Lightning ONNX, local Turkish TTS) --------------
+    "tts_format": "opus",            # opus | mp3 | wav
+    "tts_speed": 1.0,                # 1.0 | 1.5 | 2.0
+    "tts_autoplay": False,           # play as soon as a file save finishes
+    "tts_shortcut": "Ctrl+Shift+O",  # read the selected text anywhere
+    "tts_stop_shortcut": "Ctrl+Shift+X",
+    "tts_last_dir": "",
     "overlay_corner": "bottom-left",
     "overlay_meter": "spectrum",   # bars | spectrum | wave | capsule
     "keep_audio": False,
