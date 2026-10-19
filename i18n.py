@@ -1046,4 +1046,5 @@ TR.update({
     "Text and PDF files": "Metin ve PDF dosyaları",
     "Convert to audio and read": "Sese çevir ve oku",
     "Reading the capture…": "Görüntü okunuyor…",
+    "Audio output timed out.": "Ses çıkışı zaman aşımına uğradı.",
 })
