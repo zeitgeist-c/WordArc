@@ -1,9 +1,14 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-19
-Hazırlanan paket: 0.8.10 (`brand.py`)
+Hazırlanan paket: 0.8.11 (`brand.py`)
 Dal: master
-Git dönüş noktası: d5a4e6f / v0.8.9
+Git dönüş noktası: 963f780 / v0.8.10
+Yedek 2026-10-19: 0.8.11 — ekran görüntüsü Oku düğmesi pencereyi öne
+çıkarmadan tepsiden okur; tepsi menüsünde konuşurken canlı "Okumayı
+durdur"; sürüm 0.8.11.
+- 0.8.11 EXE SHA256: `749577a75e2deb1bbb5611a26b8be8542931bb6375bf9d390223a8c6e1e6c715`
+  BAT SHA256: `c078d9497f32f5e461370df22196e454a43649cbff85ebb9898e9f0ad8a085c5`.
 Yedek 2026-10-19: 0.8.10 — donmuş pakette sessiz model indirme (None stream +
 Hugging Face progress), ayarlar penceresi kaydırma + boyut hatırlama, okuma
 kısayolları isteğe bağlı + uyarıda iş adı; sürüm 0.8.10.

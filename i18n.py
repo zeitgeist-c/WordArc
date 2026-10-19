@@ -532,6 +532,7 @@ TR = {
         "yazılmıştır, satırlar yerinde kalır ve hiçbir şey kısaltılmaz.",
     "Transcribe": "Yazıya çevir",
     "Stop": "Durdur",
+    "Stop reading": "Okumayı durdur",
     "Copy": "Panoya kopyala",
     "Save as .txt": "'.txt' olarak kaydet",
     "Save as .srt": "'.srt' olarak kaydet",

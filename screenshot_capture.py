@@ -1056,7 +1056,7 @@ class ScreenshotController(QWidget):
         self._close_overlay()
         self._restore_owner()
 
-    def _on_overlay_ocr(self, image):
+    def _on_overlay_ocr(self, image, restore_owner=True):
         # Recognition runs on a worker thread: a full-screen selection keeps
         # the Windows engine busy for a second or two, and the frozen desktop
         # must stay responsive meanwhile. The overlay closes right away —
@@ -1064,7 +1064,12 @@ class ScreenshotController(QWidget):
         if self._ocr_thread is not None and self._ocr_thread.is_alive():
             return
         self._close_overlay()
-        self._restore_owner()
+        if restore_owner:
+            self._restore_owner()
+        else:
+            # The toolbar's Read button keeps working from the tray: drop
+            # the hidden window without bringing it back to the front.
+            self._hidden_owner = None
 
         language = ""
         try:
@@ -1090,9 +1095,10 @@ class ScreenshotController(QWidget):
 
     def _on_overlay_speak(self, image):
         # The toolbar's Read button always reads: flag the OCR result for
-        # speech no matter how the capture was started.
+        # speech no matter how the capture was started. The window stays
+        # hidden; reading runs from the tray, stopped from its menu.
         self._speak_next = True
-        self._on_overlay_ocr(image)
+        self._on_overlay_ocr(image, restore_owner=False)
 
     def _on_overlay_save(self, image):
         # Parent the native file dialog to the topmost editor. Otherwise it

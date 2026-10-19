@@ -90,6 +90,19 @@ def test_hotkey_failure_without_match_passes_through():
     assert messages == ["...kullanıyor olabilir: Ctrl+F9"]
 
 
+def test_tray_stop_action_follows_speaking_state():
+    app = wordarc.QApplication.instance() or wordarc.QApplication([])
+    controller = _controller(True)
+    controller.tts = mock.Mock()
+    controller.tts.busy = False
+    controller.tray = mock.Mock()
+    controller._build_tray()
+    assert controller.speak_stop_action.isEnabled() is False
+    controller.tts.busy = True
+    controller._refresh_stop_action()
+    assert controller.speak_stop_action.isEnabled() is True
+
+
 def test_ocr_result_lands_in_the_clipboard_or_the_warning_tray():
     from PyQt6.QtWidgets import QApplication
 

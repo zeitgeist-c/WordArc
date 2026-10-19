@@ -351,6 +351,11 @@ class WordArc:
         self.screenshot_action = QAction(t("Capture screenshot"), self.menu)
         self.screenshot_action.triggered.connect(self._take_screenshot)
         self.menu.addAction(self.screenshot_action)
+
+        self.speak_stop_action = QAction(t("Stop reading"), self.menu)
+        self.speak_stop_action.triggered.connect(self._stop_speaking)
+        self.speak_stop_action.setEnabled(False)
+        self.menu.addAction(self.speak_stop_action)
         self.menu.addSeparator()
 
         self.settings_action = QAction(t("Settings…"), self.menu)
@@ -368,7 +373,13 @@ class WordArc:
 
         self.tray.setContextMenu(self.menu)
         self.tray.setToolTip(t("WordArc: ready"))
+        self.menu.aboutToShow.connect(self._refresh_stop_action)
         self._set_icon("audio-input-microphone")
+
+    def _refresh_stop_action(self):
+        # Reading can run with the window hidden (screenshot toolbar), so
+        # the tray carries its own stop switch, live only while speaking.
+        self.speak_stop_action.setEnabled(self.tts.busy)
 
     def _tray_clicked(self, reason):
         # A left click opens the window; recording starts from the hotkey or
