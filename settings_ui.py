@@ -34,6 +34,7 @@ import meeting
 import sounds
 import startup
 import theme
+import tts_ema
 from screenshot_capture import default_save_folder
 from brand import BRAND, brand_asset
 from filetranscribe import FileTranscriber
@@ -1052,6 +1053,7 @@ class WindowView:
 class SettingsWindow(QDialog):
     recording_requested = pyqtSignal(str)
     screenshot_requested = pyqtSignal(str)
+    screenshot_speak_requested = pyqtSignal(str)
     screenshot_failed = pyqtSignal(str)
     cancel_requested = pyqtSignal(str)
     applied = pyqtSignal()
@@ -1232,6 +1234,10 @@ class SettingsWindow(QDialog):
              "Transcribe an existing recording.",
              style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton),
              self._file_tab(), True),
+            ("speak", (), "Speak",
+             "Read Turkish text aloud with a small local voice.",
+             style.standardIcon(QStyle.StandardPixmap.SP_ArrowForward),
+             self._speak_tab(), True),
             ("screenshot", (), "Screenshot",
              "Capture and save a screenshot from the active screen.",
              style.standardIcon(QStyle.StandardPixmap.SP_DesktopIcon),
@@ -1320,7 +1326,7 @@ class SettingsWindow(QDialog):
 
     def _workspace_page(self, kind, original):
         """Move existing controls into fixed local pages, preserving callbacks."""
-        if kind == "screenshot":
+        if kind in ("screenshot", "speak"):
             return original
         old = original.layout()
         widgets = []
@@ -2120,6 +2126,29 @@ class SettingsWindow(QDialog):
         self.show_update_current()
         layout.addWidget(updates)
 
+        reading, body = self._section_card(
+            "Reading aloud", "Turkish text-to-speech on the Speak tab.")
+        self.tts_status = QLabel("")
+        self.tts_status.setWordWrap(True)
+        self.tts_status.setObjectName("muted")
+        body.addWidget(self._label_row("Model status", self.tts_status))
+        self.tts_format = FitsOnScreenCombo()
+        for value in ("opus", "mp3", "wav"):
+            self.tts_format.addItem(value, value)
+        body.addWidget(self._label_row("Default format", self.tts_format))
+        self.tts_speed = FitsOnScreenCombo()
+        for label, value in (("1x", 1.0), ("1.5x", 1.5), ("2x", 2.0)):
+            self.tts_speed.addItem(label, value)
+        body.addWidget(self._label_row("Default speed", self.tts_speed))
+        self.tts_autoplay = QCheckBox(t("Play automatically when ready"))
+        body.addWidget(self.tts_autoplay)
+        self.tts_shortcut = self._shortcut_box("Ctrl+Shift+O")
+        body.addWidget(self._label_row(
+            "Read-selection shortcut", self.tts_shortcut))
+        self.tts_stop_shortcut = self._shortcut_box("Ctrl+Shift+X")
+        body.addWidget(self._label_row("Stop shortcut", self.tts_stop_shortcut))
+        layout.addWidget(reading)
+
         support, body = self._section_card(
             "Support", "When something breaks.")
         diagnostics = QPushButton(t("Open diagnostics folder"))
@@ -2667,6 +2696,262 @@ class SettingsWindow(QDialog):
         layout.addWidget(transcript)
         return page
 
+    def _speak_tab(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setSpacing(14)
+        intro = QLabel(t("Read Turkish text aloud with a small local voice."))
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        text_card, body = self._section_card(
+            "Text to read", "The Turkish text to read aloud.")
+        self.speak_input = QPlainTextEdit()
+        self.speak_input.setMinimumHeight(160)
+        body.addWidget(self.speak_input)
+
+        self.speak_read = QPushButton(t("Read aloud"))
+        self.speak_read.setObjectName("primaryButton")
+        self.speak_read.clicked.connect(self._run_speak)
+        self.speak_stop = QPushButton(t("Stop"))
+        self.speak_stop.clicked.connect(self._stop_speak)
+        self.speak_stop.setEnabled(False)
+        self.speak_format = FitsOnScreenCombo()
+        for value in ("opus", "mp3", "wav"):
+            self.speak_format.addItem(value, value)
+        self.speak_speed = FitsOnScreenCombo()
+        for label, value in (("1x", 1.0), ("1.5x", 1.5), ("2x", 2.0)):
+            self.speak_speed.addItem(label, value)
+        controls = QHBoxLayout()
+        controls.addWidget(self.speak_read)
+        controls.addWidget(self.speak_stop)
+        controls.addWidget(self._label_row("Format", self.speak_format))
+        controls.addWidget(self._label_row("Speed", self.speak_speed))
+        controls.addStretch(1)
+        body.addLayout(controls)
+
+        save = QPushButton(t("Save audio…"))
+        save.clicked.connect(self._save_speak)
+        save_row = QHBoxLayout()
+        save_row.addWidget(save)
+        save_row.addStretch(1)
+        body.addLayout(save_row)
+
+        self.speak_status = QLabel("")
+        self.speak_status.setWordWrap(True)
+        self.speak_status.setObjectName("muted")
+        body.addWidget(self.speak_status)
+        layout.addWidget(text_card)
+
+        recent, body = self._section_card(
+            "Recent readings", "Audio files saved from this tab.")
+        self.speak_recent = EmptyListWidget(t("No readings yet."))
+        self.speak_recent.setMaximumHeight(130)
+        self.speak_recent.itemDoubleClicked.connect(self._open_speak_item)
+        body.addWidget(self.speak_recent)
+        folder = QPushButton(t("Open the folder"))
+        folder.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl.fromLocalFile(str(self._speak_dir()))))
+        reload_ = QPushButton(t("Reload"))
+        reload_.clicked.connect(self._load_speak_recent)
+        recent_row = QHBoxLayout()
+        recent_row.addWidget(folder)
+        recent_row.addWidget(reload_)
+        recent_row.addStretch(1)
+        body.addLayout(recent_row)
+        layout.addWidget(recent)
+
+        files_card, body = self._section_card(
+            "Files", "Text and PDF files to turn into audio, in order.")
+        self.speak_files = QListWidget()
+        self.speak_files.setMaximumHeight(110)
+        body.addWidget(self.speak_files)
+        add = QPushButton(t("Add files…"))
+        add.clicked.connect(self._add_speak_files)
+        convert = QPushButton(t("Convert all to audio"))
+        convert.setObjectName("primaryButton")
+        convert.clicked.connect(self._convert_speak_files)
+        clear = QPushButton(t("Clear list"))
+        clear.clicked.connect(self.speak_files.clear)
+        files_row = QHBoxLayout()
+        files_row.addWidget(add)
+        files_row.addWidget(convert)
+        files_row.addWidget(clear)
+        files_row.addStretch(1)
+        body.addLayout(files_row)
+        layout.addWidget(files_card)
+        self._batch = []
+
+        self.tts = tts_ema.TtsWorker()
+        self.tts.progress.connect(self.speak_status.setText)
+        self.tts.finished.connect(self._on_speak_done)
+        self.tts.failed.connect(self._on_speak_failed)
+        self._select_data(self.speak_format, self.conf.get("tts_format", "opus"))
+        try:
+            speed_index = ("1.0", "1.5", "2.0").index(
+                str(float(self.conf.get("tts_speed", 1.0))))
+        except (TypeError, ValueError):
+            speed_index = 0
+        self.speak_speed.setCurrentIndex(speed_index)
+        self._load_speak_recent()
+        return page
+
+    @staticmethod
+    def _speak_dir():
+        import pathlib
+        root = pathlib.Path(cfg.DATA_DIR) / "readings"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+
+    def _speak_speed(self):
+        try:
+            return float(self.speak_speed.currentData() or 1.0)
+        except (TypeError, ValueError):
+            return 1.0
+
+    def _run_speak(self):
+        text = self.speak_input.toPlainText().strip()
+        if not text:
+            self.speak_status.setText(t("There is no readable text."))
+            return
+        if self.tts.busy:
+            self.speak_status.setText(t("Already reading…"))
+            return
+        self.speak_stop.setEnabled(True)
+        self.speak_status.setText(t("Reading…"))
+        self.tts.speak(text, self._speak_speed())
+
+    def _stop_speak(self):
+        self.tts.stop()
+
+    def _save_speak(self):
+        text = self.speak_input.toPlainText().strip()
+        if not text:
+            self.speak_status.setText(t("There is no readable text."))
+            return
+        if self.tts.busy:
+            self.speak_status.setText(t("Already reading…"))
+            return
+        fmt = self.speak_format.currentData() or self.conf["tts_format"]
+        start = os.path.join(self.conf["tts_last_dir"] or str(self._speak_dir()),
+                             f"reading.{fmt}")
+        path, _ = QFileDialog.getSaveFileName(
+            self, t("Save audio"), start,
+            f"{t('Audio files')} (*.{fmt})")
+        if not path:
+            return
+        self.conf["tts_last_dir"] = os.path.dirname(path)
+        self.speak_stop.setEnabled(True)
+        self.speak_status.setText(t("Reading…"))
+        self.tts.save(text, path, fmt, self._speak_speed())
+
+    def _on_speak_done(self, path, seconds):
+        self.speak_stop.setEnabled(False)
+        if path and path in self._batch:
+            self._batch.remove(path)
+            self._mark_speak_file(path, "✓")
+            self._load_speak_recent()
+            if not self._batch:
+                self.speak_status.setText(t("Saved: {path}", path=path))
+                sounds.play()
+            return
+        if path:
+            self.speak_status.setText(t("Saved: {path}", path=path))
+            self._load_speak_recent()
+            sounds.play()
+            if self.conf["tts_autoplay"]:
+                self.tts.play_last()
+        else:
+            self.speak_status.setText(
+                t("Reading finished: {name}", name=f"{seconds:.0f} sn"))
+
+    def _on_speak_failed(self, message):
+        self.speak_stop.setEnabled(False)
+        if message == t("Reading stopped."):
+            self.speak_status.setText(message)
+            return
+        if self._batch and ": " in message:
+            import pathlib
+            name = message.split(": ", 1)[0]
+            for row in range(self.speak_files.count()):
+                item = self.speak_files.item(row)
+                stored = item.data(Qt.ItemDataRole.UserRole) or ""
+                if pathlib.Path(stored).name == name:
+                    item.setText(f"✗ {stored}")
+        self.speak_status.setText(t("Failed: {error}", error=message))
+
+    def _mark_speak_file(self, path, mark):
+        import pathlib
+        name = pathlib.Path(path).stem
+        for row in range(self.speak_files.count()):
+            item = self.speak_files.item(row)
+            stored = item.data(Qt.ItemDataRole.UserRole) or ""
+            if stored and pathlib.Path(stored).stem == name:
+                item.setText(f"{mark} {stored}")
+
+    def _add_speak_files(self):
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, t("Add files…"),
+            self.conf["tts_last_dir"] or str(self._speak_dir()),
+            f"{t('Text and PDF files')} (*.txt *.md *.markdown *.pdf)")
+        known = {self.speak_files.item(i).data(Qt.ItemDataRole.UserRole)
+                 for i in range(self.speak_files.count())}
+        for path in paths:
+            if path in known:
+                continue
+            self.speak_files.addItem(f"· {path}")
+            self.speak_files.item(self.speak_files.count() - 1).setData(
+                Qt.ItemDataRole.UserRole, path)
+            known.add(path)
+        if paths:
+            self.conf["tts_last_dir"] = os.path.dirname(paths[0])
+
+    def _convert_speak_files(self):
+        if self.tts.busy:
+            self.speak_status.setText(t("Already reading…"))
+            return
+        paths = [self.speak_files.item(i).data(Qt.ItemDataRole.UserRole)
+                 for i in range(self.speak_files.count())]
+        paths = [p for p in paths if p]
+        if not paths:
+            self.speak_status.setText(t("There is no readable text."))
+            return
+        self._batch = []
+        self.speak_stop.setEnabled(True)
+        self.speak_status.setText(t("Reading…"))
+        self.tts.convert_files(
+            paths, self._speak_dir(),
+            self.speak_format.currentData() or self.conf["tts_format"],
+            self._speak_speed())
+        # Batch membership is tracked by output path; pre-register the
+        # expected outputs so completion marks the right rows.
+        import pathlib
+        fmt = self.speak_format.currentData() or self.conf["tts_format"]
+        self._batch = [str(self._speak_dir() / f"{pathlib.Path(p).stem}.{fmt}")
+                       for p in paths]
+
+    def _load_speak_recent(self):
+        self.speak_recent.clear()
+        try:
+            files = sorted(list(self._speak_dir().glob("*.opus"))
+                           + list(self._speak_dir().glob("*.mp3"))
+                           + list(self._speak_dir().glob("*.wav")),
+                           key=lambda p: p.stat().st_mtime, reverse=True)[:20]
+        except OSError:
+            files = []
+        for path in files:
+            size = path.stat().st_size // 1024
+            self.speak_recent.addItem(f"{path.name} · {size} KB")
+        if not files:
+            self.speak_recent.addItem(t("No readings yet."))
+
+    def _open_speak_item(self, item):
+        name = item.text().split(" · ")[0]
+        target = self._speak_dir() / name
+        if target.is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+
     def _screenshot_tab(self):
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -2681,6 +2966,10 @@ class SettingsWindow(QDialog):
         region.setObjectName("primaryButton")
         region.clicked.connect(
             lambda _checked=False: self.screenshot_requested.emit("region"))
+        speak_capture = QPushButton(t("Convert to audio and read"))
+        speak_capture.clicked.connect(
+            lambda _checked=False: self.screenshot_speak_requested.emit(
+                "region"))
         full = QPushButton(t("Capture this screen"))
         full.clicked.connect(
             lambda _checked=False: self.screenshot_requested.emit("screen"))
@@ -2689,6 +2978,7 @@ class SettingsWindow(QDialog):
             lambda _checked=False: self.screenshot_requested.emit("window"))
         actions = QHBoxLayout()
         actions.addWidget(region)
+        actions.addWidget(speak_capture)
         actions.addWidget(full)
         actions.addWidget(window)
         actions.addStretch(1)
@@ -2865,6 +3155,25 @@ class SettingsWindow(QDialog):
             conf.get("screenshot_directory", "") or "")
         self._select_data(self.screenshot_format,
                           conf.get("screenshot_format", "PNG") or "PNG")
+        self._select_data(self.tts_format, conf.get("tts_format", "opus"))
+        try:
+            speed_index = ("1.0", "1.5", "2.0").index(
+                str(float(conf.get("tts_speed", 1.0))))
+        except (TypeError, ValueError):
+            speed_index = 0
+        self.tts_speed.setCurrentIndex(speed_index)
+        self.tts_autoplay.setChecked(bool(conf.get("tts_autoplay", False)))
+        self.tts_shortcut.setCurrentText(
+            conf.get("tts_shortcut", "Ctrl+Shift+O") or "")
+        self.tts_stop_shortcut.setCurrentText(
+            conf.get("tts_stop_shortcut", "Ctrl+Shift+X") or "")
+        try:
+            if tts_ema.models_ready():
+                self.tts_status.setText(t("Voice model ready."))
+            else:
+                self.tts_status.setText(t("Downloads on first read (~34 MB)."))
+        except OSError:
+            self.tts_status.setText("")
         self._select_data(self.meter_style,
                           conf.get("overlay_meter") or "spectrum")
         # The combo only fires on a *change*: a saved "Bars" would leave every
@@ -2943,7 +3252,9 @@ class SettingsWindow(QDialog):
         for label, field, fallback in (
                 ("Dictation", self.shortcut, "Ctrl+Space"),
                 ("Meeting", self.meeting_shortcut, ""),
-                ("Screenshot", self.screenshot_shortcut, "")):
+                ("Screenshot", self.screenshot_shortcut, ""),
+                ("Reading aloud", self.tts_shortcut, "Ctrl+Shift+O"),
+                ("Stop reading", self.tts_stop_shortcut, "Ctrl+Shift+X")):
             shortcut = field.currentText().strip() or fallback
             if not shortcut:
                 continue
@@ -2973,6 +3284,14 @@ class SettingsWindow(QDialog):
         conf["restore_clipboard"] = self.restore_clipboard.isChecked()
         conf["overlay_corner"] = self.corner.currentData() or "bottom-left"
         conf["screenshot_shortcut"] = self.screenshot_shortcut.currentText().strip()
+        conf["tts_format"] = self.tts_format.currentData() or "opus"
+        try:
+            conf["tts_speed"] = float(self.tts_speed.currentData() or 1.0)
+        except (TypeError, ValueError):
+            conf["tts_speed"] = 1.0
+        conf["tts_autoplay"] = self.tts_autoplay.isChecked()
+        conf["tts_shortcut"] = self.tts_shortcut.currentText().strip()
+        conf["tts_stop_shortcut"] = self.tts_stop_shortcut.currentText().strip()
         conf["screenshot_directory"] = self.screenshot_directory.text().strip()
         conf["screenshot_format"] = self.screenshot_format.currentData() or "PNG"
         conf["overlay_meter"] = self.meter_style.currentData() or "spectrum"

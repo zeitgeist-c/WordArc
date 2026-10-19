@@ -39,6 +39,8 @@ import config as cfg  # noqa: E402
 import diagnostics  # noqa: E402
 import hotkey  # noqa: E402
 import meeting  # noqa: E402
+import paste  # noqa: E402
+import tts_ema  # noqa: E402
 import localspeech  # noqa: E402
 from cuda_recovery import CudaRecovery  # noqa: E402
 import operation  # noqa: E402
@@ -282,6 +284,9 @@ class WordArc:
         self.meetings.progress.connect(self._on_meeting_progress)
         self.meetings.finished.connect(self._on_meeting_finished)
         self.meetings.failed.connect(self._on_meeting_failed)
+        self.tts = tts_ema.TtsWorker()
+        self.tts.finished.connect(self._on_speak_finished)
+        self.tts.failed.connect(self._on_speak_failed)
         self.evdev.triggered.connect(self._on_hotkey)
         self.evdev.failed.connect(self._on_error)
         self.cancel_hotkey.triggered.connect(self._on_cancel_key)
@@ -313,6 +318,7 @@ class WordArc:
         self.screenshot_controller.preferences_saved.connect(
             self._on_screenshot_preferences_saved)
         self.screenshot_controller.ocr_done.connect(self._on_screenshot_ocr)
+        self.screenshot_controller.speak_done.connect(self._on_screenshot_speak)
         self._apply_settings()
         self.tray.show()
 
@@ -461,11 +467,78 @@ class WordArc:
         handlers = {
             "meeting": self._toggle_meeting,
             "screenshot": self._take_screenshot,
+            "speak": self._speak_selection,
+            "speak_stop": self._stop_speaking,
         }
         handlers.get(name, self._toggle)()
 
     def _take_screenshot(self, *_):
         self.screenshot_controller.start("region", self.settings_window)
+
+    def _stop_speaking(self, *_):
+        self.tts.stop()
+
+    def _speak_selection(self, *_):
+        """Global hotkey: copy the focused selection, read it aloud."""
+        if self.tts.busy:
+            return
+        thread = threading.Thread(target=self._grab_and_speak, daemon=True)
+        thread.start()
+
+    def _grab_and_speak(self):
+        import time
+        try:
+            stash = paste.read_clipboard()
+        except Exception:  # noqa: BLE001 - clipboard may be locked
+            stash = None
+        try:
+            paste.press("ctrl+c")
+        except Exception:  # noqa: BLE001 - nothing focused to copy from
+            QTimer.singleShot(0, self._tts_nothing_selected)
+            return
+        time.sleep(0.4)
+        try:
+            raw = paste.read_clipboard()
+        except Exception:  # noqa: BLE001 - clipboard may be locked
+            raw = None
+        finally:
+            if stash:
+                try:
+                    paste.copy(stash.decode("utf-8", "ignore"))
+                except Exception:  # noqa: BLE001 - best effort restore
+                    pass
+        text = (raw.decode("utf-8", "ignore").strip()
+                if isinstance(raw, bytes) else "")
+        if not text or (stash is not None and raw == stash):
+            QTimer.singleShot(0, self._tts_nothing_selected)
+            return
+        speed = self.conf.get("tts_speed", 1.0)
+        try:
+            speed = float(speed)
+        except (TypeError, ValueError):
+            speed = 1.0
+        QTimer.singleShot(
+            0, lambda: self.tts.speak(text, speed))
+
+    def _tts_nothing_selected(self):
+        if self.tray.isVisible():
+            self.tray.showMessage(BRAND.name, t("Could not read the selection."),
+                                  QSystemTrayIcon.MessageIcon.Warning, 4000)
+
+    def _on_speak_finished(self, path, seconds):
+        if path and self.tray.isVisible():
+            self.tray.showMessage(
+                BRAND.name, t("Reading finished: {name}", name=path),
+                QSystemTrayIcon.MessageIcon.Information, 5000)
+
+    def _on_speak_failed(self, message):
+        if message == t("Reading stopped."):
+            return
+        logging.getLogger("wordarc.tts").warning("speak failed: %s", message)
+        if self.tray.isVisible():
+            self.tray.showMessage(BRAND.name,
+                                  t("Failed: {error}", error=message),
+                                  QSystemTrayIcon.MessageIcon.Warning, 5000)
 
     def _on_screenshot_failed(self, message):
         logging.getLogger("wordarc.screenshot").warning("capture failed: %s", message)
@@ -482,6 +555,26 @@ class WordArc:
         if self.tray.isVisible():
             self.tray.showMessage(BRAND.name, t("Text extracted — copied to the clipboard."),
                                   QSystemTrayIcon.MessageIcon.Information, 4000)
+
+    def _on_screenshot_speak(self, text):
+        # Queued in from the OCR worker thread; safe on the GUI thread.
+        if not text:
+            self._on_screenshot_failed(t("No readable text found in the capture."))
+            return
+        QApplication.clipboard().setText(text)
+        if self.tts.busy:
+            if self.tray.isVisible():
+                self.tray.showMessage(BRAND.name, t("Already reading…"),
+                                      QSystemTrayIcon.MessageIcon.Warning, 4000)
+            return
+        try:
+            speed = float(self.conf.get("tts_speed", 1.0))
+        except (TypeError, ValueError):
+            speed = 1.0
+        if self.tray.isVisible():
+            self.tray.showMessage(BRAND.name, t("Reading the capture…"),
+                                  QSystemTrayIcon.MessageIcon.Information, 4000)
+        self.tts.speak(text, speed)
 
     def _on_screenshot_preferences_saved(self, directory, image_format):
         window = self.settings_window
@@ -1085,6 +1178,9 @@ class WordArc:
             self.settings_window.screenshot_requested.connect(
                 lambda mode: self.screenshot_controller.start(
                     mode, self.settings_window))
+            self.settings_window.screenshot_speak_requested.connect(
+                lambda mode: self.screenshot_controller.start(
+                    mode, self.settings_window, speak=True))
             self.screenshot_controller.failed.connect(
                 self.settings_window.screenshot_failed)
             self.settings_window.cancel_requested.connect(self._window_cancel)
@@ -1215,7 +1311,9 @@ class WordArc:
         evdev.stop()
         evdev.start({"toggle": self.conf["shortcut"],
                           "meeting": self.conf["meeting_shortcut"],
-                          "screenshot": self.conf.get("screenshot_shortcut", "")})
+                          "screenshot": self.conf.get("screenshot_shortcut", ""),
+                          "speak": self.conf.get("tts_shortcut", ""),
+                          "speak_stop": self.conf.get("tts_stop_shortcut", "")})
 
     def _apply_settings(self):
         theme.ThemeManager.apply(self.conf["theme_mode"], self.app)
@@ -1257,6 +1355,9 @@ class WordArc:
         self.cancel_hotkey.stop()
         self.pipeline.cancel()
         self.meetings.stop()
+        tts = getattr(self, "tts", None)
+        if tts is not None:
+            tts.stop()
         if self.recording:
             self.recorder.cancel()
             if getattr(self, "_live_opener", None) is not None or \

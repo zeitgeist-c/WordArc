@@ -563,7 +563,20 @@ class TestOcrExtraction(unittest.TestCase):
     def test_button_hidden_without_windows_ocr(self):
         overlay = self._overlay(ocr_available=False)
         self.assertFalse(overlay.ocr_button.isVisible())
+        self.assertFalse(overlay.speak_button.isVisible())
         self.assertTrue(overlay.copy_button.isVisible())
+
+    def test_speak_button_shares_ocr_visibility(self):
+        overlay = self._overlay(ocr_available=True)
+        self.assertFalse(overlay.speak_button.isHidden())
+
+    def test_speak_button_emits_speak_requested(self):
+        overlay = self._overlay(ocr_available=True)
+        overlay.selection = QRect(0, 0, 10, 10)
+        got = []
+        overlay.speak_requested.connect(got.append)
+        overlay._quick_speak()
+        self.assertEqual(len(got), 1)
 
     def test_controller_hands_the_image_to_ocr_off_the_gui_thread(self):
         controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
@@ -612,6 +625,60 @@ class TestOcrExtraction(unittest.TestCase):
                 thread.join(5)
             self.app.processEvents()
         self.assertEqual(errors, ["yok"])
+
+    def test_overlay_speak_routes_ocr_result_to_speak_done(self):
+        controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        spoken, copied = [], []
+        controller.speak_done.connect(spoken.append)
+        controller.ocr_done.connect(copied.append)
+        image = QImage(20, 10, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        joined = []
+        real_start = screenshot_capture.threading.Thread.start
+
+        def track_start(thread):
+            joined.append(thread)
+            real_start(thread)
+        with mock.patch.object(screenshot_capture.ocr, "extract_text",
+                               return_value="merhaba"), \
+             mock.patch.object(screenshot_capture.threading.Thread, "start",
+                               track_start):
+            controller._on_overlay_speak(image)
+            for thread in joined:
+                thread.join(5)
+            self.app.processEvents()
+        self.assertEqual(spoken, ["merhaba"])
+        self.assertEqual(copied, [])
+
+    def test_speak_flag_consumed_after_one_capture(self):
+        controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        spoken, copied = [], []
+        controller.speak_done.connect(spoken.append)
+        controller.ocr_done.connect(copied.append)
+        image = QImage(20, 10, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        joined = []
+        real_start = screenshot_capture.threading.Thread.start
+
+        def track_start(thread):
+            joined.append(thread)
+            real_start(thread)
+        with mock.patch.object(screenshot_capture.ocr, "extract_text",
+                               return_value="merhaba"), \
+             mock.patch.object(screenshot_capture.threading.Thread, "start",
+                               track_start):
+            controller._speak_next = True
+            controller._on_overlay_ocr(image)
+            controller._on_overlay_ocr(image)
+            for thread in joined:
+                thread.join(5)
+            self.app.processEvents()
+        self.assertEqual(spoken, ["merhaba"])
+        self.assertEqual(copied, ["merhaba"])
 
 
 if __name__ == "__main__":

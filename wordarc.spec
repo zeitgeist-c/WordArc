@@ -44,6 +44,11 @@ for dll in list((_SITE / 'nvidia').glob('*/bin/*.dll')) + list((_SITE / 'nvidia'
 # because they reach for binaries at runtime rather than importing them.
 hiddenimports = ['unicodedata', 'soundcard', 'faster_whisper', 'ctranslate2',
                   'onnxruntime', 'tokenizers', 'huggingface_hub',
+                  # EMA Lightning TTS (tts_ema.py): same ONNX runtime, plus the
+                  # Rust Turkish normalizer (native module, import at runtime).
+                  'normalizer_tr',
+                  # PDF text for the Speak tab (fitz is imported lazily).
+                  'fitz',
                   'av', 'av.audio.resampler', 'screenshot_capture', 'screenshot_editor',
                   # RapidOCR (ocr.py primary engine). Its ONNX inference engine
                   # is picked by name at runtime, so plain analysis misses it;

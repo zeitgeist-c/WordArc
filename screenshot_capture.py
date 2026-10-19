@@ -45,6 +45,7 @@ def _tool_icon(name, color="#e9edf5"):
         "redo": '<path d="m16 4 5 5-5 5M21 9H10a6 6 0 0 0 0 12"/>',
         "copy": '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V3H3v13h5"/>',
         "ocr": '<path d="M4 7V4h16v3M4 17v3h16v-3M8 9h9M8 13h6"/>',
+        "speak": '<path d="M4 9v6h4l5 4V5L8 9H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>',
         "save": '<path d="M4 3h13l4 4v14H3V3zM7 3v6h10V3M7 21v-8h10v8"/>',
         "cancel": '<path d="m6 6 12 12M18 6 6 18"/>',
         "color": f'<circle cx="12" cy="12" r="8" fill="{color}" stroke="#ffffff"/>',
@@ -100,6 +101,7 @@ class RegionOverlay(QWidget):
     copy_requested = pyqtSignal(QImage)
     save_requested = pyqtSignal(QImage)
     ocr_requested = pyqtSignal(QImage)
+    speak_requested = pyqtSignal(QImage)
     cancelled = pyqtSignal()
     activated = pyqtSignal()
 
@@ -187,9 +189,11 @@ class RegionOverlay(QWidget):
             QToolButton:pressed { background: #63518a; }
             QToolButton:disabled { background: transparent; border-color: transparent; }
             QToolButton#screenshotOverlayCopy,
-            QToolButton#screenshotOverlayOcr { background: #665096; }
+            QToolButton#screenshotOverlayOcr,
+            QToolButton#screenshotOverlaySpeak { background: #665096; }
             QToolButton#screenshotOverlayCopy:hover,
-            QToolButton#screenshotOverlayOcr:hover { background: #8064b8; }
+            QToolButton#screenshotOverlayOcr:hover,
+            QToolButton#screenshotOverlaySpeak:hover { background: #8064b8; }
             QToolButton#screenshotOverlayCancel:hover { background: #823d4c; }
             QSpinBox {
                 background: #2d3341; color: #e9edf5; border: 1px solid #444b5c;
@@ -274,6 +278,12 @@ class RegionOverlay(QWidget):
         # still captures; it just never sees a button that cannot work.
         self.ocr_button.setVisible(ocr.is_available())
         options.addWidget(self.ocr_button)
+        self.speak_button = self._toolbar_button("speak", "Read aloud")
+        self.speak_button.setObjectName("screenshotOverlaySpeak")
+        self.speak_button.clicked.connect(self._quick_speak)
+        # Reading needs the same OCR engine, so it shares its visibility.
+        self.speak_button.setVisible(ocr.is_available())
+        options.addWidget(self.speak_button)
         self.save_button = self._toolbar_button("save", "Save", "Ctrl+S")
         self.save_button.setObjectName("screenshotOverlaySave")
         self.save_button.clicked.connect(self._quick_save)
@@ -370,6 +380,12 @@ class RegionOverlay(QWidget):
         if image is None:
             return
         self.ocr_requested.emit(image)
+
+    def _quick_speak(self):
+        image = self._export_image()
+        if image is None:
+            return
+        self.speak_requested.emit(image)
 
     def _undo(self):
         if self.model.undo():
@@ -905,6 +921,7 @@ class ScreenshotController(QWidget):
     failed = pyqtSignal(str)
     preferences_saved = pyqtSignal(str, str)
     ocr_done = pyqtSignal(str)
+    speak_done = pyqtSignal(str)
 
     def __init__(self, conf, parent=None):
         super().__init__(None)
@@ -914,6 +931,7 @@ class ScreenshotController(QWidget):
         self._overlays = []
         self._screen = None
         self._mode = "region"
+        self._speak_next = False
 
         self._hidden_owner = None
         self._capture_owner = None
@@ -929,7 +947,7 @@ class ScreenshotController(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
         QGuiApplication.instance().screenRemoved.connect(self._screen_removed)
 
-    def start(self, mode="region", parent=None):
+    def start(self, mode="region", parent=None, speak=False):
         self._capture_timer.stop()
         if self._overlay is not None or self._hidden_owner is not None:
             self._cancel_overlay()
@@ -940,6 +958,7 @@ class ScreenshotController(QWidget):
             return
         self._screen = screen
         self._mode = mode
+        self._speak_next = speak
         self._capture_owner = parent or self._owner
         owner = self._capture_owner
         if owner is not None and owner.isVisible():
@@ -998,6 +1017,7 @@ class ScreenshotController(QWidget):
                 overlay.copy_requested.connect(self._on_overlay_copy)
                 overlay.save_requested.connect(self._on_overlay_save)
                 overlay.ocr_requested.connect(self._on_overlay_ocr)
+                overlay.speak_requested.connect(self._on_overlay_speak)
                 overlay.cancelled.connect(self._cancel_overlay)
                 if screen is self._screen or self._overlay is None:
                     self._overlay = overlay
@@ -1051,6 +1071,8 @@ class ScreenshotController(QWidget):
             language = str(self.conf.get("ui_language", ""))
         except Exception:
             pass
+        speak = self._speak_next
+        self._speak_next = False
 
         def work():
             try:
@@ -1058,10 +1080,19 @@ class ScreenshotController(QWidget):
             except ocr.OcrUnavailable as exc:
                 self.failed.emit(str(exc))
                 return
-            self.ocr_done.emit(text)
+            if speak:
+                self.speak_done.emit(text)
+            else:
+                self.ocr_done.emit(text)
 
         self._ocr_thread = threading.Thread(target=work, daemon=True)
         self._ocr_thread.start()
+
+    def _on_overlay_speak(self, image):
+        # The toolbar's Read button always reads: flag the OCR result for
+        # speech no matter how the capture was started.
+        self._speak_next = True
+        self._on_overlay_ocr(image)
 
     def _on_overlay_save(self, image):
         # Parent the native file dialog to the topmost editor. Otherwise it
