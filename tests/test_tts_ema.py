@@ -112,6 +112,127 @@ class TestFiles(unittest.TestCase):
             self.assertIn(key, cfg.DEFAULTS)
 
 
+class TestPlaybackWatchdog(unittest.TestCase):
+    def _fake_sd(self, stall=True):
+        import sys
+        import types
+        fake = types.ModuleType("sounddevice")
+
+        class CallbackStop(Exception):
+            pass
+
+        class FakeStream:
+            def __init__(self, **kwargs):
+                self.callback = kwargs.get("callback")
+                self._active = True
+                self.aborted = False
+
+            @property
+            def active(self):
+                return self._active
+
+            def start(self):
+                if not stall:
+                    self._active = False
+
+            def abort(self):
+                self.aborted = True
+                self._active = False
+
+            def stop(self):
+                self._active = False
+
+            def close(self):
+                pass
+
+        fake.CallbackStop = CallbackStop
+        fake.OutputStream = FakeStream
+        return fake
+
+    def test_stalled_device_raises_timeout_and_frees(self):
+        import sys
+        import threading
+        import time
+        import numpy as np
+        fake = self._fake_sd(stall=True)
+        old = sys.modules.get("sounddevice")
+        sys.modules["sounddevice"] = fake
+        try:
+            stop = threading.Event()
+            errors = []
+            thread = threading.Thread(
+                target=lambda: errors.append(self._run_play(stop)),
+                daemon=True)
+            thread.start()
+            thread.join(10)
+            self.assertFalse(thread.is_alive())
+            self.assertIsInstance(errors[0], TimeoutError)
+        finally:
+            if old is None:
+                del sys.modules["sounddevice"]
+            else:
+                sys.modules["sounddevice"] = old
+
+    def _run_play(self, stop):
+        import numpy as np
+        try:
+            tts_ema._play_pcm(np.zeros(4800, dtype=np.float32), stop,
+                              timeout=0.3)
+            return None
+        except Exception as exc:
+            return exc
+
+    def test_stop_aborts_playback_immediately(self):
+        import sys
+        import threading
+        import time
+        fake = self._fake_sd(stall=True)
+        old = sys.modules.get("sounddevice")
+        sys.modules["sounddevice"] = fake
+        try:
+            stop = threading.Event()
+            errors = []
+            thread = threading.Thread(
+                target=lambda: errors.append(self._run_play_long(stop)),
+                daemon=True)
+            thread.start()
+            time.sleep(0.2)
+            stop.set()  # the Durdur button
+            thread.join(10)
+            self.assertFalse(thread.is_alive())
+            self.assertIsInstance(errors[0], InterruptedError)
+        finally:
+            if old is None:
+                del sys.modules["sounddevice"]
+            else:
+                sys.modules["sounddevice"] = old
+
+    def _run_play_long(self, stop):
+        import numpy as np
+        try:
+            tts_ema._play_pcm(np.zeros(48000, dtype=np.float32), stop,
+                              timeout=30)
+            return None
+        except Exception as exc:
+            return exc
+
+    def test_healthy_device_plays_through(self):
+        import sys
+        import threading
+        fake = self._fake_sd(stall=False)
+        old = sys.modules.get("sounddevice")
+        sys.modules["sounddevice"] = fake
+        try:
+            import numpy as np
+            tts_ema._play_pcm(np.zeros(4800, dtype=np.float32),
+                              threading.Event(), timeout=5)
+        finally:
+            if old is None:
+                del sys.modules["sounddevice"]
+            else:
+                sys.modules["sounddevice"] = old
+
+
 class TestSpeakTab(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -5,10 +5,12 @@ Hazırlanan paket: 0.8.9 (`brand.py`)
 Dal: master
 Git dönüş noktası: 010024e / v0.8.8
 Yedek 2026-10-19: Seslendir sekmesi (yerel Türkçe TTS: metin/dosya/ekran okuma + kaydetme); sürüm 0.8.9.
+Yedek 2026-10-19 (aynı sürüm üzerine): ses kartı kilitlenmesi düzeltmesi
+(süre korumalı oynatma; takılmada Durdur keser, hata mesajı gelir); paket yenilendi.
+- 0.8.9 EXE SHA256: `c71f7a914bf8bbe024c3e22036a3ac532857a76f19c3e69f23f1d0e4fff555c0`
+  BAT SHA256: `bfac82edf4f2366d50e7917d442af5d881ac44ab2058a9d0f5429b4ebd2513cf`.
 Yedek 2026-10-17: güncelleme sonrası geçiş onarımı (swap el sıkışması +
 eski sürüm temizliği); sürüm 0.8.8.
-- 0.8.9 EXE SHA256: `32836db4c92eca93bc7f4218adfbfe15c1f9e9f600e2935c3bb8999929ba094e`
-  BAT SHA256: `bfac82edf4f2366d50e7917d442af5d881ac44ab2058a9d0f5429b4ebd2513cf`.
 Halka açık dağıtım deposu açıldı: `zeitgeist-c/WordArc-Releases` (public; yalnız
 EXE/BAT asset'li Release, kod YOK). Arkadaş indirme linki ve güncelleme kontrolü
 (0.8.6) buradan; kaynak depo private kalıyor.

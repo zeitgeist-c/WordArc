@@ -381,20 +381,53 @@ def _strip_markdown(text):
 _PLAY_LOCK = threading.Lock()
 
 
-def _play_pcm(audio, stop):
+def _play_pcm(audio, stop, timeout=None):
+    """Play mono float32 audio without ever hanging the worker thread.
+
+    The old blocking-write loop could stall forever inside PortAudio
+    (no error, no sound, busy stuck, Durdur useless). This version feeds
+    a callback stream and watches a deadline: stop aborts within a
+    buffer, a stalled device aborts as a timeout error.
+    """
+    import time
+
     import sounddevice as sd
+    expected = len(audio) / SAMPLE_RATE
+    deadline = expected + 20.0 if timeout is None else float(timeout)
+    pos = 0
+
+    def callback(outdata, frames, _time_info, _status):
+        nonlocal pos
+        if stop is not None and stop.is_set():
+            raise sd.CallbackStop()
+        chunk = audio[pos:pos + frames]
+        pos += len(chunk)
+        outdata[:len(chunk), 0] = chunk
+        if len(chunk) < frames:
+            outdata[len(chunk):, 0] = 0
+            raise sd.CallbackStop()
+
     stream = sd.OutputStream(samplerate=SAMPLE_RATE, channels=1,
-                             dtype="float32")
+                             dtype="float32", callback=callback)
     stream.start()
+    start = time.monotonic()
     try:
-        step = SAMPLE_RATE // 4
-        for pos in range(0, len(audio), step):
+        while stream.active:
             if stop is not None and stop.is_set():
+                stream.abort()
                 raise InterruptedError(t("Reading stopped."))
-            stream.write(audio[pos:pos + step])
+            if time.monotonic() - start > deadline:
+                stream.abort()
+                raise TimeoutError(t("Audio output timed out."))
+            time.sleep(0.05)
     finally:
-        stream.stop()
+        try:
+            stream.stop()
+        except Exception:  # noqa: BLE001 - abort path may already be stopped
+            pass
         stream.close()
+    if stop is not None and stop.is_set():
+        raise InterruptedError(t("Reading stopped."))
 try:
     from PyQt6.QtCore import QObject, pyqtSignal
 
