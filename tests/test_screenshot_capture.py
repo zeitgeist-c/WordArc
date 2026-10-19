@@ -652,6 +652,61 @@ class TestOcrExtraction(unittest.TestCase):
         self.assertEqual(spoken, ["merhaba"])
         self.assertEqual(copied, [])
 
+    def test_overlay_speak_keeps_the_window_hidden(self):
+        controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        owner = mock.Mock()
+        controller._hidden_owner = owner
+        spoken = []
+        controller.speak_done.connect(spoken.append)
+        image = QImage(20, 10, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        joined = []
+        real_start = screenshot_capture.threading.Thread.start
+
+        def track_start(thread):
+            joined.append(thread)
+            real_start(thread)
+        with mock.patch.object(screenshot_capture.ocr, "extract_text",
+                               return_value="merhaba"), \
+             mock.patch.object(screenshot_capture.threading.Thread, "start",
+                               track_start):
+            controller._on_overlay_speak(image)
+            for thread in joined:
+                thread.join(5)
+            self.app.processEvents()
+        owner.show.assert_not_called()
+        self.assertIsNone(controller._hidden_owner)
+        self.assertEqual(spoken, ["merhaba"])
+
+    def test_overlay_ocr_still_restores_the_window(self):
+        controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        owner = mock.Mock()
+        controller._hidden_owner = owner
+        done = []
+        controller.ocr_done.connect(done.append)
+        image = QImage(20, 10, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        joined = []
+        real_start = screenshot_capture.threading.Thread.start
+
+        def track_start(thread):
+            joined.append(thread)
+            real_start(thread)
+        with mock.patch.object(screenshot_capture.ocr, "extract_text",
+                               return_value="merhaba"), \
+             mock.patch.object(screenshot_capture.threading.Thread, "start",
+                               track_start):
+            controller._on_overlay_ocr(image)
+            for thread in joined:
+                thread.join(5)
+            self.app.processEvents()
+        owner.show.assert_called_once_with()
+        self.assertEqual(done, ["merhaba"])
+
     def test_speak_flag_consumed_after_one_capture(self):
         controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
         self.addCleanup(controller.shutdown)
