@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from logging.handlers import RotatingFileHandler
+import os
 import re
 import sys
 import threading
@@ -28,6 +29,27 @@ def redact(value):
 class _RedactingFormatter(logging.Formatter):
     def format(self, record):
         return redact(super().format(record))
+
+
+def redirect_null_streams():
+    """Point missing std streams at the log file.
+
+    Windowed PyInstaller builds run with sys.stdout/sys.stderr set to
+    None; any third-party write to them (tqdm bars, warnings) then dies
+    with a cryptic "'NoneType' object has no attribute 'write'". Logs
+    keep the evidence instead of crashing.
+    """
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    try:
+        cfg.LOG_DIR.mkdir(parents=True, exist_ok=True)
+        stream = open(cfg.LOG_DIR / "stderr.log", "a", encoding="utf-8")
+    except OSError:
+        stream = open(os.devnull, "w")
+    if sys.stdout is None:
+        sys.stdout = stream
+    if sys.stderr is None:
+        sys.stderr = stream
 
 
 def setup():
@@ -63,4 +85,5 @@ def setup():
                        exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
 
     threading.excepthook = report_thread
+    redirect_null_streams()
     return root

@@ -288,7 +288,7 @@ class WordArc:
         self.tts.finished.connect(self._on_speak_finished)
         self.tts.failed.connect(self._on_speak_failed)
         self.evdev.triggered.connect(self._on_hotkey)
-        self.evdev.failed.connect(self._on_error)
+        self.evdev.failed.connect(self._on_hotkey_failed)
         self.cancel_hotkey.triggered.connect(self._on_cancel_key)
 
         self.elapsed = QElapsedTimer()
@@ -471,6 +471,28 @@ class WordArc:
             "speak_stop": self._stop_speaking,
         }
         handlers.get(name, self._toggle)()
+
+    def _on_hotkey_failed(self, message):
+        # A hotkey that cannot register must not disturb dictation state;
+        # it only names the action so the toast points at the right box.
+        labels = {"toggle": t("Dictation"), "meeting": t("Meeting"),
+                  "screenshot": t("Screenshot"), "speak": t("Read aloud"),
+                  "speak_stop": t("Stop")}
+        for name, shortcut in (
+                ("toggle", self.conf.get("shortcut", "")),
+                ("meeting", self.conf.get("meeting_shortcut", "")),
+                ("screenshot", self.conf.get("screenshot_shortcut", "")),
+                ("speak", self.conf.get("tts_shortcut", "")),
+                ("speak_stop", self.conf.get("tts_stop_shortcut", ""))):
+            if shortcut and message.endswith(shortcut):
+                message = t("{message} ({action})", message=message,
+                            action=labels[name])
+                break
+        logging.getLogger("wordarc.hotkey").warning("hotkey failed: %s",
+                                                    message)
+        if self.tray.isVisible():
+            self.tray.showMessage(BRAND.name, message,
+                                  QSystemTrayIcon.MessageIcon.Warning, 5000)
 
     def _take_screenshot(self, *_):
         self.screenshot_controller.start("region", self.settings_window)

@@ -233,6 +233,45 @@ class TestPlaybackWatchdog(unittest.TestCase):
                 sys.modules["sounddevice"] = old
 
 
+class TestSilentProgress(unittest.TestCase):
+    def test_never_touches_stderr(self):
+        import sys
+        old = sys.stderr
+        sys.stderr = None
+        try:
+            bar = tts_ema._SilentProgress(desc="x", total=10, initial=2)
+            with bar as active:
+                active.update(3)
+                active.update_transfer(3)
+                active.set_postfix_str("…")
+                active.set_description_str("…")
+                active.refresh()
+                self.assertEqual(active.n, 5)
+                self.assertEqual(active.total, 10)
+                active.close()
+        finally:
+            sys.stderr = old
+
+    def test_download_uses_silent_bar(self):
+        import pathlib
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            for name in tts_ema.FILES:
+                (root / name).write_bytes(b"x")
+            with mock.patch.object(tts_ema, "models_dir",
+                                   return_value=root), \
+                 mock.patch.object(tts_ema, "snapshot_download") as dl:
+                # Fresh check: remove one file so download triggers.
+                list(root.glob("*"))[0].unlink()
+                with self.assertRaises(RuntimeError):
+                    # models_ready False after download mock → failure path,
+                    # but tqdm_class must have been passed silently.
+                    tts_ema.ensure_models()
+                self.assertIs(dl.call_args.kwargs["tqdm_class"],
+                              tts_ema._SilentProgress)
+
+
 class TestSpeakTab(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

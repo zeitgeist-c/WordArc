@@ -13,7 +13,7 @@ from PyQt6.QtGui import (QColor, QDesktopServices, QFont, QFontMetrics,
                          QGuiApplication, QIcon, QKeySequence, QShortcut, QPainter)
 from PyQt6 import sip
 from PyQt6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
+    QAbstractItemView, QAbstractScrollArea, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QFormLayout, QFrame, QGraphicsOpacityEffect, QGroupBox,
     QHBoxLayout, QInputDialog, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
@@ -1120,8 +1120,9 @@ class SettingsWindow(QDialog):
             screen = QGuiApplication.primaryScreen()
             if screen is not None:
                 avail = screen.availableGeometry()
-                self.resize(min(1040, max(520, avail.width() - 40)),
-                            min(760, max(400, avail.height() - 80)))
+                width, height = self._opening_size(avail.width(),
+                                                  avail.height())
+                self.resize(width, height)
                 # Size is not position. A window sized to fit can still sit
                 # where it was restored to — partly off the bottom of the
                 # screen — and a dropdown near its last row then opens past
@@ -1237,7 +1238,7 @@ class SettingsWindow(QDialog):
             ("speak", (), "Speak",
              "Read Turkish text aloud with a small local voice.",
              style.standardIcon(QStyle.StandardPixmap.SP_ArrowForward),
-             self._speak_tab(), True),
+             self._speak_tab(), False),
             ("screenshot", (), "Screenshot",
              "Capture and save a screenshot from the active screen.",
              style.standardIcon(QStyle.StandardPixmap.SP_DesktopIcon),
@@ -1249,7 +1250,7 @@ class SettingsWindow(QDialog):
         ]
         for main_id, aliases, title, description, icon, body, scroll in specs:
             body = self._workspace_page(main_id, body)
-            wrapped, _scroller = self._wrap_page(body, description, False)
+            wrapped, _scroller = self._wrap_page(body, description, scroll)
             index = self.tabs.addTab(wrapped, t(title))
             self._tab_index[main_id] = index
             for alias in aliases:
@@ -1530,6 +1531,16 @@ class SettingsWindow(QDialog):
         # one whose last dropdown has no room. Re-fitting on every switch costs
         # nothing and keeps a later click from opening a list off the screen.
         self._fit_on_screen()
+
+    def _opening_size(self, avail_width, avail_height):
+        """Opening size: remembered when valid, clamped to the screen."""
+        saved = self.conf.get("settings_size") or []
+        if len(saved) == 2:
+            width, height = saved
+        else:
+            width, height = 1040, 760
+        return (min(width, max(520, avail_width - 40)),
+                min(height, max(400, avail_height - 80)))
 
     def _fit_on_screen(self, avail=None):
         """Slide the window fully onto the screen it is on, and shrink the
@@ -2707,15 +2718,17 @@ class SettingsWindow(QDialog):
         text_card, body = self._section_card(
             "Text to read", "The Turkish text to read aloud.")
         self.speak_input = QPlainTextEdit()
-        self.speak_input.setMinimumHeight(160)
+        self.speak_input.setMinimumHeight(100)
+        # The box grows with its content instead of demanding a fixed
+        # eight-line hint: short text always fits the panel, long pastes
+        # scroll inside it like every other tab.
+        self.speak_input.setSizeAdjustPolicy(
+            QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents)
         body.addWidget(self.speak_input)
 
         self.speak_read = QPushButton(t("Read aloud"))
         self.speak_read.setObjectName("primaryButton")
         self.speak_read.clicked.connect(self._run_speak)
-        self.speak_stop = QPushButton(t("Stop"))
-        self.speak_stop.clicked.connect(self._stop_speak)
-        self.speak_stop.setEnabled(False)
         self.speak_format = FitsOnScreenCombo()
         for value in ("opus", "mp3", "wav"):
             self.speak_format.addItem(value, value)
@@ -2723,25 +2736,10 @@ class SettingsWindow(QDialog):
         for label, value in (("1x", 1.0), ("1.5x", 1.5), ("2x", 2.0)):
             self.speak_speed.addItem(label, value)
         controls = QHBoxLayout()
-        controls.addWidget(self.speak_read)
-        controls.addWidget(self.speak_stop)
         controls.addWidget(self._label_row("Format", self.speak_format))
         controls.addWidget(self._label_row("Speed", self.speak_speed))
         controls.addStretch(1)
         body.addLayout(controls)
-
-        save = QPushButton(t("Save audio…"))
-        save.clicked.connect(self._save_speak)
-        save_row = QHBoxLayout()
-        save_row.addWidget(save)
-        save_row.addStretch(1)
-        body.addLayout(save_row)
-
-        self.speak_status = QLabel("")
-        self.speak_status.setWordWrap(True)
-        self.speak_status.setObjectName("muted")
-        body.addWidget(self.speak_status)
-        layout.addWidget(text_card)
 
         recent, body = self._section_card(
             "Recent readings", "Audio files saved from this tab.")
@@ -2760,7 +2758,6 @@ class SettingsWindow(QDialog):
         recent_row.addWidget(reload_)
         recent_row.addStretch(1)
         body.addLayout(recent_row)
-        layout.addWidget(recent)
 
         files_card, body = self._section_card(
             "Files", "Text and PDF files to turn into audio, in order.")
@@ -2780,8 +2777,30 @@ class SettingsWindow(QDialog):
         files_row.addWidget(clear)
         files_row.addStretch(1)
         body.addLayout(files_row)
-        layout.addWidget(files_card)
         self._batch = []
+
+        # One panel visible at a time, like the dictation tab: the page
+        # itself never scrolls, each panel scrolls inside its own space.
+        self.speak_panels = PanelTabs()
+        self.speak_panels.add_panel("Text", text_card)
+        self.speak_panels.add_panel("Files", files_card)
+        self.speak_panels.add_panel("Recent", recent)
+        layout.addWidget(self.speak_panels, 1)
+
+        footer = QHBoxLayout()
+        footer.addWidget(self.speak_read)
+        self.speak_stop = QPushButton(t("Stop"))
+        self.speak_stop.clicked.connect(self._stop_speak)
+        self.speak_stop.setEnabled(False)
+        footer.addWidget(self.speak_stop)
+        save = QPushButton(t("Save audio…"))
+        save.clicked.connect(self._save_speak)
+        footer.addWidget(save)
+        self.speak_status = QLabel("")
+        self.speak_status.setWordWrap(True)
+        self.speak_status.setObjectName("muted")
+        footer.addWidget(self.speak_status, 1)
+        layout.addLayout(footer)
 
         self.tts = tts_ema.TtsWorker()
         self.tts.progress.connect(self.speak_status.setText)
@@ -3253,8 +3272,8 @@ class SettingsWindow(QDialog):
                 ("Dictation", self.shortcut, "Ctrl+Space"),
                 ("Meeting", self.meeting_shortcut, ""),
                 ("Screenshot", self.screenshot_shortcut, ""),
-                ("Reading aloud", self.tts_shortcut, "Ctrl+Shift+O"),
-                ("Stop reading", self.tts_stop_shortcut, "Ctrl+Shift+X")):
+                ("Reading aloud", self.tts_shortcut, ""),
+                ("Stop reading", self.tts_stop_shortcut, "")):
             shortcut = field.currentText().strip() or fallback
             if not shortcut:
                 continue
@@ -3811,6 +3830,16 @@ class SettingsWindow(QDialog):
 
     def closeEvent(self, event):
         self._download_stop.set()
+        # Remember the size for the next opening (clamped there): a size
+        # the user set survives restarts and monitor switches.
+        try:
+            if not self.isMaximized() and not self.isFullScreen():
+                size = self.size()
+                if size.width() > 0 and size.height() > 0:
+                    self.conf["settings_size"] = [size.width(), size.height()]
+                    self.conf.save()
+        except (OSError, RuntimeError, AttributeError):
+            pass
         # Closing mid-transcription used to kill the whole app: the worker
         # thread kept emitting on the deleted transcriber child. Ask it to
         # stop; the daemon thread dies on its own, the window closes now.

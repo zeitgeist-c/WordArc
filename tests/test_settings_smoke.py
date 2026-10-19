@@ -761,6 +761,41 @@ class TestSettingsSmoke(unittest.TestCase):
             fresh.deleteLater()
 
 
+    def test_scrolled_tabs_shrink_below_short_screens(self):
+        from PyQt6.QtWidgets import QScrollArea
+        window = self.window
+        for tab_id in ("dictation", "meeting", "audio_file", "speak",
+                       "screenshot"):
+            page = window.tabs.widget(window._tab_index[tab_id])
+            self.assertTrue(page.findChild(QScrollArea) is not None,
+                            f"{tab_id} tab does not scroll")
+        self.assertLess(window.minimumSizeHint().height(), 500,
+                        "window cannot shrink onto a 1080p screen")
+
+    def test_opening_size_remembers_and_clamps(self):
+        window = self.window
+        window.conf["settings_size"] = [1600, 900]
+        self.assertEqual(window._opening_size(1920, 1080), (1600, 900))
+        # A size remembered on 4K is clamped when reopened on 1080p.
+        _width, height = window._opening_size(1920, 1000)
+        self.assertLessEqual(height, 1000 - 80)
+        window.conf["settings_size"] = []
+        self.assertEqual(window._opening_size(3840, 2160), (1040, 760))
+
+    def test_close_remembers_size(self):
+        window = self.window
+        window.resize(900, 700)
+        window.close()
+        self.assertEqual(window.conf["settings_size"], [900, 700])
+
+    def test_empty_reading_shortcuts_stay_empty(self):
+        window = self.window
+        window.tts_shortcut.setCurrentText("")
+        window.tts_stop_shortcut.setCurrentText("")
+        self.assertTrue(window._save())
+        self.assertEqual(window.conf["tts_shortcut"], "")
+        self.assertEqual(window.conf["tts_stop_shortcut"], "")
+
 class TestTheWindowSurvivesABadAudioLibrary(unittest.TestCase):
     """The device rescan runs while the settings window is being built.
 
