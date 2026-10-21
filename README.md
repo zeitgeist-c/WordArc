@@ -22,7 +22,7 @@ WordArc turns speech into polished text. Press `Ctrl+Space`, talk, press again �
 
 ## Quick start (zero-install state)
 
-1. Download the current `WordArc-X.Y.Z.exe` and run it (admin install into Program Files).
+1. Download the current `WordArc-X.Y.Z.exe` and run it (admin install into Program Files, ~500MB — GPU support downloads later only if you use an NVIDIA card).
 2. Start WordArc — Settings opens on first launch. Enter your Gemini API key.
 3. Press `Ctrl+Space` once, talk, press again. The polished text is pasted.
 
@@ -58,7 +58,7 @@ Checks and build:
 ## Data and privacy
 
 - Settings: `%APPDATA%\WordArc\config.json`
-- Recordings, meetings, diagnostics: `%LOCALAPPDATA%\WordArc\`
+- Recordings, meetings, diagnostics, downloaded models: `%LOCALAPPDATA%\WordArc\` (speech models under `whisper`, GPU runtime under `cuda` — installer and uninstaller never touch these)
 - Gemini key: Windows Credential Manager, `WordArc/GeminiApiKey`
 - History off by default; meeting audio deleted after success by default.
 - `verbatim.py` stays one release as a compatibility entry point.

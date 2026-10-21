@@ -26,22 +26,30 @@ datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand'),
          # EMA Lightning TTS weights: fetched at build time by
          # tools/fetch_ema_models.py so first Speak use needs no download.
          ('tools/vendor/ema-onnx', 'models/ema-onnx'),
+         # CUDA on-demand pins: the DLLs themselves are NOT bundled (2 GB).
+         # tools/build_cuda_libs.py verifies the venv wheels and vendors the
+         # hash manifest; the zip is uploaded to the cuda-libs release tag.
+         ('assets/cuda/cuda-libs.json', 'models/cuda'),
+         ('tools/vendor/cuda-manifest.json', 'models/cuda'),
          # RapidOCR reads config.yaml/default_models.yaml and its .onnx models
          # from package data at runtime; import analysis cannot see them.
          *collect_data_files('rapidocr'),
          (os.path.join(_QT_TRANSLATIONS, 'qtbase_tr.qm'),
           'PyQt6/Qt6/translations')]
-binaries = collect_dynamic_libs('ctranslate2')
+binaries = [(src, dest) for src, dest in collect_dynamic_libs('ctranslate2')
+            # The wheel ships a cudnn stub loader; the real runtime is
+            # on-demand (cuda_libs.py). Bundling the stub would fake the
+            # engine's DLL load test, so it stays out of the package.
+            if os.path.basename(src).lower() not in {"cudnn64_9.dll"}]
 # Native process isolation: carry the verified payload as data so PyInstaller
 # does not flatten its DLL layout or replace its local CRT dependencies.
 from tools.build_vulkan import verify as verify_vulkan
 assert verify_vulkan(), 'Build/verify the Vulkan payload before packaging'
 datas.append(('native/whisper-vulkan', 'native/whisper-vulkan'))
-# Pinned NVIDIA wheels supply Windows DLLs that ordinary import
-# analysis cannot see. Preserve their directory layout for cuda_runtime.
-_SITE = Path(sysconfig.get_path('purelib'))
-for dll in list((_SITE / 'nvidia').glob('*/bin/*.dll')) + list((_SITE / 'nvidia').glob('*/lib/*.dll')):
-    binaries.append((str(dll), str(dll.parent.relative_to(_SITE))))
+# The on-demand CUDA runtime lives outside the package (see cuda_libs.py):
+# bundling the NVIDIA wheels would add ~2 GB. Build env keeps them for the
+# zip in tools/build_cuda_libs.py; the frozen app must not carry them.
+# (Previous nvidia DLL loop removed 2026-10-22.)
 # The local speech engine. faster_whisper pulls in ctranslate2, onnxruntime,
 # tokenizers, av and huggingface_hub, and PyInstaller's hooks miss most of them
 # because they reach for binaries at runtime rather than importing them.

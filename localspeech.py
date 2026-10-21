@@ -182,6 +182,8 @@ def get_best_device(preference=DEVICE_AUTO):
             return DEVICE_CUDA, COMPUTE_CUDA
         missing = cuda_runtime.missing_libraries()
         if missing:
+            if cuda_driver_present():
+                raise CudaUnavailable(t("GPU support is not downloaded yet. Install it from Settings, Speech to text, or switch the device to Automatic."))
             raise CudaUnavailable(t("CUDA libraries are missing or cannot load (packaging/dependency problem): {libraries}",
                                     libraries=', '.join(missing)))
         try:

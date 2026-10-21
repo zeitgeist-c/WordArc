@@ -1,0 +1,11 @@
+{
+  "_note": "Build pins for the on-demand CUDA runtime. The DLLs themselves are NOT in the frozen package; cuda_libs.py fetches WordArc-CudaLibs.zip from this tag on first GPU use. Bump the tag (and upload a fresh zip) only when these wheels change.",
+  "tag": "cuda-libs-v1",
+  "file": "WordArc-CudaLibs.zip",
+  "wheels": {
+    "nvidia-cublas-cu12": "12.9.2.10",
+    "nvidia-cuda-runtime-cu12": "12.9.79",
+    "nvidia-cuda-nvrtc-cu12": "12.9.86",
+    "nvidia-cudnn-cu12": "9.27.0.42"
+  }
+}

@@ -19,7 +19,8 @@ _lock = threading.Lock()
 def search_directories():
     roots = [Path(sys.prefix) / "Lib" / "site-packages",
              Path(getattr(sys, "_MEIPASS", Path(__file__).parent)),
-             Path(sys.executable).parent]
+             Path(sys.executable).parent,
+             *_data_cuda_roots()]
     paths = []
     for root in roots:
         paths.extend((root, root / "ctranslate2", root / "cuda"))
@@ -58,6 +59,22 @@ def prepare():
                     _directories[path] = os.add_dll_directory(str(path))
                 except OSError:
                     pass
+
+
+def _data_cuda_roots():
+    """On-demand runtime copies under the app data cuda directory."""
+    try:
+        import config
+    except Exception:
+        return []
+    try:
+        base = config.DATA_DIR / "cuda"
+        if not base.is_dir():
+            return []
+        return [entry for entry in [base, *sorted(base.iterdir())]
+                if entry.is_dir()]
+    except OSError:
+        return []
 
 
 def missing_libraries():

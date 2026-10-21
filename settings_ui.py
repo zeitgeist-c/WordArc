@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 import api
 import audio
 import config as cfg
+import cuda_libs
 import filetranscribe
 import i18n
 import hotkey
@@ -1084,6 +1085,7 @@ class SettingsWindow(QDialog):
         self.cuda_recovery.changed.connect(self._cuda_changed)
         self._download_stop = threading.Event()
         self._download_name = None
+        self._download_cuda_only = False
         self._update_info = None
         self._update_cancel = threading.Event()
         self._local_snapshots = {}
@@ -1723,17 +1725,31 @@ class SettingsWindow(QDialog):
         if (snapshot["backend"] != "vulkan" or
                 preference == "auto" and localspeech.vulkan_speech._failed) and current.path.endswith(".bin"):
             self.local_device_note.setText(t("CPU (whisper.cpp model)"))
+        cuda_offer = (snapshot["backend"] != "vulkan"
+                      and cuda_libs.offer(preference))
         if current.installed:
             self.local_status.setText(t(
                 "{name} is installed ({size}) and ready.",
                 name=name, size=localspeech.human_size(current.size)))
-            self.local_download_button.setEnabled(False)
             self.local_remove_button.setEnabled(True)
+            if cuda_offer:
+                self.local_status.setText(t(
+                    "{name} is installed ({size}) and ready. GPU support "
+                    "({cuda_size}) can be downloaded; until then the model "
+                    "runs on CPU.",
+                    name=name, size=localspeech.human_size(current.size),
+                    cuda_size=localspeech.human_size(cuda_libs.download_size())))
+                self._download_cuda_only = True
+                self.local_download_button.setEnabled(True)
+            else:
+                self._download_cuda_only = False
+                self.local_download_button.setEnabled(False)
             return
         self.local_status.setText(t(
             "{name} is not downloaded yet — {size}. Downloaded once, it "
             "works offline after that.", name=name,
             size=localspeech.human_size(current.expected)))
+        self._download_cuda_only = False
         self.local_download_button.setEnabled(True)
         self.local_remove_button.setEnabled(False)
 
@@ -1779,26 +1795,32 @@ class SettingsWindow(QDialog):
         self._local_status_error = ""
         name = self.local_stt_model.currentData()
         preference = self.local_stt_device.currentData() or "auto"
-        if self._download_name or not name or localspeech.state(name, device_preference=preference).installed:
+        cuda_only = self._download_cuda_only and cuda_libs.offer(preference)
+        if self._download_name or not name:
+            return
+        if not cuda_only and localspeech.state(name, device_preference=preference).installed:
             return
         # Install-time system check: missing Python packages are offered for
-        # automatic install; a driver without a working CUDA runtime only
-        # changes where the model will run. Nothing missing -> straight on.
+        # automatic install; a driver without the GPU runtime is offered the
+        # runtime download first. Nothing missing -> straight on.
         status = (dict(packages_missing=[], driver=False, gpu_ready=True)
                   if localspeech.model_backend(preference) == "vulkan" else localspeech.prerequisite_status())
         missing = list(status["packages_missing"])
+        cuda_first = False
         if missing:
             if not confirm_box(self, t("Install"), t(
                     "The local engine needs {packages}. Install them "
                     "automatically and continue with the setup?",
                     packages=", ".join(missing))):
                 return
-        elif status["driver"] and not status["gpu_ready"]:
-            if not confirm_box(self, t("Download"), t(
-                    "An Nvidia driver is present, but the CUDA runtime does "
-                    "not answer (cuBLAS/cuDNN may be missing). Setup continues "
-                    "and the model runs on the CPU. Continue?")):
-                return
+        elif not cuda_only and cuda_libs.offer(preference):
+            size = localspeech.human_size(cuda_libs.download_size())
+            if confirm_box(self, t("Download"), t(
+                    "GPU support ({size}) is not installed yet. Download it "
+                    "first, then the {name} model? Answering No downloads "
+                    "only the model for CPU use.",
+                    size=size, name=name)):
+                cuda_first = True
         self._download_name = name
         self._download_stop.clear()
         self.local_stt_model.setEnabled(False)
@@ -1809,10 +1831,11 @@ class SettingsWindow(QDialog):
         self.download_panel.show()
         self.model_setup.setTabVisible(1, True)
         self.model_setup.setCurrentIndex(1)
-        self.download_title.setText(t("Downloading {name}…", name=name))
+        title = t("GPU support") if cuda_only else name
+        self.download_title.setText(t("Downloading {name}…", name=title))
         self.download_details.setText(t("Connecting…"))
         self.download_bar.setRange(0, 0)
-        self.local_status.setText(t("Downloading {name}…", name=name))
+        self.local_status.setText(t("Downloading {name}…", name=title))
         def work():
             try:
                 if missing:
@@ -1821,15 +1844,28 @@ class SettingsWindow(QDialog):
                                       name, 0, 0, 0.0, None,
                                       t("Installing…"), "installing"))
                     localspeech.install_missing_packages(missing)
-                localspeech.download(
-                    name, should_stop=self._download_stop.is_set,
-                    device_preference=preference,
-                    on_progress=lambda progress: self._deliver(
-                        "_local_download_progress", progress))
+                if cuda_first or cuda_only:
+                    self._fetch_cuda_support(name)
+                if not cuda_only:
+                    localspeech.download(
+                        name, should_stop=self._download_stop.is_set,
+                        device_preference=preference,
+                        on_progress=lambda progress: self._deliver(
+                            "_local_download_progress", progress))
                 self._deliver("_local_download_done", name, "")
             except Exception as exc:
                 self._deliver("_local_download_done", name, str(exc))
         threading.Thread(target=work, daemon=True).start()
+
+    def _fetch_cuda_support(self, name):
+        """Download the GPU runtime, reporting through the model progress UI."""
+        def _progress(done, total):
+            self._deliver("_local_download_progress",
+                          localspeech.DownloadProgress(
+                              name, done, total or 0, 0.0,
+                              None, t("GPU support"), "download"))
+        cuda_libs.ensure(progress=_progress,
+                         should_stop=self._download_stop.is_set)
 
     def _on_local_download_progress(self, progress):
         if progress.name != self._download_name:
@@ -1850,6 +1886,8 @@ class SettingsWindow(QDialog):
     def _on_local_download_done(self, name, error):
         if name != self._download_name:
             return
+        cuda_only = self._download_cuda_only
+        self._download_cuda_only = False
         cancelled = self._download_stop.is_set()
         self._download_name = None
         self.local_stt_model.setEnabled(True)
@@ -1858,7 +1896,8 @@ class SettingsWindow(QDialog):
         self._local_snapshots.clear()
         self._refresh_local_controls()
         if error:
-            message = t("Download stopped. Press Download to resume.") if cancelled else t("Could not download {name}: {error}", name=name, error=error)
+            what = t("GPU support") if cuda_only else name
+            message = t("Download stopped. Press Download to resume.") if cancelled else t("Could not download {name}: {error}", name=what, error=error)
             self._local_status_error = message
             self.local_status.setText(message)
             self.download_title.setText(message)
@@ -1867,9 +1906,10 @@ class SettingsWindow(QDialog):
         else:
             self.download_bar.setRange(0, 1000)
             self.download_bar.setValue(1000)
-            self.download_title.setText(t("Model ready: {name}", name=name))
+            ready = t("GPU support ready.") if cuda_only else t("Model ready: {name}", name=name)
+            self.download_title.setText(ready)
             self.download_file.setText("")
-            self.save_banner.show_saved(t("Model ready: {name}", name=name))
+            self.save_banner.show_saved(ready)
 
     def _remove_local_model(self):
         name = self.local_stt_model.currentData()

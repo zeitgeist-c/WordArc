@@ -26,7 +26,7 @@ Invoke-Gate { & $Python -m pytest -q }
 
 Invoke-Gate { & $Python -m compileall -q . }
 
-Invoke-Gate { & $Python -c "import api, audio, audio_capture, brand, brand_migration, config, credential_store, diagnostics, filetranscribe, hotkey, i18n, livespeech, localspeech, meeting, ocr, update, operation, overlay, paste, screenshot_capture, settings_ui, sounds, startup, theme, trayicon, vad, verbatim, wordarc, worker; print('all imports ok')" }
+Invoke-Gate { & $Python -c "import api, audio, audio_capture, brand, brand_migration, config, credential_store, cuda_libs, cuda_runtime, diagnostics, filetranscribe, hotkey, i18n, livespeech, localspeech, meeting, ocr, update, operation, overlay, paste, screenshot_capture, settings_ui, sounds, startup, theme, trayicon, vad, verbatim, wordarc, worker; print('all imports ok')" }
 
 $Iss = Get-Content -LiteralPath (Join-Path $PSScriptRoot "installer\wordarc.iss") -Raw
 foreach ($marker in @('PrivilegesRequired=admin', 'CleanOldPortable', 'runasoriginaluser', 'OutputBaseFilename=WordArc-{#AppVersion}', 'GetEnv("WORDARC_VERSION")', 'GetEnv("WORDARC_VERSION_NUM")')) {

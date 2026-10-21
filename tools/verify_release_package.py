@@ -70,14 +70,35 @@ def main():
         if name.startswith('cpu/') and name.endswith(('.exe', '.dll')):
             dependencies = {row.dll.decode().lower() for row in pefile.PE(str(native.DEST / name)).DIRECTORY_ENTRY_IMPORT}
             assert 'vulkan-1.dll' not in dependencies and 'ggml-vulkan.dll' not in dependencies, 'CPU rescue depends on Vulkan'
+    # Data-file layout prefix used by the TTS and CUDA checks below.
+    toc_slashes = {name.replace('\\', '/') for name in reader.toc}
     if '--cuda' in sys.argv:
         import cuda_runtime
+        # CUDA is on-demand since 0.10: the frozen app must NOT carry the
+        # 2 GB NVIDIA tree; the download pins ride along instead.
+        nvidia = [name for name in reader.toc
+                  if name.replace('\\', '/').startswith('nvidia/')]
+        assert not nvidia, f'CUDA runtime must be on-demand: {nvidia[:3]}'
+        assert 'models/cuda/cuda-libs.json' in toc_slashes, 'missing cuda pins'
+        assert 'models/cuda/cuda-manifest.json' in toc_slashes, 'missing cuda manifest'
+        import json as _json
+        def _data(name):
+            key = next((entry for entry in reader.toc
+                        if entry.replace('\\', '/') == name), None)
+            assert key is not None, f'missing {name}'
+            return key
+        manifest = _json.loads(reader.extract(_data('models/cuda/cuda-manifest.json')))
+        source_pins = _json.loads((root / 'assets' / 'cuda' / 'cuda-libs.json').read_text())
+        assert 'models/cuda/cuda-libs.json' in toc_slashes, 'missing cuda pins'
+        assert manifest['tag'] == source_pins['tag'], 'cuda manifest tag drifted'
+        assert manifest['wheels'] == source_pins['wheels'], 'cuda manifest wheels drifted'
+        assert len(manifest.get('sha256', '')) == 64, 'cuda manifest has no sha256'
         bundled = {Path(name.replace('\\', '/')).name.lower() for name in reader.toc}
         missing = {name.lower() for name in cuda_runtime.LIBRARIES} - bundled
-        assert not missing, f'missing bundled CUDA DLLs: {sorted(missing)}'
+        assert missing == {name.lower() for name in cuda_runtime.LIBRARIES}, \
+            'unexpected CUDA DLLs bundled'
     assert not any(Path(name).name.lower() in {"icuuc.dll", "icuin.dll"} for name in reader.toc), "OS ICU shadowed"
     # TTS weights ride inside the frozen app; first Speak use is offline.
-    toc_slashes = {name.replace('\\', '/') for name in reader.toc}
     for name in ("text.onnx", "sound.onnx", "decoder.onnx", "meta.json"):
         assert f"models/ema-onnx/{name}" in toc_slashes, f'missing bundled TTS weight: {name}'
     archive = reader.open_embedded_archive("PYZ.pyz")
@@ -89,9 +110,9 @@ def main():
     assert BRAND.version in list(constants(archive.extract("brand"))), "wrong embedded version"
     assert "set_recording_state" in list(constants(archive.extract("settings_ui")))
     assert "PanelTabs" in list(constants(archive.extract("settings_ui"))), "old workspace layout bundled"
-    for name in ("settings_ui", "screenshot_capture", "screenshot_editor", "ocr", "update", "theme", "worker", "localspeech", "livespeech", "cuda_runtime", "faster_whisper", "vulkan_speech", "local_stt_diagnostic"):
+    for name in ("settings_ui", "screenshot_capture", "screenshot_editor", "ocr", "update", "theme", "worker", "localspeech", "livespeech", "cuda_runtime", "cuda_libs", "faster_whisper", "vulkan_speech", "local_stt_diagnostic"):
         assert name in archive.toc, f"missing bundled module: {name}"
-    for name in ("brand", "hotkey", "paste", "settings_ui", "screenshot_capture", "screenshot_editor", "ocr", "update", "overlay", "localspeech", "livespeech", "vulkan_speech", "config", "i18n", "cuda_recovery", "local_stt_diagnostic"):
+    for name in ("brand", "hotkey", "paste", "settings_ui", "screenshot_capture", "screenshot_editor", "ocr", "update", "overlay", "localspeech", "livespeech", "vulkan_speech", "config", "i18n", "cuda_recovery", "cuda_runtime", "cuda_libs", "local_stt_diagnostic"):
         source = compile((root / (name + '.py')).read_bytes(), name + '.py', 'exec', dont_inherit=True)
         # Code equality compares bytecode/constants recursively. marshal bytes
         # also encode incidental string interning/shared-reference identities,
