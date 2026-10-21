@@ -7,7 +7,7 @@ Git dönüş noktası: b155886 / v0.9.0
 Yedek 2026-10-22: 0.10.0 — CUDA isteğe bağlı (paket 1,7GB → 328MB;
 GPU desteği Ayarlar'dan tek tıkla iner, cuda-libs-v1 sürümünde);
 ctranslate2 cuDNN taslağı paketten çıkarıldı; sürüm 0.10.0.
-- 0.10.0 setup SHA256: `a601eb73bd09dd2e51422417b71afdb57378b6ba29690c50ff180893dfebfed8`.
+- 0.10.0 setup SHA256: `b4cfeb79b71a797c24a733fdec7c1bf074479f1aebbbaeec06d53628863f9c83` (kurulum simgeli yapı).
 Yedek 2026-10-22: 0.9.0 — kurulum dosyası düzenine geçiş (Inno Setup,
 Program Files, sabit iç exe); program içi güncelleme setup'ı sessiz kurar;
 TTS modeli pakete gömülü; portable + BAT emekli; pillow 13.0.0 + certifi

@@ -33,6 +33,9 @@ OutputDir=..\dist
 OutputBaseFilename=WordArc-{#AppVersion}
 UninstallDisplayName=WordArc {#AppVersion}
 WizardStyle=modern
+; The setup file itself carries the product icon instead of the
+; generic download arrow; brand assets are rendered by build_brand_assets.
+SetupIconFile=..\assets\brand\wordarc.ico
 ; Elle çalıştırmada canlı WordArc açıksa kapatmayı önerir. Program içi
 ; güncelleme setup'tan önce zaten kapanır; bu yalnız manuel çalıştırma içindir.
 CloseApplications=yes

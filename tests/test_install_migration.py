@@ -52,6 +52,12 @@ class IssLayoutTests(unittest.TestCase):
         self.assertIn('Name: "{autodesktop}\\WordArc"', body)
         self.assertIn('Filename: "{app}\\WordArc.exe"', body)
 
+    def test_setup_carries_the_product_icon(self):
+        body = iss_text()
+        self.assertIn("SetupIconFile=", body)
+        ico = ROOT / "assets" / "brand" / "wordarc.ico"
+        self.assertTrue(ico.is_file(), "product icon missing")
+
     def test_setup_restarts_the_app_unelevated(self):
         body = iss_text()
         run_section = body.split("[Run]", 1)[1]
