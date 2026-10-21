@@ -100,47 +100,33 @@ class StampTests(unittest.TestCase):
         self.assertFalse(update.last_check_is_old(update.now_stamp()))
 
 
-class SwapTests(unittest.TestCase):
-    def test_swap_script_targets_the_new_exe_and_self_deletes(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            new_exe = Path(tmp) / "WordArc-9.9.9.exe"
-            with mock.patch("update.subprocess.Popen") as popen:
-                update.spawn_swap(4242, new_exe)
-            script = Path(tmp) / "wordarc-swap.bat"
-            body = script.read_text(encoding="ascii")
-            self.assertIn("4242", body)
-            self.assertIn(str(new_exe), body)
-            self.assertIn("del ", body)
-            self.assertTrue(popen.called)
+class SetupTests(unittest.TestCase):
+    def test_setup_temp_path_lives_outside_the_install_dir(self):
+        import tempfile
+        dest = update.setup_temp_path("9.9.9")
+        self.assertEqual(dest.parent, Path(tempfile.gettempdir()))
+        self.assertIn("9.9.9", dest.name)
+        self.assertTrue(dest.name.endswith(".exe"))
 
-    def test_swap_launches_detached_without_the_winerror87_flag_combo(self):
-        import subprocess
-        with tempfile.TemporaryDirectory() as tmp:
-            new_exe = Path(tmp) / "WordArc-9.9.9.exe"
-            with mock.patch("update.subprocess.Popen") as popen:
-                update.spawn_swap(4242, new_exe)
-            _, kwargs = popen.call_args
-            self.assertEqual(kwargs.get("creationflags"),
-                             getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+    def test_spawn_setup_launches_elevated_and_silent(self):
+        import ctypes
+        setup = Path(tempfile.gettempdir()) / "WordArc-9.9.9-setup.exe"
+        with mock.patch.object(ctypes, "windll") as windll:
+            windll.shell32.ShellExecuteW.return_value = 42
+            update.spawn_setup(setup)
+            args, _ = windll.shell32.ShellExecuteW.call_args
+        self.assertIsNone(args[0])
+        self.assertEqual(args[1], "runas")
+        self.assertEqual(args[2], str(setup))
+        self.assertIn("/VERYSILENT", args[3])
+        self.assertIn("/NORESTART", args[3])
 
-    def test_swap_removes_the_superseded_exe_and_its_version_bat(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            new_exe = Path(tmp) / "WordArc-9.9.9.exe"
-            old_exe = Path(tmp) / "WordArc-9.9.8.exe"
-            with mock.patch("update.subprocess.Popen"):
-                update.spawn_swap(4242, new_exe, old_exe)
-            body = (Path(tmp) / "wordarc-swap.bat").read_text(encoding="ascii")
-            self.assertIn(f'del "{old_exe}"', body)
-            self.assertIn(f'del "{Path(tmp) / "WordArc-9.9.8.bat"}"', body)
-            self.assertIn(f'start "" "{new_exe}" --restarted', body)
-
-    def test_swap_without_old_exe_deletes_nothing_else(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            new_exe = Path(tmp) / "WordArc-9.9.9.exe"
-            with mock.patch("update.subprocess.Popen"):
-                update.spawn_swap(4242, new_exe, new_exe)
-            body = (Path(tmp) / "wordarc-swap.bat").read_text(encoding="ascii")
-            self.assertNotIn(f'del "{new_exe}"', body)
+    def test_spawn_setup_refused_elevation_raises(self):
+        import ctypes
+        with mock.patch.object(ctypes, "windll") as windll:
+            windll.shell32.ShellExecuteW.return_value = 0  # user said No to UAC
+            with self.assertRaises(update.UpdateError):
+                update.spawn_setup(Path("C:/tmp/WordArc-9.9.9-setup.exe"))
 
 
 class LifecycleTests(unittest.TestCase):
@@ -200,27 +186,27 @@ class LifecycleTests(unittest.TestCase):
         controller.settings_window = mock.Mock()
         controller.shutdown = mock.Mock()
         controller.app = mock.Mock()
-        with mock.patch("update.spawn_swap") as swap, \
+        with mock.patch("update.spawn_setup") as setup, \
              mock.patch("wordarc._release_instance_mutex") as release, \
              mock.patch.object(wordarc.subprocess, "Popen") as popen:
-            controller._update_installed("9.9.9", "C:/app/WordArc-9.9.9.exe")
+            controller._update_installed("9.9.9", "C:/tmp/WordArc-9.9.9-setup.exe")
         controller.settings_window.show_update_ready.assert_called_once_with(
             "9.9.9")
-        self.assertTrue(swap.called)
-        # swap is mocked, so any Popen here could only be the old exe being
+        self.assertTrue(setup.called)
+        # setup is mocked, so any Popen here could only be the old exe being
         # relaunched — which must not happen (it left a duplicate behind).
         popen.assert_not_called()
         controller.app.quit.assert_called_once_with()
         release.assert_called_once_with()
 
-    def test_failed_swap_handoff_reports_instead_of_sticking_at_100_percent(self):
+    def test_failed_setup_handoff_reports_instead_of_sticking_at_100_percent(self):
         import wordarc
         controller = self._controller()
         controller.settings_window = mock.Mock()
         controller.app = mock.Mock()
-        with mock.patch("update.spawn_swap",
+        with mock.patch("update.spawn_setup",
                          side_effect=OSError("boom")):
-            controller._update_installed("9.9.9", "C:/app/WordArc-9.9.9.exe")
+            controller._update_installed("9.9.9", "C:/tmp/WordArc-9.9.9-setup.exe")
         controller.settings_window.show_update_error.assert_called_once()
         controller.app.quit.assert_not_called()
 

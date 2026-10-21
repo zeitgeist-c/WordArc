@@ -209,7 +209,7 @@ class _UpdateWorker(QObject):
 
     def install(self, info):
         import update as update_mod
-        dest = update_mod.install_path(Path(sys.executable), info.version)
+        dest = update_mod.setup_temp_path(info.version)
         try:
             update_mod.download(info, dest, progress=self._progress,
                                 cancel=self._cancel)
@@ -1179,20 +1179,18 @@ class WordArc:
                     version=version),
                 QSystemTrayIcon.MessageIcon.Information, 5000)
         try:
-            update_mod.spawn_swap(os.getpid(), Path(new_exe),
-                                  Path(sys.executable))
-        except OSError:
-            logging.getLogger("wordarc.update").exception("swap handoff failed")
+            update_mod.spawn_setup(Path(new_exe))
+        except (OSError, update_mod.UpdateError):
+            logging.getLogger("wordarc.update").exception("setup handoff failed")
             self._update_failed(t("Update failed"))
             return
         self._quit_for_update()
 
     def _quit_for_update(self):
-        """Quit so the swap batch can boot the new exe.
+        """Quit so the setup installer can overwrite the install.
 
-        Unlike restart(), nothing is relaunched here: the swap batch starts
-        the new version after this process exits. Relaunching sys.executable
-        instead would boot the OLD version a second time.
+        Nothing is relaunched here: setup runs elevated after this process
+        exits and starts the fresh version itself when it finishes.
         """
         if self.settings_window is not None:
             self.settings_window.close()

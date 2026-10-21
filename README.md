@@ -22,7 +22,7 @@ WordArc turns speech into polished text. Press `Ctrl+Space`, talk, press again â
 
 ## Quick start (zero-install state)
 
-1. Download the current `WordArc-X.Y.Z.exe` and `install.ps1` into the same folder, run `install.ps1`.
+1. Download the current `WordArc-X.Y.Z.exe` and run it (admin install into Program Files).
 2. Start WordArc â€” Settings opens on first launch. Enter your Gemini API key.
 3. Press `Ctrl+Space` once, talk, press again. The polished text is pasted.
 
@@ -53,7 +53,7 @@ Checks and build:
 .\build.ps1
 ```
 
-`check.ps1` runs pytest, compileall, and an import check over all modules. `build.ps1` verifies the pinned FFmpeg binary, runs tests, audits dependencies, emits `sbom.json`, renders the deterministic icon, and packages `dist\WordArc-X.Y.Z.exe` plus its matching launcher `.bat` via PyInstaller.
+`check.ps1` runs pytest, compileall, and an import check over all modules. `build.ps1` verifies the pinned FFmpeg binary, runs tests, audits dependencies, emits `sbom.json`, renders the deterministic icon, vendors the TTS weights, and produces the setup installer via PyInstaller + Inno Setup.
 
 ## Data and privacy
 

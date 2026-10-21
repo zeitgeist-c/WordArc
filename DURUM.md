@@ -1,9 +1,14 @@
 # WordArc — durum
 
-Güncelleme: 2026-10-19
-Hazırlanan paket: 0.8.11 (`brand.py`)
+Güncelleme: 2026-10-22
+Hazırlanan paket: 0.9.0 (`brand.py`)
 Dal: master
-Git dönüş noktası: 963f780 / v0.8.10
+Git dönüş noktası: ade91d2 / v0.8.11
+Yedek 2026-10-22: 0.9.0 — kurulum dosyası düzenine geçiş (Inno Setup,
+Program Files, sabit iç exe); program içi güncelleme setup'ı sessiz kurar;
+TTS modeli pakete gömülü; portable + BAT emekli; pillow 13.0.0 + certifi
+2026.10.19 zaaf kapatması; sürüm 0.9.0.
+- 0.9.0 setup SHA256: `aad19fd163a0845a0e2328dcdf81d4b4c8799ef04c5fa966620dce0536b8bfd6`.
 Yedek 2026-10-19: 0.8.11 — ekran görüntüsü Oku düğmesi pencereyi öne
 çıkarmadan tepsiden okur; tepsi menüsünde konuşurken canlı "Okumayı
 durdur"; sürüm 0.8.11.

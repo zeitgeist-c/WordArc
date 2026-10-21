@@ -14,3 +14,5 @@ sbom.json
 # Generated model/audit cache, not application data
 .cache/
 native/whisper-vulkan/
+# TTS weights vendored at build time by tools/fetch_ema_models.py
+tools/vendor/

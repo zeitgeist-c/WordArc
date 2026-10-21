@@ -106,6 +106,35 @@ class TestFiles(unittest.TestCase):
                 (root / name).write_bytes(b"x")
             self.assertTrue(tts_ema.models_ready(root))
 
+    def test_resolve_prefers_bundled_weights(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundled = pathlib.Path(tmp) / "bundled"
+            bundled.mkdir()
+            for name in tts_ema.FILES:
+                (bundled / name).write_bytes(b"x")
+            with mock.patch.object(tts_ema, "bundled_models_dir",
+                                   return_value=bundled):
+                self.assertEqual(tts_ema.resolve_models(), bundled)
+
+    def test_resolve_falls_back_to_data_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(tts_ema, "bundled_models_dir",
+                                   return_value=pathlib.Path(tmp) / "empty"):
+                self.assertEqual(tts_ema.resolve_models(),
+                                 tts_ema.models_dir())
+
+    def test_ensure_uses_bundled_without_downloading(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundled = pathlib.Path(tmp) / "bundled"
+            bundled.mkdir()
+            for name in tts_ema.FILES:
+                (bundled / name).write_bytes(b"x")
+            with mock.patch.object(tts_ema, "bundled_models_dir",
+                                   return_value=bundled), \
+                 mock.patch.object(tts_ema, "snapshot_download",
+                                   side_effect=AssertionError("must not download")):
+                self.assertEqual(tts_ema.ensure_models(), bundled)
+
     def test_config_defaults(self):
         for key in ("tts_format", "tts_speed", "tts_autoplay",
                     "tts_shortcut", "tts_stop_shortcut", "tts_last_dir"):
