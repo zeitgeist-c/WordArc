@@ -1,4 +1,14 @@
-"""Verify delivery names and the version embedded in the actual executable."""
+"""Verify the setup delivery and the frozen app inside it.
+
+Layout since the Inno Setup migration:
+  dist/WordArc-X.Y.Z.exe  -- the Inno installer (the only release asset)
+  dist/inner/WordArc.exe  -- the frozen app, fixed name, packed by Inno
+
+No versioned portable exe and no BAT launcher may remain in dist/.
+User data (%APPDATA%/WordArc, %LOCALAPPDATA%/WordArc: recordings,
+meetings, models) is outside the installer and is asserted as preserved
+by tests/test_install_migration.py on the .iss source.
+"""
 import hashlib
 import marshal
 import time
@@ -30,12 +40,20 @@ def normalized(code):
 
 def main():
     root = Path(__file__).resolve().parents[1]
-    exe = root / "dist" / f"{BRAND.name}-{BRAND.version}.exe"
-    bat = exe.with_suffix(".bat")
-    assert exe.is_file() and bat.is_file(), "missing delivery files"
-    launcher = bat.read_text(encoding="utf-8")
-    assert f'%~dp0{exe.name}' in launcher and "%*" in launcher
-    reader = CArchiveReader(str(exe))
+    setup = root / "dist" / f"{BRAND.name}-{BRAND.version}.exe"
+    inner = root / "dist" / "inner" / "WordArc.exe"
+    assert setup.is_file(), "missing setup delivery"
+    assert inner.is_file(), "missing inner frozen app"
+    leftover_bats = sorted((root / "dist").glob(f"{BRAND.name}-*.bat"))
+    assert not leftover_bats, f"portable launcher remains: {leftover_bats}"
+    leftover_portables = [p for p in (root / "dist").glob(f"{BRAND.name}-*.exe")
+                          if p != setup]
+    assert not leftover_portables, f"portable exe remains: {leftover_portables}"
+    # The installer must carry the app, not an empty shell: Inno compresses
+    # ~1.5 GB down, but never below a third of the inner size.
+    ratio = setup.stat().st_size / inner.stat().st_size
+    assert 0.3 <= ratio <= 1.2, f"suspicious setup/inner size ratio: {ratio:.2f}"
+    reader = CArchiveReader(str(inner))
     assert any(Path(name).name.lower() == 'unicodedata.pyd' for name in reader.toc), 'missing unicodedata extension'
     assert any(Path(name).name.lower() == 'ctranslate2.dll' for name in reader.toc), 'missing CTranslate2 runtime'
     import json
@@ -58,6 +76,10 @@ def main():
         missing = {name.lower() for name in cuda_runtime.LIBRARIES} - bundled
         assert not missing, f'missing bundled CUDA DLLs: {sorted(missing)}'
     assert not any(Path(name).name.lower() in {"icuuc.dll", "icuin.dll"} for name in reader.toc), "OS ICU shadowed"
+    # TTS weights ride inside the frozen app; first Speak use is offline.
+    toc_slashes = {name.replace('\\', '/') for name in reader.toc}
+    for name in ("text.onnx", "sound.onnx", "decoder.onnx", "meta.json"):
+        assert f"models/ema-onnx/{name}" in toc_slashes, f'missing bundled TTS weight: {name}'
     archive = reader.open_embedded_archive("PYZ.pyz")
     entry_source = compile((root / 'wordarc.py').read_bytes(), 'wordarc.py',
                            'exec', dont_inherit=True)
@@ -75,18 +97,18 @@ def main():
         # also encode incidental string interning/shared-reference identities,
         # which can differ after modules have been imported by this verifier.
         assert normalized(source) == normalized(archive.extract(name)), f'outdated bundled source: {name}'
-    # Exercise imports in the actual delivery executable, with isolated data.
+    # Exercise the inner app in the actual delivery, with isolated data.
     # A GUI import-error dialog also fails this gate via the bounded timeout.
     with tempfile.TemporaryDirectory(prefix='wordarc-package-check-') as scratch:
         env = dict(os.environ, APPDATA=scratch, LOCALAPPDATA=scratch,
                    QT_QPA_PLATFORM='offscreen')
         started = time.perf_counter()
-        result = subprocess.run([str(exe), '--version'], env=env,
+        result = subprocess.run([str(inner), '--version'], env=env,
                                 capture_output=True, timeout=120)
         assert result.returncode == 0, f'packaged startup failed: {result.returncode}'
         print(f"Packaged --version wall time: {time.perf_counter() - started:.3f} s (includes extraction)")
-    print(f"PACKAGE OK: {exe.name} + {bat.name}")
-    with exe.open("rb") as stream:
+    print(f"PACKAGE OK: {setup.name} (setup) + inner WordArc.exe")
+    with setup.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     print(f"SHA256: {digest}")
 

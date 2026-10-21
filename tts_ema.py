@@ -194,14 +194,28 @@ def models_dir():
     return cfg.DATA_DIR / "models" / "ema-onnx"
 
 
+def bundled_models_dir():
+    """The weight set shipped inside the frozen package, if present."""
+    from brand import resource_path
+    return resource_path("models", "ema-onnx")
+
+
+def resolve_models():
+    """Bundled weights win; the user download dir is the fallback."""
+    bundled = bundled_models_dir()
+    if models_ready(bundled):
+        return bundled
+    return models_dir()
+
+
 def models_ready(where=None):
     root = where or models_dir()
     return all((root / name).is_file() for name in FILES)
 
 
 def ensure_models(progress=None):
-    """Download the ONNX weight set on first use; returns its directory."""
-    root = models_dir()
+    """Return the ONNX weight dir, downloading to DATA_DIR only as fallback."""
+    root = resolve_models()
     if models_ready(root):
         return root
     if snapshot_download is None:

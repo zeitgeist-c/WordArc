@@ -66,6 +66,7 @@ if (Test-Path -LiteralPath $PyInstallerWork) {
 }
 
 Invoke-Gate { & $Python (Join-Path $PSScriptRoot "tools\build_brand_assets.py") } "Brand asset generation failed."
+Invoke-Gate { & $Python (Join-Path $PSScriptRoot "tools\fetch_ema_models.py") } "TTS model vendoring failed."
 Invoke-Gate { & $Python -m PyInstaller --clean --noconfirm --workpath $PyInstallerWork `
     (Join-Path $PSScriptRoot "wordarc.spec") }
 
@@ -73,18 +74,31 @@ $RawExe = Join-Path $PSScriptRoot "dist\wordarc.exe"
 if (-not (Test-Path -LiteralPath $RawExe)) {
     throw "Expected dist\wordarc.exe was not produced."
 }
-$VersionedName = "WordArc-$AppVersion.exe"
-$VersionedExe = Join-Path $PSScriptRoot "dist\$VersionedName"
-Move-Item -LiteralPath $RawExe -Destination $VersionedExe -Force
-$LauncherName = "WordArc-$AppVersion.bat"
-$LauncherPath = Join-Path $PSScriptRoot "dist\$LauncherName"
-$Launcher = "@echo off`r`nsetlocal`r`n" +
-    "cd /d `"%~dp0`"`r`n" +
-    "rem Tek seferde tek acilis: ilk ornek paketi cozerken ikinci tik ayni isi bastan baslatip diski kitlemesin.`r`n" +
-    "if `"%~1`"==`"`" tasklist /FI `"IMAGENAME eq $VersionedName`" 2>nul | findstr /I `"$VersionedName`" >nul && exit /b 0`r`n" +
-    "start `"WordArc $AppVersion`" `"%~dp0$VersionedName`" %*`r`n"
-[IO.File]::WriteAllText($LauncherPath, $Launcher, [Text.UTF8Encoding]::new($false))
+# Sabit iç ad: kurulu klasörde sürümlü dosya birikmez, update üzerine yazar.
+$InnerDir = Join-Path $PSScriptRoot "dist\inner"
+New-Item -ItemType Directory -Path $InnerDir -Force | Out-Null
+$InnerExe = Join-Path $InnerDir "WordArc.exe"
+Move-Item -LiteralPath $RawExe -Destination $InnerExe -Force
+$IsccCandidates = @()
+try { $IsccCmd = Get-Command ISCC.exe -ErrorAction Stop; $IsccCandidates += $IsccCmd.Source } catch {}
+$IsccCandidates += "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+$IsccCandidates += "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+$IsccCandidates += "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+$Iscc = $IsccCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+if (-not $Iscc) {
+    throw "Inno Setup 6 (ISCC.exe) bulunamadı. https://www.innosetup.com/isdl.php kurun veya ISCC.exe'yi PATH'e ekleyin."
+}
+$env:WORDARC_VERSION = $AppVersion
+$VersionNum = ($AppVersion -replace '[^0-9.]', '').Trim('.')
+while (($VersionNum.Split('.')).Count -lt 4) { $VersionNum += ".0" }
+$env:WORDARC_VERSION_NUM = $VersionNum
+Invoke-Gate { & $Iscc (Join-Path $PSScriptRoot "installer\wordarc.iss") } "Inno Setup derlemesi başarısız."
+$SetupName = "WordArc-$AppVersion.exe"
+$SetupExe = Join-Path $PSScriptRoot "dist\$SetupName"
+if (-not (Test-Path -LiteralPath $SetupExe)) {
+    throw "Expected dist\$SetupName was not produced."
+}
 $VerificationArgs = @()
 if (-not $CpuOnly) { $VerificationArgs = @('--cuda') }
 Invoke-Gate { & $Python (Join-Path $PSScriptRoot "tools\verify_release_package.py") @VerificationArgs } "Release package verification failed."
-Write-Host "Build completed: dist\$VersionedName + $LauncherName" -ForegroundColor Green
+Write-Host "Build completed: dist\$SetupName (setup)" -ForegroundColor Green

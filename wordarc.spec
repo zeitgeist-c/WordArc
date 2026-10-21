@@ -23,6 +23,9 @@ _QT_TRANSLATIONS = os.path.join(os.path.dirname(PyQt6.__file__),
                                 "Qt6", "translations")
 datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand'),
          ('assets/sounds', 'assets/sounds'),
+         # EMA Lightning TTS weights: fetched at build time by
+         # tools/fetch_ema_models.py so first Speak use needs no download.
+         ('tools/vendor/ema-onnx', 'models/ema-onnx'),
          # RapidOCR reads config.yaml/default_models.yaml and its .onnx models
          # from package data at runtime; import analysis cannot see them.
          *collect_data_files('rapidocr'),

@@ -22,7 +22,7 @@ WordArc konuşmayı düzenlenmiş metne dönüştürür. `Ctrl+Space` bas, konu�
 
 ## Hızlı başlangıç (sıfır kurulum)
 
-1. Güncel `WordArc-X.Y.Z.exe` ile `install.ps1` aynı klasöre konur, `install.ps1` çalıştırılır.
+1. Güncel `WordArc-X.Y.Z.exe` indirilir ve çalıştırılır (Program Files'a admin kurulum).
 2. WordArc başlatılır — ilk açılışta Ayarlar gelir. Gemini API anahtarı girilir.
 3. `Ctrl+Space` bir kez basılır, konuşulur, tekrar basılır. Temiz metin yapıştırılır.
 
@@ -53,7 +53,7 @@ Kontrol ve derleme:
 .\build.ps1
 ```
 
-`check.ps1` pytest, compileall ve tüm modüllerin import kontrolünü yapar. `build.ps1` sabit FFmpeg sürümünü doğrular, testleri koşar, bağımlılık denetimi yapar, `sbom.json` üretir, deterministik ikonu çizer ve PyInstaller ile `dist\WordArc-X.Y.Z.exe` + eşleşen `.bat` paketler.
+`check.ps1` pytest, compileall ve tüm modüllerin import kontrolünü yapar. `build.ps1` sabit FFmpeg sürümünü doğrular, testleri koşar, bağımlılık denetimi yapar, `sbom.json` üretir, deterministik ikonu çizer, TTS ağırlıklarını vendorlar ve kurulum dosyasını PyInstaller + Inno Setup ile üretir.
 
 ## Veri ve gizlilik
 
