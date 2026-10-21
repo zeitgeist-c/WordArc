@@ -22,7 +22,7 @@ WordArc konuşmayı düzenlenmiş metne dönüştürür. `Ctrl+Space` bas, konu�
 
 ## Hızlı başlangıç (sıfır kurulum)
 
-1. Güncel `WordArc-X.Y.Z.exe` indirilir ve çalıştırılır (Program Files'a admin kurulum).
+1. Güncel `WordArc-X.Y.Z.exe` indirilir ve çalıştırılır (Program Files'a admin kurulum, ~500MB — NVIDIA kullanılacaksa GPU desteği sonradan iner).
 2. WordArc başlatılır — ilk açılışta Ayarlar gelir. Gemini API anahtarı girilir.
 3. `Ctrl+Space` bir kez basılır, konuşulur, tekrar basılır. Temiz metin yapıştırılır.
 
@@ -58,7 +58,7 @@ Kontrol ve derleme:
 ## Veri ve gizlilik
 
 - Ayarlar: `%APPDATA%\WordArc\config.json`
-- Kayıtlar, toplantılar, tanılama: `%LOCALAPPDATA%\WordArc\`
+- Kayıtlar, toplantılar, tanılama ve indirilen modeller: `%LOCALAPPDATA%\WordArc\` (konuşma modelleri `whisper`, GPU çalışması `cuda` altında — kurulum ve kaldırma bunlara dokunmaz)
 - Gemini anahtarı: Windows Credential Manager, `WordArc/GeminiApiKey`
 - Geçmiş varsayılan kapalı; başarılı toplantı sesi varsayılan silinir.
 - `verbatim.py` bir sürüm boyunca uyumluluk giriş noktasıdır.

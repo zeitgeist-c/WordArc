@@ -608,11 +608,29 @@ TR = {
     "automatically and continue with the setup?":
         "Yerel motor için {packages} gerekli. Otomatik kurulup kuruluma "
         "devam edilsin mi?",
-    "An Nvidia driver is present, but the CUDA runtime does "
-    "not answer (cuBLAS/cuDNN may be missing). Setup continues "
-    "and the model runs on the CPU. Continue?":
-        "Nvidia sürücüsü var, ama CUDA çalışması yanıt vermiyor (cuBLAS/cuDNN "
-        "eksik olabilir). Kurulum sürer, model CPU ile çalışır. Devam edilsin mi?",
+    "GPU support is not downloaded yet. Install it from Settings, Speech "
+    "to text, or switch the device to Automatic.":
+        "GPU desteği henüz indirilmedi. Ayarlar, Ses ve modellerden kurun "
+        "ya da cihazı Otomatik'e alın.",
+    "GPU support ({size}) is not installed yet. Download it "
+    "first, then the {name} model? Answering No downloads "
+    "only the model for CPU use.":
+        "GPU desteği ({size}) henüz kurulu değil. Önce o, sonra {name} "
+        "modeli indirilsin mi? Hayır derseniz yalnız model iner, CPU ile "
+        "kullanılır.",
+    "{name} is installed ({size}) and ready. GPU support "
+    "({cuda_size}) can be downloaded; until then the model "
+    "runs on CPU.":
+        "{name} kurulu ({size}) ve hazır. GPU desteği ({cuda_size}) "
+        "indirilebilir; o zamana kadar model CPU ile çalışır.",
+    "GPU support ready.": "GPU desteği hazır.",
+    "GPU support": "GPU desteği",
+    "GPU support has no verified build yet.":
+        "GPU desteğinin doğrulanmış yapısı henüz yok.",
+    "The GPU support file is damaged. Try again.":
+        "GPU desteği dosyası bozuk. Yeniden deneyin.",
+    "The GPU support file is incomplete. Try again.":
+        "GPU desteği dosyası eksik. Yeniden deneyin.",
     "Nvidia GPU was requested, but no usable CUDA device was "
     "found. Check the driver and the CUDA runtime, or switch the "
     "device back to Automatic.":
