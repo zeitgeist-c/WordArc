@@ -47,7 +47,7 @@ import operation  # noqa: E402
 import brand_migration  # noqa: E402
 import theme  # noqa: E402
 import startup  # noqa: E402
-from brand import brand_asset  # noqa: E402
+from brand import brand_asset, brand_icon  # noqa: E402
 import i18n  # noqa: E402
 from i18n import t  # noqa: E402
 import livespeech  # noqa: E402
@@ -1623,7 +1623,7 @@ def main():
     app.setApplicationDisplayName(BRAND.name)
     app.setOrganizationName(BRAND.name)
     app.setDesktopFileName(BRAND.slug)
-    app.setWindowIcon(QIcon(str(brand_asset("wordarc.ico"))))
+    app.setWindowIcon(brand_icon())
     app.setQuitOnLastWindowClosed(False)
 
     # No command and an instance already running: bring its settings forward.

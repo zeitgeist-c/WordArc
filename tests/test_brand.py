@@ -24,7 +24,7 @@ def _app():
 
 def test_brand_identity_and_legacy_entry_point():
     assert BRAND.name == "WordArc"
-    assert BRAND.version == wordarc.__version__ == "0.10.0"
+    assert BRAND.version == wordarc.__version__ == "0.10.1"
     assert BRAND.executable == "wordarc.exe"
     assert wordarc.SERVER_NAME == f"wordarc-{getpass.getuser()}"
     assert wordarc.LEGACY_SERVER_NAME == f"verbatim-{getpass.getuser()}"
@@ -49,3 +49,24 @@ def test_ico_contains_required_sizes_and_tray_states_render():
         }
     for state in ("audio-input-microphone", "media-record", "view-refresh"):
         assert not trayicon.icon(state).isNull()
+
+
+def test_brand_icon_still_renders_when_temp_assets_are_missing(tmp_path, monkeypatch):
+    import brand
+    _app()
+    monkeypatch.setattr(brand, "brand_asset", lambda name: tmp_path / name)
+    icon = brand.brand_icon()
+    assert not icon.isNull()
+    assert not icon.pixmap(32, 32).isNull()
+
+
+def test_brand_icon_keeps_loaded_pixels_after_file_disappears(tmp_path, monkeypatch):
+    import brand
+    import shutil
+    _app()
+    asset = tmp_path / "wordarc.ico"
+    shutil.copyfile(brand.brand_asset("wordarc.ico"), asset)
+    monkeypatch.setattr(brand, "brand_asset", lambda name: tmp_path / name)
+    icon = brand.brand_icon()
+    asset.unlink()
+    assert not icon.pixmap(48, 48).isNull()

@@ -1,9 +1,23 @@
 # WordArc — durum
 
-Güncelleme: 2026-10-22
-Hazırlanan paket: 0.10.0 (`brand.py`)
+Güncelleme: 2026-10-24
+Hazırlanan paket: 0.10.1 (`brand.py`)
 Dal: master
-Git dönüş noktası: b155886 / v0.9.0
+Git dönüş noktası: e8f6cb8 / v0.10.0
+0.10.1 hazırlığı: Vulkan motoru için otomatik keşif (PATH, yaygın kurulumlar,
+Hermes dizinleri), elle seçim, doğrulanmış bağımsız motor indirme ve kullanıcı
+veri dizininde kalıcı motor kopyası. Kurulu model için güvenli yeniden indirme;
+geçici simge dosyası kaybolursa bellekteki/çizilen WordArc logosu kullanılır.
+Son kaynak doğrulaması: 702 test, 2 atlama, 12 subtest; güvenlik denetimi temiz.
+Paketli RX 6650 XT + large-v3-turbo, JFK örneği: 5,01 s Vulkan (fallback yok),
+8,38 s CPU; metinler aynı. Gömülü kaynak/simge/payload ve --version doğrulandı.
+0.10.1 setup SHA256: `066fe6b45db603cbf1fd4b8e8904a5ea4d19895e1960009a2b9b96a99ba93284`.
+Motor ZIP SHA256: `a38e401921fecb9e5b71f95b84405a6d88a2d9ec816a53ccd586af309abc0786`.
+Yayın hedefi: https://github.com/zeitgeist-c/WordArc-Releases/releases/tag/v0.10.1
+Kullanıcı bu oturumda "tmm, commit ve yayını tamamla" onayı verdi.
+Kanıt ve sınırlar: docs/verification-0.10.1.md.
+Mevcut yerel installer/wordarc.iss AppPublisher=Geeker değişikliği korunur;
+sürüm kaynak kaydına dahil edilmez, paket temiz kaynak kopyasından hazırlanır.
 Yedek 2026-10-22: 0.10.0 — CUDA isteğe bağlı (paket 1,7GB → 328MB;
 GPU desteği Ayarlar'dan tek tıkla iner, cuda-libs-v1 sürümünde);
 ctranslate2 cuDNN taslağı paketten çıkarıldı; sürüm 0.10.0.

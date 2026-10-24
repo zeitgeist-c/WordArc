@@ -29,6 +29,7 @@ Set-Location -LiteralPath $PSScriptRoot
 if ($Cuda -and $CpuOnly) { throw 'Choose CUDA or CPU-only, not both.' }
 Invoke-Gate { & $Python -m pip install -r (Join-Path $PSScriptRoot 'requirements-native-build.txt') } 'Vulkan build tool installation failed.'
 Invoke-Gate { & $Python (Join-Path $PSScriptRoot 'tools\build_vulkan.py') } 'Vulkan runtime build/verification failed.'
+Invoke-Gate { & $Python (Join-Path $PSScriptRoot 'tools\package_vulkan_runtime.py') } 'Vulkan repair packaging failed.'
 if (-not $CpuOnly) {
     # Standard deliveries include CUDA libraries; the driver stays external.
     Invoke-Gate { & $Python -m pip install -r (Join-Path $PSScriptRoot 'requirements-cuda.txt') } 'CUDA runtime installation failed.'

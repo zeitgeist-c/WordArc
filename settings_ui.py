@@ -37,7 +37,8 @@ import startup
 import theme
 import tts_ema
 from screenshot_capture import default_save_folder
-from brand import BRAND, brand_asset
+from brand import BRAND, brand_asset, brand_icon
+import vulkan_runtime
 from filetranscribe import FileTranscriber
 from i18n import t
 
@@ -1072,6 +1073,7 @@ class SettingsWindow(QDialog):
     _local_download_progress = pyqtSignal(object)
     _test_done = pyqtSignal(bool, str)
     _local_inspected = pyqtSignal(str, object)
+    _vulkan_selected = pyqtSignal(str)
 
     def __init__(self, conf, launch_command, meeting_command=None,
                  meetings=None, ask_command=None, parent=None):
@@ -1091,6 +1093,7 @@ class SettingsWindow(QDialog):
         self._local_snapshots = {}
         self._local_pending = set()
         self._local_inspected.connect(self._on_local_inspected)
+        self._vulkan_selected.connect(self._on_vulkan_selected)
         self.launch_command = launch_command
         self.meeting_command = meeting_command or launch_command
         self.meetings = meetings
@@ -1107,7 +1110,7 @@ class SettingsWindow(QDialog):
         self._usage_timer.timeout.connect(self._on_usage_tick)
         self.setObjectName("settingsRoot")
         self.setWindowTitle(t("WordArc Settings"))
-        self.setWindowIcon(QIcon(str(brand_asset("wordarc.ico"))))
+        self.setWindowIcon(brand_icon())
         self.resize(1040, 760)
         # Small screens must be able to shrink the window: the floor sits
         # well below the opening size and every tab scrolls vertically.
@@ -1138,7 +1141,7 @@ class SettingsWindow(QDialog):
         self.header_layout = header_layout
         header_layout.setContentsMargins(2, 0, 2, 4)
         logo = QLabel()
-        logo.setPixmap(QIcon(str(brand_asset("wordarc-app.svg"))).pixmap(44, 44))
+        logo.setPixmap(brand_icon().pixmap(44, 44))
         logo.setFixedSize(48, 48)
         header_layout.addWidget(logo)
         identity = QVBoxLayout()
@@ -1665,6 +1668,7 @@ class SettingsWindow(QDialog):
             self.live_model_note.setVisible(live)
         self.local_row.setVisible(local)
         self.local_status.setVisible(local)
+        self.local_download_button.setText(t("Download"))
         if hasattr(self, "local_privacy_note"):
             self.local_privacy_note.setVisible(local)
             enabled = hasattr(self, "cleanup_enabled") and self.cleanup_enabled.isChecked()
@@ -1696,6 +1700,7 @@ class SettingsWindow(QDialog):
                 if fallback:
                     note = f"{note} — {fallback}"
                 self.local_device_note.setText(note)
+                self.local_device_note.setToolTip(snapshot.get("runtime_path", ""))
         if self._download_name:
             self.local_download_button.setEnabled(False)
             self.local_remove_button.setEnabled(False)
@@ -1743,7 +1748,11 @@ class SettingsWindow(QDialog):
                 self.local_download_button.setEnabled(True)
             else:
                 self._download_cuda_only = False
-                self.local_download_button.setEnabled(False)
+                self.local_download_button.setEnabled(True)
+                missing_engine = snapshot["backend"] == "vulkan" and not snapshot.get("runtime_ready", False)
+                self.local_download_button.setText(t("Download engine") if missing_engine else t("Re-download"))
+                if missing_engine:
+                    self.local_status.setText(t("The model is installed, but the Vulkan engine is missing. Download the engine to continue."))
             return
         self.local_status.setText(t(
             "{name} is not downloaded yet — {size}. Downloaded once, it "
@@ -1769,12 +1778,19 @@ class SettingsWindow(QDialog):
                 storage_preference = "vulkan"
             snapshot = dict(
                 note=note,
+                runtime_ready=vulkan_runtime.ready() if storage_preference == "vulkan" else True,
                 backend="vulkan" if storage_preference == "vulkan" else "cpu",
                 states={name: localspeech.state(name, device_preference=storage_preference)
                         for name in names},
                 cpu_only={name for name in names
                           if not localspeech.vulkan_speech.installed(name)
                           and localspeech._is_installed(name)})
+            if snapshot["backend"] == "vulkan":
+                if snapshot["runtime_ready"]:
+                    snapshot["runtime_path"] = str(vulkan_runtime.resolve())
+                    snapshot["note"] += "\n" + t("Vulkan engine ready. Hover here to see its location.")
+                else:
+                    snapshot["note"] += "\n" + t("The Vulkan engine is missing. Scan, select or download it in Settings.")
         except Exception as exc:
             logging.getLogger("wordarc.settings").warning(
                 "local device inspection failed: %s", type(exc).__name__)
@@ -1798,13 +1814,19 @@ class SettingsWindow(QDialog):
         cuda_only = self._download_cuda_only and cuda_libs.offer(preference)
         if self._download_name or not name:
             return
-        if not cuda_only and localspeech.state(name, device_preference=preference).installed:
+        snapshot = self._local_snapshots.get(preference, {})
+        current = snapshot.get("states", {}).get(name) if isinstance(snapshot, dict) else None
+        repair_vulkan = (preference == "vulkan" or current is not None and current.path.endswith(".bin"))
+        model_installed = bool(current and current.installed)
+        force = model_installed and not cuda_only and not (repair_vulkan and not snapshot.get("runtime_ready", False))
+        if force and not confirm_box(self, t("Re-download"), t(
+                "Download {name} again? The current model stays available until the replacement is verified.", name=name)):
             return
         # Install-time system check: missing Python packages are offered for
         # automatic install; a driver without the GPU runtime is offered the
         # runtime download first. Nothing missing -> straight on.
         status = (dict(packages_missing=[], driver=False, gpu_ready=True)
-                  if localspeech.model_backend(preference) == "vulkan" else localspeech.prerequisite_status())
+                  if repair_vulkan else localspeech.prerequisite_status())
         missing = list(status["packages_missing"])
         cuda_first = False
         if missing:
@@ -1846,16 +1868,61 @@ class SettingsWindow(QDialog):
                     localspeech.install_missing_packages(missing)
                 if cuda_first or cuda_only:
                     self._fetch_cuda_support(name)
+                if repair_vulkan:
+                    vulkan_runtime.ensure(
+                        should_stop=self._download_stop.is_set,
+                        progress=lambda done, total: self._deliver(
+                            "_local_download_progress", localspeech.DownloadProgress(
+                                name, done, total, 0.0, None, t("Vulkan engine"), "download")))
+                    localspeech.vulkan_speech._devices_cache = ()
+                    localspeech.vulkan_speech._failed = False
+                    localspeech.vulkan_speech._failure_note = ""
                 if not cuda_only:
                     localspeech.download(
                         name, should_stop=self._download_stop.is_set,
-                        device_preference=preference,
+                        device_preference="vulkan" if repair_vulkan else preference,
+                        force=force,
                         on_progress=lambda progress: self._deliver(
                             "_local_download_progress", progress))
                 self._deliver("_local_download_done", name, "")
             except Exception as exc:
                 self._deliver("_local_download_done", name, str(exc))
         threading.Thread(target=work, daemon=True).start()
+
+    def _scan_vulkan_engine(self):
+        if self._download_name:
+            return
+        self._local_status_error = ""
+        self._local_snapshots.clear()
+        # Resolving/probing stays on the inspection worker, never the Qt thread.
+        vulkan_runtime._cached = None
+        vulkan_runtime._checked.clear()
+        localspeech.vulkan_speech._devices_cache = ()
+        localspeech.vulkan_speech._failed = False
+        localspeech.vulkan_speech._failure_note = ""
+        self._refresh_local_controls()
+
+    def _select_vulkan_engine(self):
+        if self._download_name:
+            return
+        path, _ = QFileDialog.getOpenFileName(self, t("Select Vulkan engine"), "", "whisper-cli.exe (whisper-cli.exe)")
+        if not path:
+            return
+        # Use the existing background inspection for validation and persistence.
+        def work():
+            try:
+                vulkan_runtime.select(path)
+                localspeech.vulkan_speech._devices_cache = ()
+                self._deliver("_vulkan_selected", "")
+            except Exception as exc:
+                self._deliver("_vulkan_selected", str(exc))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_vulkan_selected(self, error):
+        if error:
+            self.local_status.setText(error)
+        else:
+            self._scan_vulkan_engine()
 
     def _fetch_cuda_support(self, name):
         """Download the GPU runtime, reporting through the model progress UI."""
@@ -2323,7 +2390,11 @@ class SettingsWindow(QDialog):
                                      self.local_download_button,
                                      self.local_remove_button))
         stt_body.addWidget(self.local_row)
-        self.device_row = self._label_row("Device", self.local_stt_device)
+        scan = QPushButton(t("Scan for engine"))
+        scan.clicked.connect(self._scan_vulkan_engine)
+        choose = QPushButton(t("Select engine…"))
+        choose.clicked.connect(self._select_vulkan_engine)
+        self.device_row = self._label_row("Device", self._row(self.local_stt_device, scan, choose))
         stt_body.addWidget(self.device_row)
         self.local_device_note = QLabel("")
         self.local_device_note.setObjectName("muted")

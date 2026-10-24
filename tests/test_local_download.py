@@ -34,6 +34,26 @@ def files():
         rows.append(row)
     return payloads, rows
 
+
+def test_force_redownload_keeps_verified_model_until_replacement_is_ready(tmp_path, files):
+    payloads, rows = files
+    root = Path(localspeech._root("base", tmp_path))
+    root.mkdir(parents=True)
+    for name, data in payloads.items():
+        (root / name).write_bytes(data)
+    assert localspeech._is_installed("base", tmp_path)
+    calls = []
+    def fetch(url, offset=0):
+        name = url.split("/")[-1].split("?")[0]
+        calls.append(name)
+        assert (root / "model.bin").read_bytes() == payloads["model.bin"]
+        return Response(payloads[name], offset)
+    with mock.patch.object(localspeech, "_download_manifest", return_value=("public/model", "revision-123456789", rows)), \
+         mock.patch.object(localspeech, "_download_open", side_effect=fetch):
+        localspeech.download("base", tmp_path, force=True)
+    assert set(calls) == set(payloads)
+    assert localspeech._is_installed("base", tmp_path)
+
 @pytest.mark.parametrize("ignore_range", [False, True])
 def test_cancel_keeps_part_and_retry_resumes_or_restarts_safely(tmp_path, files, ignore_range):
     payloads, rows = files
