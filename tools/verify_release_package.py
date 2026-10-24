@@ -108,11 +108,24 @@ def main():
     assert any(name.replace('\\', '/') == 'PyQt6/QtSvg.pyd'
                for name in reader.toc), 'missing vector splash renderer'
     assert BRAND.version in list(constants(archive.extract("brand"))), "wrong embedded version"
+    assert "brand_icon" in list(constants(archive.extract("brand"))), "missing resilient application icon"
+    assert "vulkan_runtime" in archive.toc, "missing engine discovery/repair module"
+    assert "assets/vulkan/runtime.json" in toc_slashes, "missing pinned Vulkan repair asset"
+    pins = json.loads(reader.extract(next(name for name in reader.toc
+                      if name.replace('\\', '/') == 'assets/vulkan/runtime.json')))
+    repair = root / 'dist' / pins['file']
+    assert repair.stat().st_size == pins['size'], 'wrong Vulkan repair asset size'
+    with repair.open('rb') as stream:
+        assert hashlib.file_digest(stream, 'sha256').hexdigest() == pins['sha256'], 'wrong Vulkan repair asset hash'
+    for asset in ("wordarc.ico", "wordarc-app.svg"):
+        key = next(name for name in reader.toc
+                   if name.replace('\\', '/') == 'assets/brand/' + asset)
+        assert reader.extract(key) == (root / 'assets' / 'brand' / asset).read_bytes(), 'changed brand asset'
     assert "set_recording_state" in list(constants(archive.extract("settings_ui")))
     assert "PanelTabs" in list(constants(archive.extract("settings_ui"))), "old workspace layout bundled"
     for name in ("settings_ui", "screenshot_capture", "screenshot_editor", "ocr", "update", "theme", "worker", "localspeech", "livespeech", "cuda_runtime", "cuda_libs", "faster_whisper", "vulkan_speech", "local_stt_diagnostic"):
         assert name in archive.toc, f"missing bundled module: {name}"
-    for name in ("brand", "hotkey", "paste", "settings_ui", "screenshot_capture", "screenshot_editor", "ocr", "update", "overlay", "localspeech", "livespeech", "vulkan_speech", "config", "i18n", "cuda_recovery", "cuda_runtime", "cuda_libs", "local_stt_diagnostic"):
+    for name in ("brand", "hotkey", "paste", "settings_ui", "screenshot_capture", "screenshot_editor", "ocr", "update", "overlay", "localspeech", "livespeech", "vulkan_speech", "vulkan_runtime", "config", "i18n", "cuda_recovery", "cuda_runtime", "cuda_libs", "local_stt_diagnostic"):
         source = compile((root / (name + '.py')).read_bytes(), name + '.py', 'exec', dont_inherit=True)
         # Code equality compares bytecode/constants recursively. marshal bytes
         # also encode incidental string interning/shared-reference identities,

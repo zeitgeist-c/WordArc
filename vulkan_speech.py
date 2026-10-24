@@ -31,7 +31,8 @@ class VulkanError(Exception):
 
 
 def runtime_dir():
-    return resource_path("native", "whisper-vulkan")
+    import vulkan_runtime
+    return vulkan_runtime.resolve()
 
 
 def process_options(directory=None):
@@ -62,7 +63,8 @@ def _probe_once():
     """One probe run; () when the backend did not answer this time."""
     exe = runtime_dir() / "wordarc-vulkan-probe.exe"
     if not exe.is_file():
-        return ()
+        import vulkan_runtime
+        return vulkan_runtime.inspect(runtime_dir())
     try:
         result = subprocess.run([str(exe)], capture_output=True,
                                 timeout=_PROBE_TIMEOUT, **process_options())
@@ -131,7 +133,7 @@ def installed(name, where=None):
         return False
 
 
-def download(name, where=None, should_stop=None, on_progress=None):
+def download(name, where=None, should_stop=None, on_progress=None, force=False):
     """Reuse the existing resumable/hash-verified downloader, never convert CT2."""
     import localspeech as stt
     if name not in MODEL_FILES:
@@ -141,7 +143,7 @@ def download(name, where=None, should_stop=None, on_progress=None):
         stt._check_cancelled(should_stop)
     try:
         return stt._download_model(name, where, should_stop, on_progress,
-                                   backend="vulkan")
+                                   backend="vulkan", force=force)
     finally:
         stt._download_lock.release()
 
@@ -169,9 +171,11 @@ def transcribe(name, wav_path, language="", prompt="", should_stop=None,
     if not installed(name, where):
         raise stt.LocalSpeechError(t("The Vulkan model {name} is not installed yet. Download it in Settings.", name=name))
     directory = runtime_dir() if use_gpu else runtime_dir() / "cpu"
+    if not use_gpu and not (directory / "whisper-cli.exe").is_file():
+        directory = runtime_dir()  # External engines can run the same CLI with -ng.
     exe = directory / "whisper-cli.exe"
     if not exe.is_file():
-        raise VulkanError(t("The Vulkan engine is missing from the package. Reinstall WordArc."))
+        raise VulkanError(t("The Vulkan engine is missing. Scan, select or download it in Settings."))
     device = best_device() if use_gpu else None
     if use_gpu and device is None:
         raise VulkanError(t("No usable AMD Vulkan device was found. Check the AMD driver."))

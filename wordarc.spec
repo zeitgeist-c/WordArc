@@ -22,6 +22,7 @@ if _WINRT_BUNDLED_CRT.exists():
 _QT_TRANSLATIONS = os.path.join(os.path.dirname(PyQt6.__file__),
                                 "Qt6", "translations")
 datas = [('ffmpeg.exe', '.'), ('assets/brand', 'assets/brand'),
+         ('assets/vulkan', 'assets/vulkan'),
          ('assets/sounds', 'assets/sounds'),
          # EMA Lightning TTS weights: fetched at build time by
          # tools/fetch_ema_models.py so first Speak use needs no download.

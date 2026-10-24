@@ -10,7 +10,7 @@ import sys
 @dataclass(frozen=True)
 class BrandIdentity:
     name: str = "WordArc"
-    version: str = "0.10.0"
+    version: str = "0.10.1"
     slug: str = "wordarc"
     executable: str = "wordarc.exe"
     data_directory: str = "WordArc"
@@ -52,3 +52,19 @@ def resource_path(*parts: str) -> Path:
 
 def brand_asset(filename: str) -> Path:
     return resource_path("assets", "brand", filename)
+
+
+def brand_icon():
+    """Eagerly load pixels: Qt's file-backed icons break after temp cleanup."""
+    from PyQt6.QtGui import QIcon
+    import trayicon
+    for name in ("wordarc.ico", "wordarc-app.svg"):
+        source = QIcon(str(brand_asset(name)))
+        result = QIcon()
+        for size in (16, 20, 24, 32, 48, 64, 128, 256):
+            pixmap = source.pixmap(size, size)
+            if not pixmap.isNull():
+                result.addPixmap(pixmap)
+        if not result.isNull():
+            return result
+    return trayicon.icon("audio-input-microphone")

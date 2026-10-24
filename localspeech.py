@@ -496,27 +496,27 @@ def _valid_download(path, row):
     return digest.hexdigest() == expected
 
 
-def download(name, where=None, should_stop=None, on_progress=None, device_preference=None):
+def download(name, where=None, should_stop=None, on_progress=None, device_preference=None, force=False):
     if model_backend(device_preference) == DEVICE_VULKAN:
-        return vulkan_speech.download(name, where, should_stop, on_progress)
+        return vulkan_speech.download(name, where, should_stop, on_progress, force=force)
     # A closed window's worker may still be unwinding an HTTP read. A new
     # window must not append to the same part until that worker has stopped.
     while not _download_lock.acquire(timeout=0.1):
         _check_cancelled(should_stop)
     try:
         _check_cancelled(should_stop)
-        return _download_model(name, where, should_stop, on_progress)
+        return _download_model(name, where, should_stop, on_progress, force=force)
     finally:
         _download_lock.release()
 
 
-def _download_model(name, where=None, should_stop=None, on_progress=None, backend=None):
+def _download_model(name, where=None, should_stop=None, on_progress=None, backend=None, force=False):
     """Stream verified files with byte progress, cancellation and resumable parts."""
     if _repo(name) is None:
         _fail("Unknown local model: {name}", name=name)
     using_vulkan = backend == DEVICE_VULKAN
     is_installed = lambda: vulkan_speech.installed(name, where) if using_vulkan else _is_installed(name, where)
-    if is_installed():
+    if is_installed() and not force:
         return 0
     root = str(vulkan_speech.model_root(where)) if using_vulkan else _root(name, where)
     os.makedirs(root, exist_ok=True)
@@ -552,7 +552,7 @@ def _download_model(name, where=None, should_stop=None, on_progress=None, backen
             filename = row["rfilename"]
             target = os.path.join(root, filename)
             part = target + f".{revision[:12]}.part"
-            if _valid_download(target, row):
+            if not force and _valid_download(target, row):
                 completed += row["size"]
                 report(filename, force=True)
                 continue

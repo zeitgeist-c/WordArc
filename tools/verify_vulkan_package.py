@@ -17,7 +17,7 @@ def main():
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    exe = root / "dist" / f"{BRAND.name}-{BRAND.version}.exe"
+    exe = root / "dist" / "inner" / "WordArc.exe"
     audio = str(Path(args.audio).resolve())
     models = str(Path(args.models_dir).resolve())
     checks = {}

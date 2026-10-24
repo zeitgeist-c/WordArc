@@ -569,6 +569,47 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertTrue(window.local_download_button.isEnabled())
         self.assertFalse(window.local_remove_button.isEnabled())
 
+    def test_installed_vulkan_model_offers_missing_engine_download(self):
+        window = self.window
+        states = {name: localspeech.ModelState(name, True, 2048, 2048, "ggml.bin")
+                  for name in localspeech.model_names()}
+        with mock.patch.object(localspeech, "get_best_device", side_effect=localspeech.VulkanUnavailable("missing")), \
+             mock.patch.object(localspeech, "state", side_effect=lambda name, **kw: states[name]), \
+             mock.patch.object(settings_ui.vulkan_runtime, "ready", return_value=False):
+            window.local_stt_device.setCurrentIndex(window.local_stt_device.findData("vulkan"))
+            window.transcribe_engine.setCurrentIndex(window.transcribe_engine.findData("local"))
+            self.wait_local_inspection()
+        self.assertTrue(window.local_download_button.isEnabled())
+        self.assertEqual(window.local_download_button.text(), t("Download engine"))
+        self.assertIn(t("The model is installed, but the Vulkan engine is missing. Download the engine to continue."), window.local_status.text())
+        # A missing runtime must be repaired even though the model is installed.
+        with mock.patch.object(settings_ui.vulkan_runtime, "ensure") as ensure, \
+             mock.patch.object(localspeech, "download") as download, \
+             mock.patch.object(settings_ui, "confirm_box", side_effect=AssertionError("unnecessary confirmation")):
+            window._download_local_model()
+            deadline = time.monotonic() + 5
+            while window._download_name and time.monotonic() < deadline:
+                self.app.processEvents()
+                time.sleep(0.005)
+            ensure.assert_called_once()
+            download.assert_called_once()
+            self.assertFalse(download.call_args.kwargs["force"])
+
+    def test_installed_model_offers_safe_redownload(self):
+        window = self.window
+        with mock.patch.object(localspeech, "state", side_effect=lambda name, **kw:
+                               localspeech.ModelState(name, True, 2048, 2048, "cpu-model")):
+            window.transcribe_engine.setCurrentIndex(window.transcribe_engine.findData("local"))
+            self.wait_local_inspection()
+        self.assertTrue(window.local_download_button.isEnabled())
+        self.assertEqual(window.local_download_button.text(), t("Re-download"))
+
+    def test_selecting_engine_clears_previous_session_failure(self):
+        with mock.patch.object(localspeech.vulkan_speech, "_failed", True), \
+             mock.patch.object(self.window, "_refresh_local_controls"):
+            self.window._on_vulkan_selected("")
+            self.assertFalse(localspeech.vulkan_speech._failed)
+
     def test_the_box_and_the_status_line_agree_on_the_download_size(self):
         """One number for one file: a user who reads both must not see two."""
         window = self.window
