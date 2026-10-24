@@ -110,6 +110,7 @@ def main():
     assert BRAND.version in list(constants(archive.extract("brand"))), "wrong embedded version"
     assert "brand_icon" in list(constants(archive.extract("brand"))), "missing resilient application icon"
     assert "vulkan_runtime" in archive.toc, "missing engine discovery/repair module"
+    assert "update_diagnostic" in archive.toc, "missing frozen updater acceptance"
     assert "assets/vulkan/runtime.json" in toc_slashes, "missing pinned Vulkan repair asset"
     pins = json.loads(reader.extract(next(name for name in reader.toc
                       if name.replace('\\', '/') == 'assets/vulkan/runtime.json')))
@@ -125,7 +126,7 @@ def main():
     assert "PanelTabs" in list(constants(archive.extract("settings_ui"))), "old workspace layout bundled"
     for name in ("settings_ui", "screenshot_capture", "screenshot_editor", "ocr", "update", "theme", "worker", "localspeech", "livespeech", "cuda_runtime", "cuda_libs", "faster_whisper", "vulkan_speech", "local_stt_diagnostic"):
         assert name in archive.toc, f"missing bundled module: {name}"
-    for name in ("brand", "hotkey", "paste", "settings_ui", "screenshot_capture", "screenshot_editor", "ocr", "update", "overlay", "localspeech", "livespeech", "vulkan_speech", "vulkan_runtime", "config", "i18n", "cuda_recovery", "cuda_runtime", "cuda_libs", "local_stt_diagnostic"):
+    for name in ("brand", "hotkey", "paste", "settings_ui", "screenshot_capture", "screenshot_editor", "ocr", "update", "update_diagnostic", "overlay", "localspeech", "livespeech", "vulkan_speech", "vulkan_runtime", "config", "i18n", "cuda_recovery", "cuda_runtime", "cuda_libs", "local_stt_diagnostic"):
         source = compile((root / (name + '.py')).read_bytes(), name + '.py', 'exec', dont_inherit=True)
         # Code equality compares bytecode/constants recursively. marshal bytes
         # also encode incidental string interning/shared-reference identities,
@@ -141,6 +142,14 @@ def main():
                                 capture_output=True, timeout=120)
         assert result.returncode == 0, f'packaged startup failed: {result.returncode}'
         print(f"Packaged --version wall time: {time.perf_counter() - started:.3f} s (includes extraction)")
+        report = Path(scratch) / 'updater.json'
+        result = subprocess.run([str(inner), '--update-check', '--output', str(report)],
+                                env=env, capture_output=True, timeout=60)
+        assert report.is_file(), f'packaged updater produced no result: {result.returncode}'
+        payload = json.loads(report.read_text(encoding='utf-8'))
+        assert result.returncode == 0 and payload['ok'] and payload['tls_verified'], payload
+        assert payload['state'] != 'checking', payload
+        print(f"Packaged updater GUI + HTTPS OK: {payload['state']}, {payload['elapsed']:.3f} s")
     print(f"PACKAGE OK: {setup.name} (setup) + inner WordArc.exe")
     with setup.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
