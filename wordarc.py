@@ -205,6 +205,10 @@ class _UpdateWorker(QObject):
         except update_mod.UpdateError as exc:
             self.failed.emit(str(exc))
             return
+        except Exception:
+            logging.getLogger("wordarc.update").exception("update check worker failed")
+            self.failed.emit("Could not check for updates. Please try again.")
+            return
         self.checked.emit(info)
 
     def install(self, info):
@@ -1103,11 +1107,32 @@ class WordArc:
         if not tray and self.settings_window is not None:
             self.settings_window.show_update_checking()
         worker = _UpdateWorker(BRAND.version)
-        worker.checked.connect(self._update_checked)
-        worker.failed.connect(self._update_failed)
+        token = getattr(self, "_update_check_sequence", 0) + 1
+        self._update_check_sequence = token
+        self._active_update_check = token
+        worker.checked.connect(lambda info: self._finish_update_check(token, info=info))
+        worker.failed.connect(lambda error: self._finish_update_check(token, error=error))
+        timer = QTimer()
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda: self._finish_update_check(
+            token, error="Update check timed out. Please try again."))
+        self._update_check_deadline = timer
+        timer.start(30_000)
         self._update_worker = worker
         self._update_thread = threading.Thread(target=worker.run, daemon=True)
         self._update_thread.start()
+
+    def _finish_update_check(self, token, info=None, error=None):
+        """Every attempt terminates; ignore late replies from expired checks."""
+        if token != getattr(self, "_active_update_check", None):
+            return
+        self._active_update_check = None
+        self._update_check_deadline.stop()
+        self._update_thread = None
+        if error is not None:
+            self._update_failed(error)
+        else:
+            self._update_checked(info)
 
     def _update_checked(self, info):
         import update as update_mod
@@ -1563,6 +1588,9 @@ def ensure_startup_registration(conf):
 
 
 def main():
+    if "--update-check" in sys.argv:
+        from update_diagnostic import run
+        return run(sys.argv[sys.argv.index("--update-check") + 1:])
     if "--local-stt-check" in sys.argv:
         from local_stt_diagnostic import run
         return run(sys.argv[sys.argv.index("--local-stt-check") + 1:])

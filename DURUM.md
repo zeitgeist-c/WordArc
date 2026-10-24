@@ -1,9 +1,18 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-24
-Hazırlanan paket: 0.10.1 (`brand.py`)
+Hazırlanan paket: 0.10.2 (`brand.py`)
 Dal: master
-Git dönüş noktası: e8f6cb8 / v0.10.0
+Git dönüş noktası: 8d7f762 / v0.10.1
+0.10.2: Güncelleme denetimindeki yakalanmayan SSL/X509 BIO hatası düzeltildi.
+Certifi kökleriyle doğrulanmış HTTPS context, terminal hata sinyali, 30 saniye
+zaman aşımı ve eski/geç yanıt koruması. 710 test, 2 atlama, 12 subtest; denetim
+temiz. Donmuş EXE'de gerçek HTTPS + Qt kontrolü 0,35 s içinde tamamlandı.
+0.10.2 setup SHA256: `b5db20fa2c4fbcfb2ed7359a4231de82dff0a060d212153aab8a5c383252358e`.
+Yayın hedefi: https://github.com/zeitgeist-c/WordArc-Releases/releases/tag/v0.10.2
+Kanıt ve sınırlar: docs/verification-0.10.2.md. Eski denetim takılıyorsa bu
+geçişte EXE doğrudan indirilip eski tepsi uygulaması kapatılarak kurulmalıdır.
+
 0.10.1 hazırlığı: Vulkan motoru için otomatik keşif (PATH, yaygın kurulumlar,
 Hermes dizinleri), elle seçim, doğrulanmış bağımsız motor indirme ve kullanıcı
 veri dizininde kalıcı motor kopyası. Kurulu model için güvenli yeniden indirme;

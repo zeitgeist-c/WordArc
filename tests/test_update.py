@@ -3,6 +3,7 @@
 import os
 import tempfile
 import threading
+import ssl
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -10,6 +11,46 @@ from unittest import mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import update
+
+
+class TestUpdateFailureRecovery(unittest.TestCase):
+    def test_context_uses_explicit_roots_and_preserves_verification(self):
+        update._https_context.cache_clear()
+        try:
+            context = update._https_context()
+            self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+            self.assertTrue(context.check_hostname)
+            self.assertGreater(context.cert_store_stats()["x509_ca"], 0)
+            self.assertIs(update._https_context(), context)
+        finally:
+            update._https_context.cache_clear()
+
+    def test_context_creation_failure_is_reported(self):
+        with mock.patch.object(update, "_https_context", side_effect=ssl.SSLError("BIO lib")):
+            with self.assertRaises(update.UpdateError):
+                update.fetch_latest()
+
+    def test_bad_server_shape_is_reported(self):
+        import io
+        with mock.patch.object(update.urllib.request, "urlopen", return_value=io.BytesIO(b'[]')):
+            with self.assertRaises(update.UpdateError):
+                update.fetch_latest()
+
+    def test_ssl_context_failure_becomes_a_reportable_update_error(self):
+        with mock.patch.object(update.urllib.request, "urlopen", side_effect=ssl.SSLError("[X509] BIO lib")):
+            with self.assertRaises(update.UpdateError):
+                update.fetch_latest()
+
+    def test_unexpected_worker_failure_always_emits_a_terminal_result(self):
+        from PyQt6.QtWidgets import QApplication
+        import wordarc
+        app = QApplication.instance() or QApplication([])
+        worker = wordarc._UpdateWorker("0.10.1")
+        failures = []
+        worker.failed.connect(failures.append)
+        with mock.patch.object(update, "check_for_update", side_effect=ssl.SSLError("[X509] BIO lib")):
+            worker.run()
+        self.assertEqual(len(failures), 1)
 
 
 REAL_085 = {
@@ -159,6 +200,62 @@ class LifecycleTests(unittest.TestCase):
         controller._update_startup_check()
         # old stamp -> run
         controller._run_update_check.assert_called_once_with(tray=True)
+
+    def test_real_worker_failure_reaches_gui_thread_and_allows_retry(self):
+        import time
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance() or QApplication([])
+        controller = self._controller()
+        controller._updates_possible = lambda: True
+        controller.settings_window = mock.Mock()
+        gui_thread = threading.get_ident()
+        received = []
+        controller.settings_window.show_update_error.side_effect = lambda message: received.append(threading.get_ident())
+        with mock.patch.object(update, "check_for_update", side_effect=ssl.SSLError("BIO lib")):
+            controller._run_update_check(tray=False)
+            deadline = time.monotonic() + 3
+            while getattr(controller, "_active_update_check", None) is not None and time.monotonic() < deadline:
+                app.processEvents()
+                time.sleep(.005)
+        self.assertEqual(received, [gui_thread])
+        self.assertIsNone(controller._update_thread)
+        self.assertFalse(controller._update_check_deadline.isActive())
+        with mock.patch.object(update, "check_for_update", return_value=None):
+            controller._run_update_check(tray=False)
+            deadline = time.monotonic() + 3
+            while controller._active_update_check is not None and time.monotonic() < deadline:
+                app.processEvents()
+                time.sleep(.005)
+        controller.settings_window.show_update_latest.assert_called_once()
+
+    def test_timeout_releases_check_and_ignores_late_result(self):
+        import time
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance() or QApplication([])
+        controller = self._controller()
+        controller._updates_possible = lambda: True
+        controller.settings_window = mock.Mock()
+        entered, release = threading.Event(), threading.Event()
+        def delayed(current):
+            entered.set()
+            release.wait(3)
+            return None
+        with mock.patch.object(update, "check_for_update", side_effect=delayed):
+            controller._run_update_check(tray=False)
+            self.assertTrue(entered.wait(1))
+            thread = controller._update_thread
+            token = controller._active_update_check
+            try:
+                controller._update_check_deadline.timeout.emit()
+                controller.settings_window.show_update_error.assert_called_once()
+                self.assertIsNone(controller._update_thread)
+                self.assertIsNone(controller._active_update_check)
+            finally:
+                release.set()
+                thread.join(2)
+            app.processEvents()
+        controller._finish_update_check(token, info=None)
+        controller.settings_window.show_update_latest.assert_not_called()
 
     def test_new_version_offers_window_when_open_else_tray(self):
         controller = self._controller()

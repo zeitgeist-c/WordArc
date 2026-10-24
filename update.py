@@ -16,8 +16,10 @@ import hashlib
 import json
 import logging
 import re
+import ssl
 import urllib.error
 import urllib.request
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +30,18 @@ RELEASE_REPO = "zeitgeist-c/WordArc-Releases"
 API_LATEST = f"https://api.github.com/repos/{RELEASE_REPO}/releases/latest"
 USER_AGENT = f"{BRAND.name}/{BRAND.version}"
 log = logging.getLogger("wordarc.update")
+
+
+@lru_cache(maxsize=1)
+def _https_context():
+    """Use the shipped CA roots; retain them in memory after bundle cleanup.
+
+    Loading Windows' default certificate stores can itself fail with X509/BIO
+    in the frozen app, before urlopen has made any network request.
+    Explicit CA data avoids that path while retaining hostname/cert checks.
+    """
+    import certifi
+    return ssl.create_default_context(cadata=certifi.contents())
 
 
 class UpdateError(Exception):
@@ -82,11 +96,15 @@ def parse_release(payload: dict, version_prefix: str = "v") -> UpdateInfo:
 def fetch_latest() -> UpdateInfo:
     request = urllib.request.Request(API_LATEST, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with urllib.request.urlopen(request, timeout=20, context=_https_context()) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        log.warning("update check failed: %s", type(exc).__name__)
         raise UpdateError("Update server could not be reached.") from exc
-    return parse_release(payload)
+    try:
+        return parse_release(payload)
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise UpdateError("The update server returned an invalid response.") from exc
 
 
 def check_for_update(current: str) -> UpdateInfo | None:
@@ -117,7 +135,7 @@ def download(info: UpdateInfo, dest: Path, progress=None, cancel=None) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     written = 0
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib.request.urlopen(request, timeout=60, context=_https_context()) as response:
             total = int(response.headers.get("Content-Length") or info.size)
             with dest.open("wb") as out:
                 try:

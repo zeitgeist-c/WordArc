@@ -610,6 +610,23 @@ class TestSettingsSmoke(unittest.TestCase):
             self.window._on_vulkan_selected("")
             self.assertFalse(localspeech.vulkan_speech._failed)
 
+    def test_update_check_error_and_retry_restore_buttons_and_clear_stale_offer(self):
+        window = self.window
+        import update
+        info = update.UpdateInfo("9.9.9", "WordArc-9.9.9.exe", "", "", 1000, "")
+        window.show_update_available(info)
+        window.show_update_checking()
+        self.assertFalse(window.update_check_button.isEnabled())
+        self.assertTrue(window.update_install_button.isHidden())
+        self.assertIsNone(window._update_info)
+        window.show_update_error("network error")
+        self.assertTrue(window.update_check_button.isEnabled())
+        window.show_update_checking()
+        window.show_update_latest()
+        self.assertTrue(window.update_check_button.isEnabled())
+        self.assertFalse(window.update_check_button.isHidden())
+        self.assertTrue(window.update_cancel_button.isHidden())
+
     def test_the_box_and_the_status_line_agree_on_the_download_size(self):
         """One number for one file: a user who reads both must not see two."""
         window = self.window

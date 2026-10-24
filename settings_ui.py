@@ -4034,8 +4034,13 @@ class SettingsWindow(QDialog):
         self.update_progress.setVisible(False)
 
     def show_update_checking(self):
+        self._update_info = None
         self.update_status.setText(t("Checking…"))
+        self.update_check_button.setVisible(True)
         self.update_check_button.setEnabled(False)
+        self.update_install_button.setVisible(False)
+        self.update_cancel_button.setVisible(False)
+        self.update_progress.setVisible(False)
 
     def show_update_available(self, info):
         self._update_info = info
@@ -4049,6 +4054,8 @@ class SettingsWindow(QDialog):
         self.update_progress.setVisible(False)
 
     def show_update_latest(self):
+        self._update_info = None
+        self.show_update_current()
         self.update_status.setText(t(
             "You are on the newest version ({version}).").format(
                 version=BRAND.version))
