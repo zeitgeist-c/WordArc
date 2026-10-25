@@ -534,11 +534,11 @@ class TestOcrExtraction(unittest.TestCase):
                        QImage.Format.Format_RGB32)
         image.fill(QColor("#123456"))
         pixmap = screenshot_capture.QPixmap.fromImage(image)
-        patcher = None
-        if not ocr_available:
-            patcher = mock.patch.object(screenshot_capture.ocr, "is_available",
-                                        return_value=False)
-            patcher.start()
+        # Both branches describe simulated availability, independent of which
+        # OCR packages happen to be installed on the test machine.
+        patcher = mock.patch.object(screenshot_capture.ocr, "is_available",
+                                    return_value=ocr_available)
+        patcher.start()
         try:
             overlay = screenshot_capture.RegionOverlay(
                 screen, pixmap, QRect(10, 10, 120, 80))

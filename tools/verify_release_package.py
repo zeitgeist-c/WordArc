@@ -110,6 +110,10 @@ def main():
     assert BRAND.version in list(constants(archive.extract("brand"))), "wrong embedded version"
     assert "brand_icon" in list(constants(archive.extract("brand"))), "missing resilient application icon"
     assert "vulkan_runtime" in archive.toc, "missing engine discovery/repair module"
+    for name in ("engine_discovery", "engine_scan_ui", "speech_sources", "engine_scan_diagnostic"):
+        assert name in archive.toc, f"missing engine scan module: {name}"
+        source = compile((root / (name + '.py')).read_bytes(), name + '.py', 'exec', dont_inherit=True)
+        assert normalized(source) == normalized(archive.extract(name)), f'outdated engine scan source: {name}'
     assert "update_diagnostic" in archive.toc, "missing frozen updater acceptance"
     assert "assets/vulkan/runtime.json" in toc_slashes, "missing pinned Vulkan repair asset"
     pins = json.loads(reader.extract(next(name for name in reader.toc

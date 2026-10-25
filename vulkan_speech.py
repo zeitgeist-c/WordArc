@@ -61,11 +61,11 @@ _PROBE_TIMEOUT = 15
 
 def _probe_once():
     """One probe run; () when the backend did not answer this time."""
-    exe = runtime_dir() / "wordarc-vulkan-probe.exe"
-    if not exe.is_file():
-        import vulkan_runtime
-        return vulkan_runtime.inspect(runtime_dir())
     try:
+        exe = runtime_dir() / "wordarc-vulkan-probe.exe"
+        if not exe.is_file():
+            import vulkan_runtime
+            return vulkan_runtime.inspect(runtime_dir())
         result = subprocess.run([str(exe)], capture_output=True,
                                 timeout=_PROBE_TIMEOUT, **process_options())
         if result.returncode:
@@ -118,6 +118,11 @@ def model_root(where=None):
 
 
 def model_path(name, where=None):
+    if where is None:
+        import speech_sources
+        selected = speech_sources.selected("ggml", name)
+        if selected is not None:
+            return selected
     return model_root(where) / MODEL_FILES[name]
 
 

@@ -374,10 +374,19 @@ def _root(name, where=None):
     repo = _repo(name)
     if repo is None:
         return ""
+    if where is None:
+        import speech_sources
+        selected = speech_sources.selected("ct2", name)
+        if selected is not None:
+            return str(selected)
     return os.path.join(str(where or models_dir()), repo.replace("/", "--"))
 
 
 def _is_installed(name, where=None):
+    if where is None:
+        import speech_sources
+        if speech_sources.selected("ggml", name) is not None:
+            return False  # An explicit shared GGML choice wins over managed CT2.
     root = _root(name, where)
     if not root:
         return False
@@ -518,7 +527,8 @@ def _download_model(name, where=None, should_stop=None, on_progress=None, backen
     is_installed = lambda: vulkan_speech.installed(name, where) if using_vulkan else _is_installed(name, where)
     if is_installed() and not force:
         return 0
-    root = str(vulkan_speech.model_root(where)) if using_vulkan else _root(name, where)
+    # Download only into our managed storage, never over a linked shared model.
+    root = str(vulkan_speech.model_root(where)) if using_vulkan else _root(name, where or models_dir())
     os.makedirs(root, exist_ok=True)
     started = time.monotonic()
     received = 0
@@ -610,6 +620,9 @@ def _download_model(name, where=None, should_stop=None, on_progress=None, backen
                         _check_cancelled(should_stop)
                         time.sleep(0.1)
             report(filename, force=True)
+        if where is None:
+            import speech_sources
+            speech_sources.link("ggml" if using_vulkan else "ct2", name, None)
         if not is_installed():
             _fail("The local model downloaded incompletely. Try again.")
         report(phase="complete", force=True)
@@ -626,6 +639,12 @@ def _download_model(name, where=None, should_stop=None, on_progress=None, backen
 
 def remove(name, where=None, device_preference=None):
     """Delete a model from disk. True when something was there."""
+    if where is None:
+        import speech_sources
+        for kind in ("ct2", "ggml"):
+            if speech_sources.selected(kind, name) is not None:
+                speech_sources.link(kind, name, None)
+                return True  # Disconnect: another application's files stay intact.
     if (model_backend(device_preference) == DEVICE_VULKAN or
             ((device_preference == DEVICE_CPU or device_preference == DEVICE_AUTO and not cuda_available()) and not _is_installed(name, where)
              and vulkan_speech.installed(name, where))):
@@ -673,7 +692,6 @@ def engine(name, where=None, device_preference=None):
     name = name or default_model()
     if _repo(name) is None:
         _fail("Unknown local model: {name}", name=name)
-    cache = where or models_dir()
     preference = device_preference or DEVICE_AUTO
     if _cuda_failed and preference == DEVICE_AUTO:
         device, compute_type = DEVICE_CPU, COMPUTE_CPU
@@ -684,14 +702,16 @@ def engine(name, where=None, device_preference=None):
         # native process through transcribe(), never a CT2 Vulkan device.
         device, compute_type = DEVICE_CPU, COMPUTE_CPU
     with _lock:
+        source = _root(name, where)
         if (_model is not None and _model_name == name
+                and getattr(engine, "_source", "") == source
                 and _model_device == (device, compute_type)):
             return _model
-        if not _is_installed(name, cache):
+        if not _is_installed(name, where):
             _fail("The local model {name} is not installed yet. Download it "
                   "in Settings.", name=name)
         try:
-            _model = _load_model(_root(name, cache), device, compute_type)
+            _model = _load_model(source, device, compute_type)
         except ImportError as exc:
             _model, _model_name, _model_device = None, "", ("", "")
             if device == DEVICE_CUDA:
@@ -711,7 +731,7 @@ def engine(name, where=None, device_preference=None):
                 _cuda_failed = True
                 _log.warning("local speech: %s", _last_fallback_note)
                 try:
-                    _model = _load_model(_root(name, cache), DEVICE_CPU,
+                    _model = _load_model(source, DEVICE_CPU,
                                          COMPUTE_CPU)
                 except Exception as cpu_exc:
                     _model, _model_name, _model_device = None, "", ("", "")
@@ -724,6 +744,7 @@ def engine(name, where=None, device_preference=None):
         _log.info("local speech device: %s (%s) for model %s",
                   device, compute_type, name)
         _model_name = name
+        engine._source = source
         _model_device = (device, compute_type)
         if device == DEVICE_CUDA:
             _last_fallback_note = ""

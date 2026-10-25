@@ -44,11 +44,11 @@ def options(directory):
 
 def inspect(directory):
     """Validate CLI switches and Vulkan device output without loading a model."""
-    directory = Path(directory)
-    exe = directory / "whisper-cli.exe"
-    if not exe.is_file():
-        return ()
     try:
+        directory = Path(directory)
+        exe = directory / "whisper-cli.exe"
+        if not exe.is_file():
+            return ()
         signature = tuple((p.name, p.stat().st_size, p.stat().st_mtime_ns)
                           for p in (exe, *sorted(directory.glob("*.dll"))))
         key = (str(directory.resolve()), signature)
@@ -96,12 +96,14 @@ def candidates():
         # Engine package locations vary between Hermes installations.
         for name in ("installs", "tools", "runtime"):
             base = home / name
-            if base.is_dir():
-                for pattern in ("*whisper*", "*/*whisper*", "*whisper*/*", "*/*whisper*/*"):
+            for pattern in ("*whisper*", "*/*whisper*", "*whisper*/*", "*/*whisper*/*"):
+                try:
                     for directory in base.glob(pattern):
                         if directory.is_dir():
                             yield directory
                             yield directory / "bin"
+                except OSError:
+                    continue  # One inaccessible install must not stop discovery.
 
 
 def _verified(directory, manifest):
@@ -145,16 +147,30 @@ def resolve(refresh=False):
         if refresh:
             _cached = None
             _checked.clear()
-        if _cached is not None and (_cached / "whisper-cli.exe").is_file():
-            return _cached
+        if _cached is not None:
+            try:
+                if (_cached / "whisper-cli.exe").is_file():
+                    return _cached
+            except OSError:
+                pass
+            _cached = None
         seen = set()
+        try:
+            selection = json.loads(_selection_file().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            selection = {}
         for directory in candidates():
             key = str(directory).casefold()
             if key in seen:
                 continue
             seen.add(key)
             if not inspect(directory):
-                continue
+                # A previously chosen CPU CLI need not advertise a Vulkan GPU.
+                from engine_discovery import inspect_cli
+                if not (isinstance(selection, dict) and selection.get("cpu")
+                        and str(directory) == selection.get("directory")
+                        and inspect_cli(directory)["compatible"]):
+                    continue
             if directory == resource_path("native", "whisper-vulkan"):
                 try:
                     manifest = json.loads((directory / "manifest.json").read_text())
@@ -170,16 +186,17 @@ def ready():
     return bool(inspect(resolve()))
 
 
-def select(executable):
+def select(executable, *, cpu=False):
     global _cached
     directory = Path(executable).resolve().parent
-    if not inspect(directory):
+    from engine_discovery import inspect_cli
+    if not (inspect_cli(directory)["compatible"] if cpu else inspect(directory)):
         raise RuntimeError(t("Select a compatible whisper-cli.exe with Vulkan support."))
     with _lock:
         path = _selection_file()
         path.parent.mkdir(parents=True, exist_ok=True)
         temp = path.with_suffix(".tmp")
-        temp.write_text(json.dumps(dict(directory=str(directory))), encoding="utf-8")
+        temp.write_text(json.dumps(dict(directory=str(directory), cpu=cpu)), encoding="utf-8")
         temp.replace(path)
         _cached = directory
     return directory

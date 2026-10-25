@@ -7,7 +7,7 @@ import sys
 import threading
 import weakref
 
-from PyQt6.QtCore import (QEasingCurve, QLibraryInfo, QPoint, QPropertyAnimation,
+from PyQt6.QtCore import (QEasingCurve, QLibraryInfo, QPoint, QPropertyAnimation, QSignalBlocker,
                           QRect, QSize, Qt, QTimer, QEvent, QTranslator, QUrl, pyqtSignal)
 from PyQt6.QtGui import (QColor, QDesktopServices, QFont, QFontMetrics,
                          QGuiApplication, QIcon, QKeySequence, QShortcut, QPainter)
@@ -1072,7 +1072,7 @@ class SettingsWindow(QDialog):
     _local_download_done = pyqtSignal(str, str)
     _local_download_progress = pyqtSignal(object)
     _test_done = pyqtSignal(bool, str)
-    _local_inspected = pyqtSignal(str, object)
+    _local_inspected = pyqtSignal(str, int, object)
     _vulkan_selected = pyqtSignal(str)
 
     def __init__(self, conf, launch_command, meeting_command=None,
@@ -1091,6 +1091,8 @@ class SettingsWindow(QDialog):
         self._update_info = None
         self._update_cancel = threading.Event()
         self._local_snapshots = {}
+        self._local_generation = 0
+        self._engine_scan_dialog = None
         self._local_pending = set()
         self._local_inspected.connect(self._on_local_inspected)
         self._vulkan_selected.connect(self._on_vulkan_selected)
@@ -1687,7 +1689,7 @@ class SettingsWindow(QDialog):
                     if preference not in self._local_pending:
                         self._local_pending.add(preference)
                         threading.Thread(target=self._inspect_local,
-                                         args=(preference,), daemon=True).start()
+                                         args=(preference, self._local_generation), daemon=True).start()
                     return
                 if isinstance(snapshot, str):
                     self.local_device_note.setText(snapshot)
@@ -1733,6 +1735,9 @@ class SettingsWindow(QDialog):
         cuda_offer = (snapshot["backend"] != "vulkan"
                       and cuda_libs.offer(preference))
         if current.installed:
+            import speech_sources
+            shared = any(speech_sources.selected(kind, name) is not None for kind in ("ct2", "ggml"))
+            self.local_remove_button.setText(t("Disconnect") if shared else t("Remove"))
             self.local_status.setText(t(
                 "{name} is installed ({size}) and ready.",
                 name=name, size=localspeech.human_size(current.size)))
@@ -1762,7 +1767,7 @@ class SettingsWindow(QDialog):
         self.local_download_button.setEnabled(True)
         self.local_remove_button.setEnabled(False)
 
-    def _inspect_local(self, preference):
+    def _inspect_local(self, preference, generation=None):
         """No widgets here: driver probes and filesystem inspection may block."""
         try:
             names = localspeech.model_names()
@@ -1796,11 +1801,13 @@ class SettingsWindow(QDialog):
                 "local device inspection failed: %s", type(exc).__name__)
             snapshot = t("Could not check the local speech device.")
         try:
-            self._local_inspected.emit(preference, snapshot)
+            self._local_inspected.emit(preference, self._local_generation if generation is None else generation, snapshot)
         except RuntimeError:
             pass  # window was deleted while the driver was answering
 
-    def _on_local_inspected(self, preference, snapshot):
+    def _on_local_inspected(self, preference, generation, snapshot):
+        if generation != self._local_generation:
+            return
         self._local_pending.discard(preference)
         self._local_snapshots[preference] = snapshot
         self._refresh_local_controls()
@@ -1892,7 +1899,39 @@ class SettingsWindow(QDialog):
     def _scan_vulkan_engine(self):
         if self._download_name:
             return
+        from engine_scan_ui import EngineScanDialog
+        if self._engine_scan_dialog is not None and self._engine_scan_dialog.isVisible():
+            self._engine_scan_dialog.raise_()
+            self._engine_scan_dialog.activateWindow()
+            return
+        self._engine_scan_dialog = EngineScanDialog(self)
+        self._engine_scan_dialog.selected.connect(self._on_engine_source_selected)
+        self._engine_scan_dialog.show()
+        self._engine_scan_dialog.start()
+
+    def _on_engine_source_selected(self, choice):
+        model = choice["model"]
+        # Apply the combination together: intermediate "local + old auto"
+        # state must not start a second device worker while selection changes.
+        blockers = [QSignalBlocker(combo) for combo in (
+            self.transcribe_engine, self.local_stt_device, self.local_stt_model)]
+        self._select_data(self.transcribe_engine, "local")
+        self._select_data(self.local_stt_device, choice["device"])
+        self._select_data(self.local_stt_model, model.name)
+        del blockers
+        self.conf["transcribe_engine"] = "local"
+        self.conf["local_stt_device"] = choice["device"]
+        self.conf["local_stt_model"] = model.name
+        try:
+            self.conf.save()
+        except OSError as exc:
+            warn_box(self, t("Could not save settings"), str(exc))
+        self._refresh_engine_inspection()
+
+    def _refresh_engine_inspection(self):
         self._local_status_error = ""
+        self._local_generation += 1
+        self._local_pending.clear()
         self._local_snapshots.clear()
         # Resolving/probing stays on the inspection worker, never the Qt thread.
         vulkan_runtime._cached = None
@@ -1922,7 +1961,7 @@ class SettingsWindow(QDialog):
         if error:
             self.local_status.setText(error)
         else:
-            self._scan_vulkan_engine()
+            self._refresh_engine_inspection()
 
     def _fetch_cuda_support(self, name):
         """Download the GPU runtime, reporting through the model progress UI."""
@@ -1983,6 +2022,12 @@ class SettingsWindow(QDialog):
         if not name:
             return
         preference = self.local_stt_device.currentData() or "auto"
+        import speech_sources
+        if any(speech_sources.selected(kind, name) is not None for kind in ("ct2", "ggml")):
+            if confirm_box(self, t("Disconnect"), t("Disconnect this shared model? Its files stay available to Hermes and other applications.")):
+                localspeech.remove(name, device_preference=preference)
+                self._refresh_engine_inspection()
+            return
         if not confirm_box(self, t("Remove"), t(
                 "Delete the downloaded {name} model? {size} goes back to the "
                 "disk. Nothing else is touched.", name=name,
@@ -2390,7 +2435,7 @@ class SettingsWindow(QDialog):
                                      self.local_download_button,
                                      self.local_remove_button))
         stt_body.addWidget(self.local_row)
-        scan = QPushButton(t("Scan for engine"))
+        scan = QPushButton(t("Find engines and models…"))
         scan.clicked.connect(self._scan_vulkan_engine)
         choose = QPushButton(t("Select engine…"))
         choose.clicked.connect(self._select_vulkan_engine)
@@ -3941,6 +3986,8 @@ class SettingsWindow(QDialog):
 
     def closeEvent(self, event):
         self._download_stop.set()
+        if self._engine_scan_dialog is not None:
+            self._engine_scan_dialog.close()
         # Remember the size for the next opening (clamped there): a size
         # the user set survives restarts and monitor switches.
         try:

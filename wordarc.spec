@@ -55,6 +55,8 @@ datas.append(('native/whisper-vulkan', 'native/whisper-vulkan'))
 # tokenizers, av and huggingface_hub, and PyInstaller's hooks miss most of them
 # because they reach for binaries at runtime rather than importing them.
 hiddenimports = ['unicodedata', 'soundcard', 'faster_whisper', 'ctranslate2',
+                  'engine_discovery', 'engine_scan_ui', 'speech_sources',
+                  'engine_scan_diagnostic',
                   'onnxruntime', 'tokenizers', 'huggingface_hub',
                   # EMA Lightning TTS (tts_ema.py): same ONNX runtime, plus the
                   # Rust Turkish normalizer (native module, import at runtime).

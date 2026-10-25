@@ -63,7 +63,7 @@ UNTRANSLATED = {
 SOURCE_FILES = ("settings_ui.py", "screenshot_capture.py", "screenshot_editor.py",
                 "wordarc.py", "meeting.py", "worker.py",
                 "audio.py", "filetranscribe.py", "paste.py", "api.py",
-                "localspeech.py")
+                "localspeech.py", "engine_scan_ui.py")
 
 # Helpers that run their string arguments through t() themselves, so the
 # literal at the call site IS the translation key: {name: argument indexes}
