@@ -26,6 +26,12 @@ from brand import BRAND, set_windows_app_id
 
 __version__ = BRAND.version
 
+# Probe native libraries in a disposable process, before importing Qt/audio or
+# touching the running application's IPC, settings and startup registration.
+if __name__ == "__main__" and "--speech-probe" in sys.argv:
+    from engine_discovery import probe_entry
+    sys.exit(probe_entry(sys.argv[sys.argv.index("--speech-probe") + 1:]))
+
 from PyQt6.QtCore import QObject, QTimer, QElapsedTimer, Qt, QRectF, pyqtSignal  # noqa: E402
 from PyQt6.QtGui import (QAction, QBrush, QColor, QFont, QIcon,  # noqa: E402
                          QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
@@ -1588,6 +1594,9 @@ def ensure_startup_registration(conf):
 
 
 def main():
+    if "--engine-scan-check" in sys.argv:
+        from engine_scan_diagnostic import run
+        return run(sys.argv[sys.argv.index("--engine-scan-check") + 1:])
     if "--update-check" in sys.argv:
         from update_diagnostic import run
         return run(sys.argv[sys.argv.index("--update-check") + 1:])

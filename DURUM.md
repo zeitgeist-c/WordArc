@@ -1,9 +1,24 @@
 # WordArc — durum
 
-Güncelleme: 2026-10-24
-Hazırlanan paket: 0.10.2 (`brand.py`)
+Güncelleme: 2026-10-25
+Hazırlanan paket: 0.10.3 (`brand.py`)
 Dal: master
-Git dönüş noktası: 8d7f762 / v0.10.1
+Sürüm dışı kaynak çalışması (2026-10-25): ortak motor/model tarama ekranı,
+hareketli ilerleme çizgisi, Hermes/Hugging Face/kullanıcı klasörleri ve yerel
+disklerde mevcut model keşfi; CPU/CUDA/Vulkan sonuçlarından açık seçim.
+Erişim hatası taramayı kesmez; ortak model dosyası yerinden taşınmaz/silinmez.
+731 test, 2 atlama, 12 subtest geçti. Gerçek GGML Turbo Vulkan/CPU metinleri
+aynı; HF Base de CPU'da çalıştı. Kurulu EXE yenilenmedi, sürüm/commit/tag/push
+yapılmadı. Ayrıntılar: docs/engine-scan-implementation-2026-10-25.md.
+Git dönüş noktası: 5232f23 / v0.10.2
+Yedek 2026-10-25: 0.10.3 — motor/model keşfi ve seçim ekranı. Önceki
+sürüm dışı kaynak kaydı bu yedekle paketlendi. 731 test, 2 atlama, 12 subtest;
+bağımlılık denetimi temiz. Teslim EXE'sinde gerçek tarama/seçim/kayıt ve
+GGML Turbo Vulkan/CPU, HF Base CPU çözümlemesi geçti. CUDA fiziksel kabulü yok.
+Setup SHA256: `b08be38282ffa812a9a960ff77ece933ee3de10e69f91adba57ab7e834846556`.
+Sürüm kaydı: v0.10.3. Yayın ve Git kapanışının ayrıntılı kanıtı:
+docs/verification-0.10.3.md ve .cache/release-0.10.3-publication.json.
+Kurulu eski EXE bu çalışmada yerinde yükseltilmez.
 0.10.2: Güncelleme denetimindeki yakalanmayan SSL/X509 BIO hatası düzeltildi.
 Certifi kökleriyle doğrulanmış HTTPS context, terminal hata sinyali, 30 saniye
 zaman aşımı ve eski/geç yanıt koruması. 710 test, 2 atlama, 12 subtest; denetim

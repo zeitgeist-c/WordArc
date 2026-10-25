@@ -38,6 +38,7 @@ class TestLiveEngineSettings(unittest.TestCase):
             mock.patch.object(settings_ui.audio, "refresh_devices"),
             mock.patch.object(settings_ui.audio, "list_monitors", return_value=[]),
             mock.patch.object(settings_ui.startup, "is_enabled", return_value=False),
+            mock.patch.object(settings_ui.startup, "set_enabled"),
             mock.patch.object(localspeech.vulkan_speech, "available",
                               return_value=False),
         ]
