@@ -110,10 +110,26 @@ def main():
     assert BRAND.version in list(constants(archive.extract("brand"))), "wrong embedded version"
     assert "brand_icon" in list(constants(archive.extract("brand"))), "missing resilient application icon"
     assert "vulkan_runtime" in archive.toc, "missing engine discovery/repair module"
-    for name in ("engine_discovery", "engine_scan_ui", "speech_sources", "engine_scan_diagnostic"):
+    for name in ("engine_discovery", "engine_scan_ui", "speech_sources", "engine_scan_diagnostic", "update_protocol", "installation_check"):
         assert name in archive.toc, f"missing engine scan module: {name}"
         source = compile((root / (name + '.py')).read_bytes(), name + '.py', 'exec', dont_inherit=True)
         assert normalized(source) == normalized(archive.extract(name)), f'outdated engine scan source: {name}'
+    helper_data = reader.extract(next(name for name in reader.toc
+                         if name.replace('\\', '/') == 'helpers/WordArcUpdate.exe'))
+    helper_manifest = json.loads(reader.extract(next(name for name in reader.toc
+                         if name.replace('\\', '/') == 'helpers/manifest.json')))
+    assert hashlib.sha256(helper_data).hexdigest() == helper_manifest['sha256'], 'changed update supervisor'
+    for name, digest in helper_manifest['sources'].items():
+        assert hashlib.sha256((root / name).read_bytes()).hexdigest() == digest, f'outdated supervisor input: {name}'
+    with tempfile.TemporaryDirectory(prefix='wordarc-helper-source-') as scratch:
+        helper_exe = Path(scratch) / 'WordArcUpdate.exe'
+        helper_exe.write_bytes(helper_data)
+        helper_reader = CArchiveReader(str(helper_exe))
+        helper_source = compile((root / 'update_helper.py').read_bytes(), 'update_helper.py', 'exec', dont_inherit=True)
+        assert normalized(helper_source) == normalized(marshal.loads(helper_reader.extract('update_helper'))), 'outdated supervisor executable'
+        shared = helper_reader.open_embedded_archive('PYZ.pyz').extract('update_protocol')
+        expected = compile((root / 'update_protocol.py').read_bytes(), 'update_protocol.py', 'exec', dont_inherit=True)
+        assert normalized(shared) == normalized(expected), 'outdated shared update protocol'
     assert "update_diagnostic" in archive.toc, "missing frozen updater acceptance"
     assert "assets/vulkan/runtime.json" in toc_slashes, "missing pinned Vulkan repair asset"
     pins = json.loads(reader.extract(next(name for name in reader.toc

@@ -142,32 +142,18 @@ class StampTests(unittest.TestCase):
 
 
 class SetupTests(unittest.TestCase):
-    def test_setup_temp_path_lives_outside_the_install_dir(self):
-        import tempfile
-        dest = update.setup_temp_path("9.9.9")
-        self.assertEqual(dest.parent, Path(tempfile.gettempdir()))
-        self.assertIn("9.9.9", dest.name)
-        self.assertTrue(dest.name.endswith(".exe"))
+    def test_setup_download_is_in_durable_user_storage(self):
+        import config
+        with mock.patch.object(config, "DATA_DIR", Path("C:/user-data/WordArc")):
+            dest = update.setup_temp_path("9.9.9")
+        self.assertEqual(dest, Path("C:/user-data/WordArc/updates/downloads/WordArc-9.9.9.exe"))
 
-    def test_spawn_setup_launches_elevated_and_silent(self):
-        import ctypes
-        setup = Path(tempfile.gettempdir()) / "WordArc-9.9.9-setup.exe"
-        with mock.patch.object(ctypes, "windll") as windll:
-            windll.shell32.ShellExecuteW.return_value = 42
-            update.spawn_setup(setup)
-            args, _ = windll.shell32.ShellExecuteW.call_args
-        self.assertIsNone(args[0])
-        self.assertEqual(args[1], "runas")
-        self.assertEqual(args[2], str(setup))
-        self.assertIn("/VERYSILENT", args[3])
-        self.assertIn("/NORESTART", args[3])
-
-    def test_spawn_setup_refused_elevation_raises(self):
-        import ctypes
-        with mock.patch.object(ctypes, "windll") as windll:
-            windll.shell32.ShellExecuteW.return_value = 0  # user said No to UAC
+    def test_tampered_setup_is_not_launched(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "WordArc-9.9.9.exe"
+            path.write_bytes(b"broken")
             with self.assertRaises(update.UpdateError):
-                update.spawn_setup(Path("C:/tmp/WordArc-9.9.9-setup.exe"))
+                update.spawn_setup(path, version="9.9.9", sha256="a" * 64)
 
 
 class LifecycleTests(unittest.TestCase):
@@ -277,35 +263,52 @@ class LifecycleTests(unittest.TestCase):
         controller._run_update_check(tray=False)
         controller.settings_window.show_update_error.assert_called_once()
 
-    def test_installed_update_quits_without_relaunching_the_old_exe(self):
+    def test_app_waits_for_setup_readiness_before_quitting(self):
         import wordarc
+        from PyQt6.QtWidgets import QApplication
+        import time
+        app = QApplication.instance() or QApplication([])
         controller = self._controller()
         controller.settings_window = mock.Mock()
+        controller.app = mock.Mock()
         controller.shutdown = mock.Mock()
-        controller.app = mock.Mock()
-        with mock.patch("update.spawn_setup") as setup, \
-             mock.patch("wordarc._release_instance_mutex") as release, \
-             mock.patch.object(wordarc.subprocess, "Popen") as popen:
-            controller._update_installed("9.9.9", "C:/tmp/WordArc-9.9.9-setup.exe")
-        controller.settings_window.show_update_ready.assert_called_once_with(
-            "9.9.9")
-        self.assertTrue(setup.called)
-        # setup is mocked, so any Popen here could only be the old exe being
-        # relaunched — which must not happen (it left a duplicate behind).
-        popen.assert_not_called()
-        controller.app.quit.assert_called_once_with()
-        release.assert_called_once_with()
+        controller._pending_install_info = update.UpdateInfo("9.9.9", "WordArc-9.9.9.exe", "", "a" * 64, 1, "")
+        entered, release = threading.Event(), threading.Event()
+        def setup(*args, **kwargs):
+            entered.set()
+            release.wait(2)
+        with mock.patch("update.spawn_setup", side_effect=setup), \
+             mock.patch("wordarc._release_instance_mutex"):
+            controller._update_installed("9.9.9", "C:/updates/WordArc-9.9.9.exe")
+            self.assertTrue(entered.wait(1))
+            app.processEvents()
+            controller.app.quit.assert_not_called()
+            controller.settings_window.show_update_handoff.assert_called_once()
+            release.set()
+            deadline = time.monotonic() + 3
+            while not controller.app.quit.called and time.monotonic() < deadline:
+                app.processEvents()
+                time.sleep(.005)
+        controller.app.quit.assert_called_once()
 
-    def test_failed_setup_handoff_reports_instead_of_sticking_at_100_percent(self):
+    def test_failed_setup_handoff_keeps_old_app_open(self):
         import wordarc
+        from PyQt6.QtWidgets import QApplication
+        import time
+        app = QApplication.instance() or QApplication([])
         controller = self._controller()
         controller.settings_window = mock.Mock()
         controller.app = mock.Mock()
-        with mock.patch("update.spawn_setup",
-                         side_effect=OSError("boom")):
-            controller._update_installed("9.9.9", "C:/tmp/WordArc-9.9.9-setup.exe")
+        controller._pending_install_info = update.UpdateInfo("9.9.9", "", "", "a" * 64, 1, "")
+        with mock.patch("update.spawn_setup", side_effect=OSError("setup failed")):
+            controller._update_installed("9.9.9", "C:/updates/WordArc-9.9.9.exe")
+            deadline = time.monotonic() + 3
+            while not controller.settings_window.show_update_error.called and time.monotonic() < deadline:
+                app.processEvents()
+                time.sleep(.005)
         controller.settings_window.show_update_error.assert_called_once()
         controller.app.quit.assert_not_called()
+        self.assertFalse(controller._update_handoff_active)
 
 
 if __name__ == "__main__":

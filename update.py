@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import ssl
 import urllib.error
@@ -170,25 +171,67 @@ def download(info: UpdateInfo, dest: Path, progress=None, cancel=None) -> Path:
 
 def setup_temp_path(version: str) -> Path:
     """Where the downloaded setup installer waits before it is launched."""
-    import tempfile
-    return Path(tempfile.gettempdir()) / f"{BRAND.name}-{version}-setup.exe"
+    import config
+    return config.DATA_DIR / "updates" / "downloads" / f"{BRAND.name}-{version}.exe"
 
 
-def spawn_setup(setup_exe: Path) -> None:
-    """Launch the setup installer elevated, then return so the app can quit.
-
-    The /VERYSILENT flags do the whole job without clicks: same-folder
-    overwrite, shortcuts refreshed. UAC still asks once — Windows cannot
-    silently elevate. When elevation is refused the old version keeps
-    running and the error is shown instead of a hang at 100%.
-    """
-    import ctypes
-    params = "/VERYSILENT /NORESTART /SUPPRESSMSGBOXES /SP-"
-    rc = ctypes.windll.shell32.ShellExecuteW(
-        None, "runas", str(setup_exe), params, None, 1)
-    if int(rc) <= 32:
-        raise UpdateError("Kurulum başlatılamadı.")
-    log.info("setup launched: %s", setup_exe)
+def spawn_setup(setup_exe: Path, *, version: str, sha256: str, timeout=110,
+                old_exe=None, old_pid=None, helper_dir=None) -> Path:
+    """Wait off the GUI thread for installer readiness, never just ShellExecute success."""
+    import json
+    import shutil
+    import subprocess
+    import sys
+    import time
+    import uuid
+    import config
+    from brand import resource_path
+    import update_protocol as protocol
+    if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+        raise UpdateError("Invalid update version")
+    if not sha256 or protocol.digest(setup_exe) != sha256:
+        raise UpdateError("The checksum of the downloaded file does not match.")
+    folder = config.DATA_DIR / "updates" / "sessions" / uuid.uuid4().hex
+    folder.mkdir(parents=True)
+    current = Path(old_exe or sys.executable).resolve()
+    previous = folder / "previous" / "WordArc.exe"
+    previous.parent.mkdir()
+    shutil.copy2(current, previous)
+    helpers = Path(helper_dir) if helper_dir is not None else resource_path("helpers")
+    source = helpers / "WordArcUpdate.exe"
+    manifest = json.loads((helpers / "manifest.json").read_text(encoding="utf-8"))
+    if protocol.digest(source) != manifest["sha256"]:
+        raise UpdateError("The update supervisor is damaged. Reinstall WordArc.")
+    helper = folder / "WordArcUpdate.exe"
+    shutil.copy2(source, helper)
+    owned = [dict(path=str(current), sha256=protocol.digest(current))]
+    # The installer's own small uninstall files share the app directory. They
+    # are removed only if their exact pre-update bytes remain unchanged.
+    for name in ("unins000.exe", "unins000.dat"):
+        path = current.parent / name
+        if path.is_file():
+            owned.append(dict(path=str(path), sha256=protocol.digest(path)))
+    job = dict(schema=1, id=folder.name, version=version,
+               setup=str(Path(setup_exe).resolve()), sha256=sha256,
+               old_pid=old_pid or os.getpid(), old_exe=str(current), old_sha256=owned[0]["sha256"],
+               new_exe=str(protocol.install_directory() / "WordArc.exe"), old_files=owned)
+    (folder / "job.json").write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
+    process = subprocess.Popen([str(helper), "--job", str(folder / "job.json")],
+                               env=protocol.clean_environment(), close_fds=True,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        state = protocol.read_state(folder)
+        if state.get("stage") == "ready":
+            log.info("installer readiness confirmed: %s", folder)
+            return folder
+        if state.get("stage") == "failed":
+            raise UpdateError(f"{state.get('error', 'Setup failed')}\n{folder / 'setup.log'}")
+        if process.poll() is not None:
+            raise UpdateError(f"Update supervisor exited before readiness.\n{folder / 'setup.log'}")
+        time.sleep(0.1)
+    (folder / "cancel.requested").touch()
+    raise UpdateError(f"Setup did not become ready; the current app remains open.\n{folder / 'setup.log'}")
 
 
 def last_check_is_old(stamp: str, max_age_seconds: float = 24 * 3600) -> bool:

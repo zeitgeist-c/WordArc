@@ -728,6 +728,9 @@ class TestOcrExtraction(unittest.TestCase):
                                track_start):
             controller._speak_next = True
             controller._on_overlay_ocr(image)
+            # These are two distinct captures. An overlapping second request
+            # is correctly ignored while the first OCR worker is still busy.
+            joined[-1].join(5)
             controller._on_overlay_ocr(image)
             for thread in joined:
                 thread.join(5)

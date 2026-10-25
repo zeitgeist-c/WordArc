@@ -47,6 +47,7 @@ binaries = [(src, dest) for src, dest in collect_dynamic_libs('ctranslate2')
 from tools.build_vulkan import verify as verify_vulkan
 assert verify_vulkan(), 'Build/verify the Vulkan payload before packaging'
 datas.append(('native/whisper-vulkan', 'native/whisper-vulkan'))
+datas.append(('tools/vendor/update-helper', 'helpers'))
 # The on-demand CUDA runtime lives outside the package (see cuda_libs.py):
 # bundling the NVIDIA wheels would add ~2 GB. Build env keeps them for the
 # zip in tools/build_cuda_libs.py; the frozen app must not carry them.
