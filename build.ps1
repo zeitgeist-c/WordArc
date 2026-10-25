@@ -68,6 +68,7 @@ if (Test-Path -LiteralPath $PyInstallerWork) {
 
 Invoke-Gate { & $Python (Join-Path $PSScriptRoot "tools\build_brand_assets.py") } "Brand asset generation failed."
 Invoke-Gate { & $Python (Join-Path $PSScriptRoot "tools\fetch_ema_models.py") } "TTS model vendoring failed."
+Invoke-Gate { & $Python (Join-Path $PSScriptRoot "tools\build_update_helper.py") } "Update supervisor build failed."
 if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot "tools\vendor\cuda-manifest.json"))) {
     Invoke-Gate { & $Python (Join-Path $PSScriptRoot "tools\build_cuda_libs.py") } "CUDA libs packaging failed."
 }

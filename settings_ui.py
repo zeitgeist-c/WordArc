@@ -4130,6 +4130,12 @@ class SettingsWindow(QDialog):
         self.update_status.setText(t("Verifying the download…"))
         self.update_cancel_button.setVisible(False)
 
+    def show_update_handoff(self):
+        self.update_status.setText(t("Preparing installation. Approve the Windows permission request; this window stays open until setup is ready."))
+        self.update_install_button.setEnabled(False)
+        self.update_cancel_button.setEnabled(False)
+        self.update_check_button.setEnabled(False)
+
     def show_update_ready(self, version):
         self.update_progress.setVisible(False)
         self.update_status.setText(t(

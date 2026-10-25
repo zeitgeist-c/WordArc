@@ -1,8 +1,23 @@
 # WordArc — durum
 
 Güncelleme: 2026-10-25
-Hazırlanan paket: 0.10.3 (`brand.py`)
+Hazırlanan paket: 0.10.4 (`brand.py`)
 Dal: master
+Git dönüş noktası: 1660c0e / v0.10.3
+Yedek 2026-10-25: 0.10.4 — denetlenen kurulum geçişi, hazır bildirimi,
+gerçek başlangıç onayı, hata kurtarma ve doğrulanmış eski dosya temizliği.
+Hedef 64 bit Program Files/WordArc; önceki test/tmp yolu devralınmaz.
+744 test, 2 atlama, 12 subtest; bağımlılık denetimi temiz. Gerçek Inno
+olumlu/olumsuz denemeleri ve teslim EXE'sinde motor/model kabulü geçti.
+Setup SHA256: `024bf0b262f635e7f91a77d02d3a85179027917073efda060658bae59f867b26`.
+Yerel commit/etiket ve dış yayın kapanışı: docs/verification-0.10.4.md;
+canlı geçiş ve uzak doğrulama sonuçları .cache/release-0.10.4-*.json.
+Kullanıcı "tmm, 0.10.4’ü yayımla ve Program Files’a kur" onayı verdi.
+Gerçek Program Files geçişi tamamlandı: kurulu EXE hash'i paketle aynı,
+64 bit sürüm kaydı 0.10.4, eski 32 bit kayıt kaldırıldı; ayarlar korundu.
+Yeni uygulama gerçek başlangıç onayı verdi ve Ayarlar komutuna yanıt verdi.
+
+Önceki 0.10.3 kaydı:
 Sürüm dışı kaynak çalışması (2026-10-25): ortak motor/model tarama ekranı,
 hareketli ilerleme çizgisi, Hermes/Hugging Face/kullanıcı klasörleri ve yerel
 disklerde mevcut model keşfi; CPU/CUDA/Vulkan sonuçlarından açık seçim.

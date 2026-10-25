@@ -32,6 +32,10 @@ if __name__ == "__main__" and "--speech-probe" in sys.argv:
     from engine_discovery import probe_entry
     sys.exit(probe_entry(sys.argv[sys.argv.index("--speech-probe") + 1:]))
 
+if __name__ == "__main__" and "--installation-check" in sys.argv:
+    from installation_check import run
+    sys.exit(run(sys.argv[sys.argv.index("--installation-check") + 1:]))
+
 from PyQt6.QtCore import QObject, QTimer, QElapsedTimer, Qt, QRectF, pyqtSignal  # noqa: E402
 from PyQt6.QtGui import (QAction, QBrush, QColor, QFont, QIcon,  # noqa: E402
                          QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
@@ -230,12 +234,35 @@ class _UpdateWorker(QObject):
                 return
             self.failed.emit(str(exc))
             return
+        except Exception as exc:
+            logging.getLogger("wordarc.update").exception("update download failed")
+            self.failed.emit(str(exc))
+            return
         self.installed.emit(info.version, str(dest))
 
     def _progress(self, done, total):
         # Coalesce: one emit per megabyte keeps the GUI thread free.
         if done % (1024 * 1024) < 256 * 1024 or done == total:
             self.progress.emit(done, total)
+
+
+class _SetupWorker(QObject):
+    ready = pyqtSignal()
+    failed = pyqtSignal(str)
+
+    def __init__(self, path, info):
+        super().__init__()
+        self.path, self.info = path, info
+
+    def run(self):
+        import update
+        try:
+            update.spawn_setup(Path(self.path), version=self.info.version, sha256=self.info.sha256)
+        except Exception as exc:
+            logging.getLogger("wordarc.update").exception("setup readiness failed")
+            self.failed.emit(str(exc))
+            return
+        self.ready.emit()
 
 
 class WordArc:
@@ -643,6 +670,8 @@ class WordArc:
         return False
 
     def start(self):
+        if getattr(self, "_update_handoff_active", False):
+            return
         if self.state != IDLE:
             return
         self.dictation_operation.begin()
@@ -846,6 +875,8 @@ class WordArc:
             self.stop_meeting()
 
     def start_meeting(self):
+        if getattr(self, "_update_handoff_active", False):
+            return
         if self.meeting_state != M_IDLE:
             return
         self.meeting_operation.begin()
@@ -1163,6 +1194,7 @@ class WordArc:
                 QSystemTrayIcon.MessageIcon.Information, 10000)
 
     def _update_failed(self, message):
+        self._update_handoff_active = False
         window = self.settings_window
         translated = t(message)
         if window is not None:
@@ -1172,10 +1204,13 @@ class WordArc:
                                   QSystemTrayIcon.MessageIcon.Warning, 8000)
 
     def _update_install(self):
+        if getattr(self, "_update_handoff_active", False):
+            return
         window = self.settings_window
         info = getattr(window, "_update_info", None) if window else None
         if info is None or not self._updates_possible():
             return
+        self._pending_install_info = info
         worker = _UpdateWorker(BRAND.version)
         worker.progress.connect(self._update_progress)
         worker.failed.connect(self._update_failed)
@@ -1199,23 +1234,20 @@ class WordArc:
             self.settings_window.show_update_progress(done, total)
 
     def _update_installed(self, version, new_exe):
-        import update as update_mod
+        self._update_handoff_active = True
         window = self.settings_window
         if window is not None:
-            window.show_update_ready(version)
-        if self.tray.isVisible():
-            self.tray.showMessage(
-                BRAND.name,
-                t("Version {version} downloaded. WordArc is restarting.").format(
-                    version=version),
-                QSystemTrayIcon.MessageIcon.Information, 5000)
-        try:
-            update_mod.spawn_setup(Path(new_exe))
-        except (OSError, update_mod.UpdateError):
-            logging.getLogger("wordarc.update").exception("setup handoff failed")
+            window.show_update_handoff()
+        info = getattr(self, "_pending_install_info", None)
+        if info is None or info.version != version:
             self._update_failed(t("Update failed"))
             return
-        self._quit_for_update()
+        worker = _SetupWorker(new_exe, info)
+        worker.ready.connect(self._quit_for_update)
+        worker.failed.connect(self._update_failed)
+        self._update_worker = worker
+        self._update_thread = threading.Thread(target=worker.run, daemon=True)
+        self._update_thread.start()
 
     def _quit_for_update(self):
         """Quit so the setup installer can overwrite the install.
@@ -1747,6 +1779,11 @@ def main():
     logging.getLogger("wordarc.startup").info(
         "UI ready in %d ms (excludes bundle extraction and imports)",
         startup_timer.elapsed())
+    for argument in sys.argv[1:]:
+        if argument.startswith("--update-session="):
+            import update_protocol
+            update_protocol.confirm_startup(argument.split("=", 1)[1], BRAND.version,
+                                            sys.executable, cfg.DATA_DIR)
     return app.exec()
 
 
