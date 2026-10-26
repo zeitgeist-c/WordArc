@@ -1,4 +1,4 @@
-"""Self-update over the public WordArc-Releases GitHub repository.
+"""Self-update over the public WordArc GitHub repository.
 
 The source repository stays private; releases (EXE + BAT only) live in a
 public repo so a portable single-file install can ask "what is the newest
@@ -27,7 +27,7 @@ from pathlib import Path
 from brand import BRAND
 from i18n import t
 
-RELEASE_REPO = "zeitgeist-c/WordArc-Releases"
+RELEASE_REPO = "zeitgeist-c/WordArc"
 API_LATEST = f"https://api.github.com/repos/{RELEASE_REPO}/releases/latest"
 USER_AGENT = f"{BRAND.name}/{BRAND.version}"
 log = logging.getLogger("wordarc.update")
