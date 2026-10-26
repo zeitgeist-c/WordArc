@@ -23,7 +23,7 @@ from i18n import t
 
 _log = logging.getLogger("wordarc.cuda_libs")
 
-RELEASE_REPO = "zeitgeist-c/WordArc-Releases"
+RELEASE_REPO = "zeitgeist-c/WordArc"
 
 
 def _pins_path() -> Path:

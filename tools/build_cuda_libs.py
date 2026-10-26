@@ -6,7 +6,7 @@ tools/vendor/cuda-manifest.json (bundled into the frozen app via
 wordarc.spec so cuda_libs.py can verify the download).
 
 The zip itself (~1 GB) is uploaded by hand to the release tag named in the
-pins file (default ``cuda-libs-v1``) on the public WordArc-Releases repo:
+pins file (default ``cuda-libs-v1``) on the public WordArc repo:
 
   gh release upload cuda-libs-v1 tools/vendor/WordArc-CudaLibs.zip --clobber
 

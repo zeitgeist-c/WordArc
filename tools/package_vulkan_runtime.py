@@ -23,7 +23,7 @@ def main():
     with output.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     pins = dict(version=VERSION, file=name, size=output.stat().st_size, sha256=digest,
-                url=f"https://github.com/zeitgeist-c/WordArc-Releases/releases/download/v{BRAND.version}/{name}")
+                url=f"https://github.com/zeitgeist-c/WordArc/releases/download/v{BRAND.version}/{name}")
     target = ROOT / "assets" / "vulkan" / "runtime.json"
     target.parent.mkdir(exist_ok=True)
     target.write_text(json.dumps(pins, indent=2) + "\n", encoding="utf-8")
