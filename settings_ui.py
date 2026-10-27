@@ -5,12 +5,11 @@ import os
 import logging
 import sys
 import threading
-import weakref
 
 from PyQt6.QtCore import (QEasingCurve, QLibraryInfo, QPoint, QPropertyAnimation, QSignalBlocker,
                           QRect, QSize, Qt, QTimer, QEvent, QTranslator, QUrl, pyqtSignal)
 from PyQt6.QtGui import (QColor, QDesktopServices, QFont, QFontMetrics,
-                         QGuiApplication, QIcon, QKeySequence, QShortcut, QPainter)
+                         QGuiApplication, QKeySequence, QShortcut, QPainter)
 from PyQt6 import sip
 from PyQt6.QtWidgets import (
     QAbstractItemView, QAbstractScrollArea, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
@@ -18,7 +17,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QInputDialog, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
     QPushButton, QScrollArea, QSizePolicy, QSpinBox, QStyle, QProgressBar,
-    QStyledItemDelegate, QStyleOptionViewItem, QTabWidget, QTabBar, QVBoxLayout, QWidget, QBoxLayout, QStackedWidget,
+    QStyledItemDelegate, QStyleOptionViewItem, QTabWidget, QTabBar, QVBoxLayout, QWidget, QBoxLayout,
 )
 
 import api
@@ -37,7 +36,7 @@ import startup
 import theme
 import tts_ema
 from screenshot_capture import default_save_folder
-from brand import BRAND, brand_asset, brand_icon
+from brand import BRAND, brand_icon
 import vulkan_runtime
 from filetranscribe import FileTranscriber
 from i18n import t
