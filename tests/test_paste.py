@@ -30,5 +30,34 @@ class TestClipboardRoundTrip(unittest.TestCase):
         # read_clipboard returns UTF-8 bytes
         self.assertEqual(paste.read_clipboard(), "hello dǬnya".encode("utf-8"))
 
+    def test_restored_raw_bytes_are_nul_terminated(self):
+        """CF_UNICODETEXT must end in a NUL inside the allocation.
+
+        copy_bytes() allocated len(data) + 2 but the non-UTF-8 branch filled
+        only len(data) bytes, so the last two were uninitialised heap and the
+        consuming application read past the end of the block.
+        """
+        import ctypes
+        import sys
+        if not sys.platform.startswith("win"):
+            self.skipTest("Windows-only clipboard test")
+        raw = b"\xff\xfe\x41\x00\x42"
+        paste.copy_bytes(raw)
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        self.assertTrue(user32.OpenClipboard(0))
+        try:
+            handle = user32.GetClipboardData(paste.CF_UNICODETEXT)
+            self.assertTrue(handle)
+            ptr = kernel32.GlobalLock(handle)
+            self.assertTrue(ptr)
+            try:
+                block = ctypes.string_at(ptr, len(raw) + 2)
+            finally:
+                kernel32.GlobalUnlock(handle)
+        finally:
+            user32.CloseClipboard()
+        self.assertEqual(block, raw + b"\x00\x00")
+
 if __name__ == "__main__":
     unittest.main()

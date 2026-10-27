@@ -141,9 +141,19 @@ def ensure(progress=None, should_stop=None) -> Path:
         root.mkdir(parents=True, exist_ok=True)
         try:
             with zipfile.ZipFile(archive) as bundle:
+                # The digest proves this is our zip, but the extraction still
+                # refuses a path that would land outside the target: a future
+                # re-packaging mistake must not write over the disk.
+                for name in bundle.namelist():
+                    path = Path(name)
+                    if path.is_absolute() or ".." in path.parts or ":" in name:
+                        raise CudaLibsError(
+                            t("The GPU support file is damaged. Try again."))
                 bundle.extractall(root)
-        except (zipfile.BadZipFile, OSError) as exc:
+        except (zipfile.BadZipFile, OSError, CudaLibsError) as exc:
             shutil.rmtree(root, ignore_errors=True)
+            if isinstance(exc, CudaLibsError):
+                raise
             raise CudaLibsError(
                 t("The GPU support file is damaged. Try again.")) from exc
         if not installed():
