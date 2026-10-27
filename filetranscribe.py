@@ -68,6 +68,11 @@ class FileTranscriber(QObject):
     def _work(self, path, timestamps, do_cleanup):
         conf = self.conf
         workdir = None
+        # Bound before the first fallible step: an ffmpeg or WAV failure lands
+        # in the handler below, and reading these from there used to raise
+        # UnboundLocalError instead of reporting the error, leaving the window
+        # on "Working…" until it was closed.
+        keys, client, uses_cloud = [], None, False
         try:
             workdir = tempfile.mkdtemp(prefix="wordarc-file-")
             self.progress.emit(t("Converting audio…"))

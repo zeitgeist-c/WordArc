@@ -258,6 +258,35 @@ class TestHistory(unittest.TestCase):
             thread.join()
         self.assertEqual(len(cfg.read_history()), 40)
 
+    def test_two_threads_saving_at_once_keep_the_file(self):
+        """The pipeline saves rotation while the GUI saves a setting.
+
+        Both wrote CONFIG_FILE with the same .json.tmp name; one replace then
+        lost the file to the other (PermissionError WinError 32), which the
+        caller reported as "settings could not be saved".
+        """
+        c = cfg.Config()
+        errors = []
+
+        def write(index):
+            for step in range(20):
+                c["history_limit"] = index + step
+                try:
+                    c.save()
+                except OSError as exc:
+                    errors.append(exc)
+                    return
+
+        threads = [threading.Thread(target=write, args=(index,))
+                   for index in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(errors, [])
+        payload = json.loads(cfg.CONFIG_FILE.read_text(encoding="utf-8"))
+        self.assertIn("history_limit", payload)
+
 class TestApiRotation(unittest.TestCase):
     def test_rotation_defaults_exist(self):
         self.assertIn("gemini_next_slot", cfg.DEFAULTS)

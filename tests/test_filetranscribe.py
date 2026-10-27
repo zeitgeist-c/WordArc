@@ -1,5 +1,6 @@
 import unittest
 from unittest import mock
+import api
 import config as cfg
 import filetranscribe
 
@@ -89,6 +90,22 @@ class TestApiRotation(unittest.TestCase):
         self.assertEqual(created["kwargs"]["start_slot"], 0)
         self.assertEqual(conf["gemini_next_slot"], 1)
         self.assertEqual(conf["gemini_last_used"], [])
+
+    def test_failure_before_the_client_is_reported_not_raised(self):
+        """ffmpeg or a broken WAV failed before ``client``/``uses_cloud`` existed.
+
+        The handler read both, so the real error turned into UnboundLocalError
+        on the worker thread: the window stayed on "Working…" with no message.
+        """
+        worker = filetranscribe.FileTranscriber(self._rotation_conf())
+        failures, finished = [], []
+        worker.failed.connect(failures.append)
+        worker.finished.connect(lambda *args: finished.append(args))
+        with mock.patch.object(filetranscribe, "_to_wav",
+                               side_effect=api.ApiError("ffmpeg not found")):
+            worker._work("input.mp3", False, False)
+        self.assertEqual(failures, ["ffmpeg not found"])
+        self.assertEqual(finished, [])
 
 if __name__ == "__main__":
     unittest.main()
