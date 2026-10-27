@@ -10,9 +10,9 @@ pycparser==3.0
 # Local speech-to-text stack (localspeech.REQUIRED_PACKAGES + load-time deps).
 # Missing these left pip-audit and sbom.json blind to the bundled STT engine.
 faster-whisper==1.2.1
-ctranslate2==4.8.2
+ctranslate2==4.8.4
 onnxruntime==1.30.0
-tokenizers==0.23.2
+tokenizers==0.23.3
 huggingface_hub==1.33.0
 av==18.1.0
 
@@ -26,9 +26,9 @@ shapely==2.2.0
 omegaconf==2.4.0
 colorlog==6.12.0
 requests==2.34.2
-certifi==2026.10.19
-charset-normalizer==3.4.9
-idna==3.18
+certifi==2026.10.23
+charset-normalizer==3.5.2
+idna==3.20
 urllib3==2.8.0
 pillow==13.0.0
 pyyaml==6.0.3

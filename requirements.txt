@@ -25,7 +25,7 @@ winrt-Windows.Storage.Streams==3.2.1
 # the app runs without it; this is what a machine that transcribes on its own
 # needs installed.
 faster-whisper==1.2.1
-ctranslate2==4.8.2
+ctranslate2==4.8.4
 # Reading aloud (Speak tab): EMA Lightning Turkish TTS as ONNX graphs.
 # onnxruntime and huggingface_hub already ride along for local speech; this
 # adds only the small Rust text normalizer (native module, pinned for frozen
