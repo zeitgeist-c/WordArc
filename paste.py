@@ -95,6 +95,10 @@ def copy_bytes(data):
     if not user32.OpenClipboard(0):
         return
     try:
+        # Two extra bytes always exist and stay zero: CF_UNICODETEXT is a
+        # NUL-terminated string, and the raw-bytes branch below fills every
+        # byte it allocated. A block with no terminator let the consuming
+        # application read past the end of this allocation.
         handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(data) + 2)
         if not handle:
             return
@@ -114,6 +118,7 @@ def copy_bytes(data):
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
+            ctypes.memset(ptr, 0, len(data) + 2)
             ctypes.memmove(ptr, data, len(data))
             kernel32.GlobalUnlock(handle)
             user32.SetClipboardData(CF_UNICODETEXT, handle)
@@ -122,7 +127,12 @@ def copy_bytes(data):
         kernel32.GlobalUnlock(handle)
         kernel32.GlobalFree(handle)
         handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(payload))
+        if not handle:
+            return
         ptr = kernel32.GlobalLock(handle)
+        if not ptr:
+            kernel32.GlobalFree(handle)
+            return
         ctypes.memmove(ptr, payload, len(payload))
         kernel32.GlobalUnlock(handle)
         user32.SetClipboardData(CF_UNICODETEXT, handle)
