@@ -14,7 +14,6 @@ import tempfile
 import time
 import wave
 
-from brand import resource_path
 from i18n import t
 
 _log = logging.getLogger("wordarc.vulkan")

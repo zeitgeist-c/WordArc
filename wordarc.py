@@ -37,7 +37,7 @@ if __name__ == "__main__" and "--installation-check" in sys.argv:
     sys.exit(run(sys.argv[sys.argv.index("--installation-check") + 1:]))
 
 from PyQt6.QtCore import QObject, QTimer, QElapsedTimer, Qt, QRectF, pyqtSignal  # noqa: E402
-from PyQt6.QtGui import (QAction, QBrush, QColor, QFont, QIcon,  # noqa: E402
+from PyQt6.QtGui import (QAction, QBrush, QColor, QFont,  # noqa: E402
                          QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
                          QRadialGradient)
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket  # noqa: E402
@@ -51,7 +51,6 @@ import hotkey  # noqa: E402
 import meeting  # noqa: E402
 import paste  # noqa: E402
 import tts_ema  # noqa: E402
-import localspeech  # noqa: E402
 from cuda_recovery import CudaRecovery  # noqa: E402
 import operation  # noqa: E402
 import brand_migration  # noqa: E402
@@ -1132,7 +1131,6 @@ class WordArc:
         self._run_update_check(tray=False)
 
     def _run_update_check(self, tray):
-        import update as update_mod
         if self._update_thread is not None and self._update_thread.is_alive():
             return
         if not self._updates_possible():
