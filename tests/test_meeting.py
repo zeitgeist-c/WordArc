@@ -298,5 +298,36 @@ class TestApiRotation(unittest.TestCase):
         self.assertEqual(conf["gemini_next_slot"], 0)
         self.assertEqual(conf["gemini_last_used"], ["", ""])
 
+
+class TestRmsSeries(unittest.TestCase):
+    """The per-block RMS vad.analyse consumes; numpy replaced a Python sum()."""
+
+    def _wav(self, samples, rate=16000):
+        workdir = tempfile.mkdtemp(prefix="wordarc-test-rms-")
+        self.addCleanup(shutil.rmtree, workdir, True)
+        path = os.path.join(workdir, "tone.wav")
+        with wave.open(path, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(rate)
+            wav.writeframes(array.array("h", samples).tobytes())
+        return path
+
+    def test_constant_tone_has_expected_level(self):
+        samples = [16384] * meeting.LEVEL_FRAMES * 2
+        out = meeting.rms_series(self._wav(samples))
+        self.assertEqual(len(out), 2)
+        for level in out:
+            self.assertAlmostEqual(level, 0.5, places=6)
+
+    def test_silence_is_zero_and_empty_file_is_empty(self):
+        self.assertEqual(meeting.rms_series(self._wav([0] * 2048)), [0.0, 0.0])
+        self.assertEqual(meeting.rms_series(self._wav([])), [])
+
+    def test_level_is_clamped_to_one(self):
+        # int16 full scale is -32768, whose square root is 1.0 — never above it.
+        out = meeting.rms_series(self._wav([-32768] * meeting.LEVEL_FRAMES))
+        self.assertEqual(out, [1.0])
+
 if __name__ == "__main__":
     unittest.main()

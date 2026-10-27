@@ -331,6 +331,24 @@ class TestMeetingRecorderReuse(unittest.TestCase):
             recorder._writer()
         self.assertTrue(recorder._error_reported)
 
+    def test_writer_interleaves_mic_left_system_right(self):
+        """Left channel is the mic, right is the loopback, sample by sample."""
+        import array
+        recorder = audio.MeetingRecorder()
+        recorder._wav = mock.Mock()
+        mic = array.array("h", [1, 2, 3]).tobytes()
+        sys_ = array.array("h", [-1, -2, -3]).tobytes()
+        recorder._q = mock.Mock()
+        recorder._q.get.side_effect = [("m", mic, 0.5), ("s", sys_, 0.25),
+                                       KeyboardInterrupt]
+        try:
+            recorder._writer()
+        except KeyboardInterrupt:
+            pass
+        written = recorder._wav.writeframes.call_args[0][0]
+        self.assertEqual(array.array("h", written).tolist(),
+                         [1, -1, 2, -2, 3, -3])
+
     def test_start_creates_missing_parent_directory(self):
         tmp = tempfile.mkdtemp(prefix="wordarc-test-")
         self.addCleanup(shutil.rmtree, tmp, True)
