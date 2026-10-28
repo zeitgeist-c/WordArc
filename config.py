@@ -392,7 +392,7 @@ da senin soracağın soruya verilecek bir yanıt yok.
 
 DEFAULTS = {
     "config_schema": CONFIG_SCHEMA,
-    "ui_language": "tr",                # tr | en | auto
+    "ui_language": "en",                # 13 dil kodu; boş/legacy 'auto' -> 'en'
     "theme_mode": "dark",               # dark | light
     "settings_size": [],                # remembered settings window [w, h]; [] = auto
     "start_with_windows": True,
@@ -585,6 +585,8 @@ class Config:
                 self.data[key] = ""
         for key in ("cleanup_reasoning", "meeting_reasoning"):
             self.data[key] = {"none": "minimal", "xhigh": "high", "max": "high"}.get(self.data[key], self.data[key])
+        # Legacy 'auto'/bilinmeyen dil kayıtları açık İngilizce varsayılana çekilir.
+        self.data["ui_language"] = i18n.resolve(self.data.get("ui_language"))
         i18n.set_language(self.data["ui_language"])
 
     def _migrate(self, stored):
@@ -669,6 +671,7 @@ class Config:
             with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(self.data, fh, ensure_ascii=False, indent=2)
             tmp.replace(CONFIG_FILE)
+        self.data["ui_language"] = i18n.resolve(self.data.get("ui_language"))
         i18n.set_language(self.data["ui_language"])
 
     def __getitem__(self, key):

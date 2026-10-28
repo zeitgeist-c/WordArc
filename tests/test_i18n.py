@@ -23,9 +23,19 @@ class TestI18n(unittest.TestCase):
     def test_resolve_auto_en(self):
         os.environ["LANG"] = "C"
         self.assertEqual(i18n.resolve("auto"), "en")
-    def test_resolve_auto_tr(self):
+    def test_resolve_legacy_auto_always_en(self):
+        # 'auto' kalktı: eski kayıtlardaki auto dahil bilinmeyen her kod
+        # açık İngilizce varsayılana düşer; OS dili öne geçmez.
         os.environ["LANG"] = "tr_TR.UTF-8"
-        self.assertEqual(i18n.resolve("auto"), "tr")
+        self.assertEqual(i18n.resolve("auto"), "en")
+        self.assertEqual(i18n.resolve("xx"), "en")
+    def test_resolve_known_codes(self):
+        for code, _label in i18n.LANGUAGES:
+            self.assertEqual(i18n.resolve(code), code)
+    def test_default_language_is_english(self):
+        import importlib
+        importlib.reload(i18n)
+        self.assertEqual(i18n.language(), "en")
     def test_t_en_passthrough(self):
         i18n.set_language("en")
         self.assertEqual(i18n.t("Start recording"), "Start recording")
@@ -178,11 +188,18 @@ class TestTranslationCoverage(unittest.TestCase):
 
     def test_combo_label_lists_are_translated(self):
         import settings_ui
-        for label, _value in (settings_ui.UI_LANGUAGES + settings_ui.LANGUAGES
+        # UI_LANGUAGES etiketleri her dilin kendi adıdır (Türkçe, Deutsch…);
+        # çevrilmez, HeraAi'deki dil seçicideki sözleşmeyle aynı.
+        own_names = {label for label, _code in settings_ui.UI_LANGUAGES}
+        self.assertEqual(len(own_names), 13)
+        for label, _value in (settings_ui.LANGUAGES
                               + settings_ui.REASONING_LEVELS):
             self.assertIn(label, i18n.TR)
         for corner in settings_ui.CORNERS:
             self.assertIn(corner, i18n.TR)
+        # Ayar dil listesi ortak 13 dil sözleşmesiyle birebir eşleşmeli.
+        self.assertEqual([code for _label, code in settings_ui.UI_LANGUAGES],
+                         [code for code, _label in i18n.LANGUAGES])
 
 
 if __name__ == "__main__":

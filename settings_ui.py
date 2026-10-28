@@ -41,7 +41,7 @@ import vulkan_runtime
 from filetranscribe import FileTranscriber
 from i18n import t
 
-UI_LANGUAGES = [("Automatic (system)", "auto"), ("Turkish", "tr"), ("English", "en")]
+UI_LANGUAGES = [(label, code) for code, label in i18n.LANGUAGES]
 LANGUAGES = [
     ("Detect automatically", "auto"), ("Turkish", "tr"), ("English", "en"),
     ("German", "de"), ("French", "fr"), ("Spanish", "es"), ("Arabic", "ar"),
@@ -2041,7 +2041,8 @@ class SettingsWindow(QDialog):
 
     def _refresh_header_lang(self):
         code = self.conf["ui_language"]
-        self.header_lang.setText("English" if code == "en" else "Türkçe")
+        label = dict(i18n.LANGUAGES).get(code, "English")
+        self.header_lang.setText(label)
 
     def _refresh_header_theme(self):
         mode = self.conf["theme_mode"]
@@ -2050,8 +2051,19 @@ class SettingsWindow(QDialog):
         self.header_theme.setText(t(self.THEME_LABELS[mode]))
 
     def _toggle_lang(self):
-        """Flip the language at once by rebuilding this window."""
-        code = "en" if self.conf["ui_language"] != "en" else "tr"
+        """Header dil butonu: 13 dili menüden seç, anında uygula."""
+        from PyQt6.QtWidgets import QMenu
+        menu = QMenu(self)
+        current = self.conf["ui_language"]
+        for code, label in i18n.LANGUAGES:
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(code == current)
+            action.triggered.connect(lambda _=False, c=code: self._apply_lang(c))
+        menu.exec(self.header_lang.mapToGlobal(self.header_lang.rect().bottomLeft()))
+
+    def _apply_lang(self, code):
+        """Seçili dili kaydet ve pencereyi yeniden kur."""
         if code == self.conf["ui_language"]:
             return
         self.conf["ui_language"] = code
