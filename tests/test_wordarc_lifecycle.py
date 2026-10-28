@@ -73,7 +73,7 @@ def test_hotkey_failure_names_the_action():
         lambda *_a, **_k: messages.append(_a[1])
     controller._on_hotkey_failed("...kullanıyor olabilir: Ctrl+Alt+S")
     assert len(messages) == 1
-    assert messages[0].endswith("(Ekran görüntüsü)")
+    assert messages[0].endswith("(Screenshot)")
 
 
 def test_hotkey_failure_without_match_passes_through():

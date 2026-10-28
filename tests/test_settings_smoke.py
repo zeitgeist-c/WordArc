@@ -307,16 +307,27 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertTrue(window.max_seconds.isVisibleTo(window))
 
     def test_header_buttons_toggle_and_persist(self):
+        # QMenu.exec() offscreen'da modal kalır; menüde ilgili dili
+        # seçmiş gibi davranan stub ile aynı akış (_apply_lang) işletilir.
         window = self.window
         fired = []
         window.language_changed.connect(lambda: fired.append(True))
-        self.assertEqual(window.header_lang.text(), "Türkçe")
-        window.header_lang.click()
-        self.assertEqual(window.conf["ui_language"], "en")
         self.assertEqual(window.header_lang.text(), "English")
-        self.assertTrue(fired)
-        window.header_lang.click()
+
+        def _click_as(lang):
+            # connect anında alınan bağlı-metod kopyası sınıf patch'inden
+            # etkilenmez; menüde dili seçmiş gibi _apply_lang işletilir.
+            window.header_lang.clicked.disconnect()
+            window.header_lang.clicked.connect(lambda: window._apply_lang(lang))
+            window.header_lang.click()
+
+        _click_as("tr")
         self.assertEqual(window.conf["ui_language"], "tr")
+        self.assertTrue(fired)
+        window = self.window
+        self.assertEqual(window.header_lang.text(), "Türkçe")
+        _click_as("en")
+        self.assertEqual(window.conf["ui_language"], "en")
         self.assertEqual(window.header_theme.text(), t("Dark"))
         window.header_theme.click()
         self.assertEqual(window.conf["theme_mode"], "light")
@@ -706,7 +717,7 @@ class TestSettingsSmoke(unittest.TestCase):
         previous = i18n.language()
         fired = []
         window.language_changed.connect(lambda: fired.append(True))
-        window._select_data(window.ui_language, "en")
+        window._select_data(window.ui_language, "tr")
         try:
             with mock.patch.object(settings_ui.startup, "set_enabled"), \
                  mock.patch.object(settings_ui.sounds, "play"), \
@@ -717,7 +728,7 @@ class TestSettingsSmoke(unittest.TestCase):
             self.assertFalse(fired, "the rebuild must not run inside the save")
             later.call_args[0][1]()          # the queued emit
             self.assertTrue(fired)
-            self.assertEqual(window.conf["ui_language"], "en")
+            self.assertEqual(window.conf["ui_language"], "tr")
         finally:
             i18n.set_language(previous)
 
