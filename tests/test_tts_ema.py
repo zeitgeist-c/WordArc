@@ -352,7 +352,7 @@ class TestSpeakTab(unittest.TestCase):
         self.window.navigate_to("speak")
         self.window.speak_input.setPlainText("   ")
         self.window._run_speak()
-        self.assertIn("Okunacak", self.window.speak_status.text())
+        self.assertIn("readable", self.window.speak_status.text())
 
     def test_add_files_skips_duplicates(self):
         self.window.navigate_to("speak")
@@ -365,7 +365,7 @@ class TestSpeakTab(unittest.TestCase):
         self.window.navigate_to("speak")
         self.window.speak_files.clear()
         self.window._convert_speak_files()
-        self.assertIn("Okunacak", self.window.speak_status.text())
+        self.assertIn("readable", self.window.speak_status.text())
 
 
 class TestReadTextFile(unittest.TestCase):
