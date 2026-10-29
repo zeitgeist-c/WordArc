@@ -29,7 +29,10 @@ Set-Location -LiteralPath $PSScriptRoot
 if ($Cuda -and $CpuOnly) { throw 'Choose CUDA or CPU-only, not both.' }
 Invoke-Gate { & $Python -m pip install -r (Join-Path $PSScriptRoot 'requirements-native-build.txt') } 'Vulkan build tool installation failed.'
 Invoke-Gate { & $Python (Join-Path $PSScriptRoot 'tools\build_vulkan.py') } 'Vulkan runtime build/verification failed.'
-Invoke-Gate { & $Python (Join-Path $PSScriptRoot 'tools\package_vulkan_runtime.py') } 'Vulkan repair packaging failed.'
+# NOT: package_vulkan_runtime.py bilerek cagrilmiyor. runtime.json canonical
+# pin'dir (v0.10.4 URL + hash); her build'de yeniden yazmak URL'yi o anki
+# surume cevirip 404 uretiyordu (AUD-WORD-002). Yeni Vulkan gerektiginde
+# manuel uret + release'e yukle + runtime.json'u guncelle.
 if (-not $CpuOnly) {
     # Standard deliveries include CUDA libraries; the driver stays external.
     Invoke-Gate { & $Python -m pip install -r (Join-Path $PSScriptRoot 'requirements-cuda.txt') } 'CUDA runtime installation failed.'
