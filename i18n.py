@@ -42,6 +42,10 @@ try:
 except ImportError:
     _ES6 = {}
 try:
+    from i18n_es7 import ES7 as _ES7
+except ImportError:
+    _ES7 = {}
+try:
     from i18n_fr1 import FR1 as _FR1
 except ImportError:
     _FR1 = {}
@@ -65,6 +69,10 @@ try:
     from i18n_fr6 import FR6 as _FR6
 except ImportError:
     _FR6 = {}
+try:
+    from i18n_fr7 import FR7 as _FR7
+except ImportError:
+    _FR7 = {}
 try:
     from i18n_it1 import IT1 as _IT1
 except ImportError:
@@ -90,6 +98,10 @@ try:
 except ImportError:
     _IT6 = {}
 try:
+    from i18n_it7 import IT7 as _IT7
+except ImportError:
+    _IT7 = {}
+try:
     from i18n_pb1 import PB1 as _PB1
 except ImportError:
     _PB1 = {}
@@ -113,6 +125,10 @@ try:
     from i18n_pb6 import PB6 as _PB6
 except ImportError:
     _PB6 = {}
+try:
+    from i18n_pb7 import PB7 as _PB7
+except ImportError:
+    _PB7 = {}
 try:
     from i18n_ru1 import RU1 as _RU1
 except ImportError:
@@ -138,6 +154,10 @@ try:
 except ImportError:
     _RU6 = {}
 try:
+    from i18n_ru7 import RU7 as _RU7
+except ImportError:
+    _RU7 = {}
+try:
     from i18n_pl1 import PL1 as _PL1
 except ImportError:
     _PL1 = {}
@@ -161,6 +181,10 @@ try:
     from i18n_pl6 import PL6 as _PL6
 except ImportError:
     _PL6 = {}
+try:
+    from i18n_pl7 import PL7 as _PL7
+except ImportError:
+    _PL7 = {}
 try:
     from i18n_nl1 import NL1 as _NL1
 except ImportError:
@@ -186,6 +210,10 @@ try:
 except ImportError:
     _NL6 = {}
 try:
+    from i18n_nl7 import NL7 as _NL7
+except ImportError:
+    _NL7 = {}
+try:
     from i18n_zh1 import ZH1 as _ZH1
 except ImportError:
     _ZH1 = {}
@@ -209,6 +237,10 @@ try:
     from i18n_zh6 import ZH6 as _ZH6
 except ImportError:
     _ZH6 = {}
+try:
+    from i18n_zh7 import ZH7 as _ZH7
+except ImportError:
+    _ZH7 = {}
 try:
     from i18n_ja1 import JA1 as _JA1
 except ImportError:
@@ -234,6 +266,10 @@ try:
 except ImportError:
     _JA6 = {}
 try:
+    from i18n_ja7 import JA7 as _JA7
+except ImportError:
+    _JA7 = {}
+try:
     from i18n_ko1 import KO1 as _KO1
 except ImportError:
     _KO1 = {}
@@ -258,6 +294,10 @@ try:
 except ImportError:
     _KO6 = {}
 try:
+    from i18n_ko7 import KO7 as _KO7
+except ImportError:
+    _KO7 = {}
+try:
     from i18n_de2 import DE2 as _DE2
 except ImportError:
     _DE2 = {}
@@ -277,6 +317,10 @@ try:
     from i18n_de6 import DE6 as _DE6
 except ImportError:
     _DE6 = {}
+try:
+    from i18n_de7 import DE7 as _DE7
+except ImportError:
+    _DE7 = {}
 
 # Code + self-name label. English first and default; flags are never used
 # as language identifiers.
@@ -1430,15 +1474,15 @@ def _merge(*parts):
 
 TABLES = {
     "tr": TR,
-    "de": _merge(_DE1, _DE2, _DE3, _DE4, _DE5, _DE6),
-    "es": _merge(_ES1, _ES2, _ES3, _ES4, _ES5, _ES6),
-    "fr": _merge(_FR1, _FR2, _FR3, _FR4, _FR5, _FR6),
-    "it": _merge(_IT1, _IT2, _IT3, _IT4, _IT5, _IT6),
-    "pt-BR": _merge(_PB1, _PB2, _PB3, _PB4, _PB5, _PB6),
-    "ru": _merge(_RU1, _RU2, _RU3, _RU4, _RU5, _RU6),
-    "pl": _merge(_PL1, _PL2, _PL3, _PL4, _PL5, _PL6),
-    "nl": _merge(_NL1, _NL2, _NL3, _NL4, _NL5, _NL6),
-    "zh-CN": _merge(_ZH1, _ZH2, _ZH3, _ZH4, _ZH5, _ZH6),
-    "ja": _merge(_JA1, _JA2, _JA3, _JA4, _JA5, _JA6),
-    "ko": _merge(_KO1, _KO2, _KO3, _KO4, _KO5, _KO6),
+    "de": _merge(_DE1, _DE2, _DE3, _DE4, _DE5, _DE6, _DE7),
+    "es": _merge(_ES1, _ES2, _ES3, _ES4, _ES5, _ES6, _ES7),
+    "fr": _merge(_FR1, _FR2, _FR3, _FR4, _FR5, _FR6, _FR7),
+    "it": _merge(_IT1, _IT2, _IT3, _IT4, _IT5, _IT6, _IT7),
+    "pt-BR": _merge(_PB1, _PB2, _PB3, _PB4, _PB5, _PB6, _PB7),
+    "ru": _merge(_RU1, _RU2, _RU3, _RU4, _RU5, _RU6, _RU7),
+    "pl": _merge(_PL1, _PL2, _PL3, _PL4, _PL5, _PL6, _PL7),
+    "nl": _merge(_NL1, _NL2, _NL3, _NL4, _NL5, _NL6, _NL7),
+    "zh-CN": _merge(_ZH1, _ZH2, _ZH3, _ZH4, _ZH5, _ZH6, _ZH7),
+    "ja": _merge(_JA1, _JA2, _JA3, _JA4, _JA5, _JA6, _JA7),
+    "ko": _merge(_KO1, _KO2, _KO3, _KO4, _KO5, _KO6, _KO7),
 }

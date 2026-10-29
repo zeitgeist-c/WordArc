@@ -48,7 +48,6 @@ FR6 = {
 "WordArc: the meeting is written up": "WordArc : la réunion est rédigée",
 "Meeting failed: {error}": "Réunion échouée : {error}",
 "WordArc: the meeting could not be written up": "WordArc : la réunion n'a pas pu être rédigée",
-"{error}\\n\\nThe recording has been kept. Settings → Meeting can try again.": "{error}\\n\\nL'enregistrement a été conservé. Paramètres → Réunion peut réessayer.",
 "this one from Settings → Meeting when it is done.": "celui-ci depuis Paramètres → Réunion quand c'est terminé.",
 "Keeping what was captured.": "Conservation de ce qui a été capturé.",
 "ffmpeg not found. Install it to record a meeting.": "ffmpeg introuvable. Installez-le pour enregistrer une réunion.",

@@ -48,7 +48,6 @@ RU6 = {
 "WordArc: the meeting is written up": "WordArc: встреча оформлена",
 "Meeting failed: {error}": "Встреча не удалась: {error}",
 "WordArc: the meeting could not be written up": "WordArc: встречу не удалось оформить",
-"{error}\\n\\nThe recording has been kept. Settings → Meeting can try again.": "{error}\\n\\nЗапись сохранена. Настройки → Встреча может попробовать снова.",
 "this one from Settings → Meeting when it is done.": "эту из Настройки → Встреча, когда будет готово.",
 "Keeping what was captured.": "Сохраняю захваченное.",
 "ffmpeg not found. Install it to record a meeting.": "ffmpeg не найден. Установите его для записи встречи.",

@@ -48,7 +48,6 @@ KO6 = {
 "WordArc: the meeting is written up": "WordArc: 회의가 정리되었습니다",
 "Meeting failed: {error}": "회의 실패: {error}",
 "WordArc: the meeting could not be written up": "WordArc: 회의를 정리할 수 없습니다",
-"{error}\\n\\nThe recording has been kept. Settings → Meeting can try again.": "{error}\\n\\n녹음이 보관되었습니다. 설정 → 회의에서 다시 시도할 수 있습니다.",
 "this one from Settings → Meeting when it is done.": "완료되면 설정 → 회의에서 이 항목 확인.",
 "Keeping what was captured.": "캡처한 내용을 유지하는 중.",
 "ffmpeg not found. Install it to record a meeting.": "ffmpeg을 찾을 수 없습니다. 회의 녹음용으로 설치하세요.",

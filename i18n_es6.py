@@ -48,7 +48,6 @@ ES6 = {
 "WordArc: the meeting is written up": "WordArc: la reunión está redactada",
 "Meeting failed: {error}": "Reunión fallida: {error}",
 "WordArc: the meeting could not be written up": "WordArc: la reunión no pudo redactarse",
-"{error}\\n\\nThe recording has been kept. Settings → Meeting can try again.": "{error}\\n\\nLa grabación se ha conservado. Configuración → Reunión puede intentarlo de nuevo.",
 "this one from Settings → Meeting when it is done.": "esta desde Configuración → Reunión cuando termine.",
 "Keeping what was captured.": "Conservando lo capturado.",
 "ffmpeg not found. Install it to record a meeting.": "ffmpeg no encontrado. Instálelo para grabar una reunión.",

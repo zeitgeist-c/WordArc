@@ -48,7 +48,6 @@ PL6 = {
 "WordArc: the meeting is written up": "WordArc: spotkanie spisane",
 "Meeting failed: {error}": "Spotkanie nie powiodło się: {error}",
 "WordArc: the meeting could not be written up": "WordArc: nie można było spisać spotkania",
-"{error}\\n\\nThe recording has been kept. Settings → Meeting can try again.": "{error}\\n\\nNagranie zachowane. Ustawienia → Spotkanie może spróbować ponownie.",
 "this one from Settings → Meeting when it is done.": "to z Ustawienia → Spotkanie, gdy będzie gotowe.",
 "Keeping what was captured.": "Zachowuję to, co przechwycono.",
 "ffmpeg not found. Install it to record a meeting.": "Nie znaleziono ffmpeg. Zainstaluj go, aby nagrywać spotkania.",
