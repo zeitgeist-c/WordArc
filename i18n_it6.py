@@ -48,7 +48,6 @@ IT6 = {
 "WordArc: the meeting is written up": "WordArc: la riunione è redatta",
 "Meeting failed: {error}": "Riunione fallita: {error}",
 "WordArc: the meeting could not be written up": "WordArc: la riunione non si è potuta redigere",
-"{error}\\n\\nThe recording has been kept. Settings → Meeting can try again.": "{error}\\n\\nLa registrazione è conservata. Impostazioni → Riunione può riprovare.",
 "this one from Settings → Meeting when it is done.": "questa da Impostazioni → Riunione quando è fatta.",
 "Keeping what was captured.": "Tengo ciò che è stato catturato.",
 "ffmpeg not found. Install it to record a meeting.": "ffmpeg non trovato. Installalo per registrare riunione.",

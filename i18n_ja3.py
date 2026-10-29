@@ -110,7 +110,6 @@ JA3 = {
 " s": " 秒",
 "Skip silent recordings (don't call the API)": "無音の録音をスキップ（API を呼ばない）",
 "Silence threshold": "無音しきい値",
-"Keep audio files (%LOCALAPPDATA%\\\\WordArc\\\\recordings)": "音声ファイルを保持（%LOCALAPPDATA%\\\\WordArc\\\\recordings）",
 "Keys": "キー",
 "Speech to text": "音声からテキストへ",
 "Transcript cleanup": "文字起こしクリーンアップ",

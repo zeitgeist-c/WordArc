@@ -48,7 +48,6 @@ PB6 = {
 "WordArc: the meeting is written up": "WordArc: a reunião está redigida",
 "Meeting failed: {error}": "Reunião falhou: {error}",
 "WordArc: the meeting could not be written up": "WordArc: a reunião não pôde ser redigida",
-"{error}\\n\\nThe recording has been kept. Settings → Meeting can try again.": "{error}\\n\\nA gravação foi mantida. Configurações → Reunião pode tentar de novo.",
 "this one from Settings → Meeting when it is done.": "esta em Configurações → Reunião quando terminar.",
 "Keeping what was captured.": "Mantendo o que foi capturado.",
 "ffmpeg not found. Install it to record a meeting.": "ffmpeg não encontrado. Instale-o para gravar reunião.",

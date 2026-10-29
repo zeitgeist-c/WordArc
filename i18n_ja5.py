@@ -11,7 +11,6 @@ JA5 = {
 "Delete selected": "選択を削除",
 "Clear history": "履歴をクリア",
 "Open diagnostics folder": "診断フォルダーを開く",
-"Meeting minutes and transcripts are stored as readable text files under %LOCALAPPDATA%\\\\WordArc\\\\meetings.": "会議議事録と文字起こしは %LOCALAPPDATA%\\\\WordArc\\\\meetings 下に読み取り可能なテキストファイルとして保存されます。",
 "Reload": "再読み込み",
 "{ts}  ({duration} s)": "{ts}（{duration} 秒）",
 "Keep at most": "最大保持数",

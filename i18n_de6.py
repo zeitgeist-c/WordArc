@@ -50,7 +50,6 @@ DE6 = {
 "WordArc: the meeting is written up": "WordArc: das Meeting ist ausgearbeitet",
 "Meeting failed: {error}": "Meeting fehlgeschlagen: {error}",
 "WordArc: the meeting could not be written up": "WordArc: das Meeting konnte nicht ausgearbeitet werden",
-"{error}\\n\\nThe recording has been kept. Settings → Meeting can try again.": "{error}\\n\\nDie Aufnahme wurde behalten. Einstellungen → Meeting kann es erneut versuchen.",
 "this one from Settings → Meeting when it is done.": "dieses aus Einstellungen → Meeting, wenn es fertig ist.",
 "Keeping what was captured.": "Behalte, was erfasst wurde.",
 "ffmpeg not found. Install it to record a meeting.": "ffmpeg nicht gefunden. Installieren Sie es, um ein Meeting aufzuzeichnen.",

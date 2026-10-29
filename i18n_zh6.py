@@ -48,7 +48,6 @@ ZH6 = {
 "WordArc: the meeting is written up": "WordArc：会议已整理完毕",
 "Meeting failed: {error}": "会议失败：{error}",
 "WordArc: the meeting could not be written up": "WordArc：会议无法整理",
-"{error}\\n\\nThe recording has been kept. Settings → Meeting can try again.": "{error}\\n\\n录音已保留。“设置 → 会议”可以重试。",
 "this one from Settings → Meeting when it is done.": "完成后从“设置 → 会议”查看此项。",
 "Keeping what was captured.": "保留已捕获的内容。",
 "ffmpeg not found. Install it to record a meeting.": "未找到 ffmpeg。请安装以录制会议。",

@@ -48,7 +48,6 @@ NL6 = {
 "WordArc: the meeting is written up": "WordArc: de meeting is uitgewerkt",
 "Meeting failed: {error}": "Meeting mislukt: {error}",
 "WordArc: the meeting could not be written up": "WordArc: de meeting kon niet worden uitgewerkt",
-"{error}\\n\\nThe recording has been kept. Settings → Meeting can try again.": "{error}\\n\\nDe opname is bewaard. Instellingen → Meeting kan opnieuw proberen.",
 "this one from Settings → Meeting when it is done.": "deze via Instellingen → Meeting als het klaar is.",
 "Keeping what was captured.": "Bewaren wat is vastgelegd.",
 "ffmpeg not found. Install it to record a meeting.": "ffmpeg niet gevonden. Installeer het om een meeting op te nemen.",

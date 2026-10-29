@@ -48,7 +48,6 @@ JA6 = {
 "WordArc: the meeting is written up": "WordArc：会議のまとめ完了",
 "Meeting failed: {error}": "会議に失敗しました：{error}",
 "WordArc: the meeting could not be written up": "WordArc：会議をまとめられませんでした",
-"{error}\\n\\nThe recording has been kept. Settings → Meeting can try again.": "{error}\\n\\n録音は保持されています。設定 → 会議から再試行できます。",
 "this one from Settings → Meeting when it is done.": "完了後は設定 → 会議からこちらを確認。",
 "Keeping what was captured.": "キャプチャ内容を保持しています。",
 "ffmpeg not found. Install it to record a meeting.": "ffmpeg が見つかりません。会議録音用にインストールしてください。",
