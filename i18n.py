@@ -384,6 +384,7 @@ def name(text, case=""):
 
 
 TR = {
+    "cancelled": "İptal edildi",
     "Preparing installation. Approve the Windows permission request; this window stays open until setup is ready.": "Kurulum hazırlanıyor. Windows izin isteğini onaylayın; kurulum hazır olana kadar bu pencere açık kalır.",
     "Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Önce WordArc, Hermes ve model önbellekleri, ardından kullanıcı klasörleri ve yerel diskler taranır. Modelinizi seçin; ortak dosyalar yerinde kalır.",
     "not_checked": "Henüz kontrol edilmedi",
