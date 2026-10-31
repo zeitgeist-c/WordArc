@@ -227,7 +227,7 @@ begin
     Handle := OpenProcess($100000, False, PID);
     if Handle <> 0 then
     begin
-      WaitResult := WaitForSingleObject(Handle, 60000);
+      WaitResult := WaitForSingleObject(Handle, 120000);
       CloseHandle(Handle);
       if WaitResult <> 0 then
         Result := 'The current WordArc did not close. Installation was cancelled.';

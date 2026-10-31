@@ -535,3 +535,16 @@ def test_first_run_leaves_existing_install_alone():
         wordarc._apply_first_run_language(conf, "tr")
         ask.assert_not_called()
     conf.__setitem__.assert_not_called()
+
+
+def test_session_end_quits_instead_of_hiding_to_tray():
+    controller = wordarc.WordArc.__new__(wordarc.WordArc)
+    controller.settings_window = mock.Mock()
+    controller.shutdown = mock.Mock()
+    controller.app = mock.Mock()
+    with mock.patch.object(wordarc.QLocalServer, "removeServer"), \
+         mock.patch.object(wordarc, "_release_instance_mutex"):
+        wordarc.WordArc._session_end(controller, mock.Mock())
+    controller.settings_window.close.assert_called_once_with()
+    controller.shutdown.assert_called_once_with()
+    controller.app.quit.assert_called_once_with()
