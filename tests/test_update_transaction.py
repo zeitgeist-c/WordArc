@@ -96,6 +96,24 @@ def test_failed_install_never_deletes_old_app(transaction, code):
     host.recover.assert_called_once()
 
 
+def test_blocked_setup_names_the_lingering_copy(transaction):
+    folder, job = transaction
+    (folder / "setup.log").write_text(
+        "RestartManager found an application using one of our files: WordArc.exe\n"
+        "Some applications could not be shut down.\n", encoding="utf-8")
+    host = Host(code=5)
+    assert not protocol.run_transaction(job, folder, host, sleep=lambda _: None)
+    assert "Another copy of WordArc" in protocol.read_state(folder)["error"]
+
+
+def test_clean_setup_failure_keeps_generic_message(transaction):
+    folder, job = transaction
+    (folder / "setup.log").write_text("Verification successful\n", encoding="utf-8")
+    host = Host(code=5)
+    assert not protocol.run_transaction(job, folder, host, sleep=lambda _: None)
+    assert "Another copy of WordArc" not in protocol.read_state(folder)["error"]
+
+
 def test_early_exit_or_uac_cancel_keeps_current_app(transaction):
     folder, job = transaction
     host = Host(ready=False)

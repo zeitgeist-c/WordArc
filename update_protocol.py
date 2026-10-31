@@ -100,6 +100,28 @@ def confirm_startup(job_path, current_version, current_exe, data_dir):
         return False
 
 
+def _setup_blockage_hint(folder):
+    """A plain reading of a setup abort caused by a lingering WordArc copy.
+
+    Inno's log is verbose; only the tail matters, and only the lock pattern.
+    Anything else keeps the generic message with the log path.
+    """
+    try:
+        with open(Path(folder) / "setup.log", "rb") as stream:
+            stream.seek(0, 2)
+            stream.seek(max(0, stream.tell() - 65536))
+            tail = stream.read().decode("utf-8", "replace").lower()
+    except OSError:
+        return ""
+    markers = ("could not be shut down", "kapatamad", "applications using",
+               "using one of our files", "did not close")
+    if any(marker in tail for marker in markers):
+        return (" Another copy of WordArc is still running and holding the "
+                "program files. Close every WordArc icon (check the system "
+                "tray notification area), then run the update again.")
+    return ""
+
+
 def run_transaction(job, folder, host, *, sleep=time.sleep, clock=time.monotonic):
     """Inno owns installation/rollback; we supervise its handoff and application start."""
     folder = validate_job(job, folder)
@@ -137,7 +159,9 @@ def run_transaction(job, folder, host, *, sleep=time.sleep, clock=time.monotonic
         write_state(folder, "installing")
         code = installer.wait(timeout=600)
         if code != 0:
-            raise RuntimeError(f"Setup failed (code {code}); see setup.log")
+            raise RuntimeError(
+                f"Setup failed (code {code}); see setup.log"
+                + _setup_blockage_hint(folder))
         write_state(folder, "checking_installation")
         report = host.check_installation(job, folder)
         if not report.get("ok") or report.get("version") != job["version"]:

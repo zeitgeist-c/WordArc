@@ -1261,6 +1261,15 @@ class WordArc:
         _release_instance_mutex()
         self.app.quit()
 
+    def _session_end(self, _manager=None):
+        """RestartManager / OS session end asked us to go: a real quit.
+
+        A tray-hide here leaves the exe locked, so silent updates abort with
+        "could not be shut down". The manager argument is unused; not
+        cancelling lets the session proceed once we are gone.
+        """
+        self._quit_for_update()
+
     def open_settings(self):
         if self.settings_window is None:
             self.settings_window = SettingsWindow(
@@ -1785,6 +1794,10 @@ def main():
     install_qt_translator(app, i18n.language())
     theme.ThemeManager.apply(conf["theme_mode"], app)
     wordarc = WordArc(app, conf)
+    # RestartManager (silent updates) and OS shutdown ask through the session
+    # manager: answer with a real quit, never a tray-hide, or the exe stays
+    # locked and the update aborts.
+    app.commitDataRequest.connect(wordarc._session_end)
 
     servers = []
     for server_name in SERVER_NAMES:

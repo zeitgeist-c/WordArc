@@ -80,7 +80,22 @@ class NativeHost:
         if not handle:
             return False
         try:
-            return kernel.WaitForSingleObject(handle, 0) == 258
+            if kernel.WaitForSingleObject(handle, 0) != 258:
+                return False
+            # PIDs are recycled: a live PID alone does not prove the old app
+            # is still there. Only a WordArc image counts; anything else is
+            # an unrelated process that happened to inherit the number.
+            try:
+                length = w.DWORD(32767)
+                buf = ctypes.create_unicode_buffer(length.value)
+                kernel.QueryFullProcessImageNameW.argtypes = [w.HANDLE, w.DWORD, w.LPWSTR, ctypes.POINTER(w.DWORD)]
+                if not kernel.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(length)):
+                    return True
+                image = buf.value or ""
+                owned = (str(job.get("old_exe", "")).lower(), str(job.get("new_exe", "")).lower())
+                return image.lower() in owned or image.lower().endswith("wordarc.exe")
+            except (OSError, ValueError):
+                return True
         finally:
             kernel.CloseHandle(handle)
 
