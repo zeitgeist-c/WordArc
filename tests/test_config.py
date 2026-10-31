@@ -292,6 +292,7 @@ class TestApiRotation(unittest.TestCase):
         self.assertIn("gemini_next_slot", cfg.DEFAULTS)
         self.assertIn("gemini_last_used", cfg.DEFAULTS)
         self.assertIn("gemini_usage", cfg.DEFAULTS)
+        self.assertIn("gemini_labels", cfg.DEFAULTS)
         self.assertEqual(cfg.DEFAULTS["gemini_next_slot"], 0)
         self.assertEqual(cfg.DEFAULTS["gemini_last_used"], [])
 
@@ -349,6 +350,13 @@ class TestApiRotation(unittest.TestCase):
                                      "daily": [5, 1], "total": [9, 4]}
         daily, totals = conf.usage_counts(2)
         self.assertEqual((daily, totals), ([0, 0], [9, 4]))
+
+    def test_key_labels_pad_and_trim(self):
+        conf = self._fresh_conf(n_keys=2, next_slot=0)
+        conf.data["gemini_labels"] = ["Ofis"]
+        self.assertEqual(conf.key_labels(2), ["Ofis", ""])
+        self.assertEqual(conf.key_labels(1), ["Ofis"])
+        self.assertEqual(conf.key_labels(0), [])
 
     def test_record_normalises_shorter_stamp_list(self):
         conf = self._fresh_conf(n_keys=1, next_slot=0)

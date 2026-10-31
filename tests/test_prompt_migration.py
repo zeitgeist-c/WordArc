@@ -53,7 +53,34 @@ def test_transcript_instructions_are_sent_as_source_not_system_rules():
         assert api.cleanup(source, "isolated-key", "model", cfg.CLEANUP_PROMPT_TR) == source
     payload = json.loads(request.call_args.args[1])
     assert payload["systemInstruction"]["parts"][0]["text"] == cfg.CLEANUP_PROMPT_TR
-    assert payload["contents"] == [{"role": "user", "parts": [{"text": source}]}]
+    assert payload["contents"] == [{"role": "user", "parts": [{"text": api.wrap_source(source)}]}]
+
+
+def test_wrap_source_fences_text():
+    assert api.wrap_source("hi") == "<source>\nhi\n</source>"
+
+
+@pytest.mark.parametrize("lang", ["tr", "en"])
+def test_assistant_prompt_fills_now(lang):
+    previous = i18n.language()
+    try:
+        i18n.set_language(lang)
+        conf = cfg.Config()
+        conf["assistant_prompt"] = ""
+        prompt = conf.assistant_prompt()
+        assert "{now}" not in prompt
+        assert "20" in prompt  # the year, from the filled stamp
+    finally:
+        i18n.set_language(previous)
+
+
+def test_011_defaults_are_registered_for_upgrade():
+    assert "f29b23135e8b0d14ef7b2e6084d24b7c228e4afe" in cfg.LEGACY_PROMPTS
+    assert "8f19adcd8b2a4289d8e2530f056c8504675bc63d" in cfg.LEGACY_PROMPTS
+    assert "23880bbff568c638352b24f97b709e9abecd14db" in cfg.LEGACY_PIPELINE_PROMPTS["file_cleanup_prompt"]
+    assert "ecc9dc6ac5c74565d52b566322eb982381cd7b1d" in cfg.LEGACY_PIPELINE_PROMPTS["file_cleanup_prompt"]
+    assert "dc120e7374733fbdfdf58b6b71ef05d6e83aa20a" in cfg.LEGACY_PIPELINE_PROMPTS["meeting_prompt"]
+    assert "ea08696262a600d7d89cdb9831a83d7cb28d4388" in cfg.LEGACY_PIPELINE_PROMPTS["meeting_prompt"]
 
 
 def test_audio_and_vocabulary_stay_data_in_transcription_request():

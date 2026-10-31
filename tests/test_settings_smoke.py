@@ -291,6 +291,7 @@ class TestSettingsSmoke(unittest.TestCase):
     def test_gemini_keys_can_be_reordered_without_showing_secrets(self):
         window = self.window
         window._gemini_keys = ["primary-secret", "backup-secret"]
+        window._gemini_labels = ["", ""]
         window._refresh_gemini_keys(1)
         texts = _gemini_card_texts(window)
         self.assertEqual(len(texts), 2)
@@ -591,7 +592,53 @@ class TestSettingsSmoke(unittest.TestCase):
         first, second = _gemini_card_texts(window)
         self.assertIn(t("Today: {count}", count=3), first)
         self.assertIn(t("Total: {count}", count=10), first)
+        self.assertIn(t("Today: {count}", count=0), second)
         self.assertIn(t("Total: {count}", count=4), second)
+
+    def test_key_labels_show_on_cards_and_follow_reorder(self):
+        from unittest import mock
+        window = self.window
+        with mock.patch.object(window, "_prompt_gemini_key",
+                               return_value=("new-key-aaaa", "Ofis")):
+            window._add_gemini_key()
+        self.assertEqual(window._gemini_labels, ["Ofis"])
+        texts = _gemini_card_texts(window)
+        self.assertEqual(len(texts), 1)
+        self.assertIn("Ofis", texts[0])
+        self.assertNotIn("API 1", texts[0].split("|")[0])
+        window._gemini_keys.append("second-key-bbbb")
+        window._gemini_labels.append("")
+        window._refresh_gemini_keys()
+        texts = _gemini_card_texts(window)
+        self.assertIn("API 2", texts[1])
+        window._move_gemini_key(1, -1)
+        self.assertEqual(window._gemini_keys,
+                         ["second-key-bbbb", "new-key-aaaa"])
+        self.assertEqual(window._gemini_labels, ["", "Ofis"])
+        with mock.patch.object(window, "_prompt_gemini_key",
+                               return_value=("second-key-bbbb", "Ev")):
+            window._edit_gemini_key(0)
+        self.assertEqual(window._gemini_labels, ["Ev", "Ofis"])
+
+    def test_key_labels_persist_through_save(self):
+        window = self.window
+        window._gemini_keys = ["key-1-aaaa"]
+        window._gemini_labels = ["Yedek"]
+        window._refresh_gemini_keys()
+        with mock.patch.object(settings_ui.startup, "set_enabled"), \
+             mock.patch.object(settings_ui, "info_box"):
+            self.assertTrue(window._save())
+        self.assertEqual(window.conf.data["gemini_labels"], ["Yedek"])
+
+    def test_card_shows_test_verdict(self):
+        window = self.window
+        window._gemini_keys = ["key-1-aaaa"]
+        window._gemini_labels = [""]
+        window._refresh_gemini_keys()
+        window._on_test_done(0, True, "38 models visible.")
+        texts = _gemini_card_texts(window)
+        self.assertIn("38 models visible.", texts[0])
+        self.assertIn("✓", texts[0])
 
     def test_showing_window_refreshes_key_usage(self):
         window = self.window
@@ -628,13 +675,17 @@ class TestSettingsSmoke(unittest.TestCase):
         previous = i18n.language()
         i18n.set_language("tr")
         try:
-            dialog = self.window._key_dialog("Add API", "")
+            dialog = self.window._key_dialog("Add API", "", "")
             dialog.show()
             self.app.processEvents()
             texts = [b.text() for b in dialog.findChildren(settings_ui.QPushButton)]
             self.assertIn("Tamam", texts)
             self.assertIn("İptal", texts)
-            self.assertEqual(dialog.labelText(), "Gemini API anahtarı")
+            labels = [label.text() for label in dialog.findChildren(settings_ui.QLabel)]
+            self.assertIn("Gemini API anahtarı", labels)
+            self.assertIn("API etiketi (isteğe bağlı)", labels)
+            self.assertEqual(dialog.key_edit.text(), "")
+            self.assertEqual(dialog.label_edit.text(), "")
             dialog.close()
         finally:
             i18n.set_language(previous)

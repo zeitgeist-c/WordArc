@@ -369,9 +369,14 @@ def gemini_chat(messages, api_key, model, system_prompt="", timeout=180,
     return _candidate_text(data, "Gemini returned an empty reply.", allow_empty)
 
 
+def wrap_source(text):
+    """Fence source text so the model treats it as data, not instructions."""
+    return f"<source>\n{text}\n</source>"
+
+
 def cleanup(text, api_key, model, system_prompt, reasoning="", timeout=180,
             should_stop=None, allow_empty=False):
-    return gemini_chat([{"role": "user", "content": text}], api_key, model,
+    return gemini_chat([{"role": "user", "content": wrap_source(text)}], api_key, model,
                        system_prompt, timeout, should_stop, allow_empty=allow_empty,
                        reasoning=reasoning)
 
@@ -475,7 +480,7 @@ class GeminiClient:
 
     def translate(self, text, model, system_prompt, timeout=180):
         return self._call(
-            lambda key: gemini_chat([{"role": "user", "content": text}],
+            lambda key: gemini_chat([{"role": "user", "content": wrap_source(text)}],
                                     key, model, system_prompt,
                                     timeout, self.should_stop)
         )

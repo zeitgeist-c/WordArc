@@ -87,7 +87,7 @@ class TestTranslateClient(unittest.TestCase):
             out = client.translate("merhaba", "gemini-3.5-flash-lite", "SYS")
         self.assertEqual(out, "hello")
         self.assertEqual([c[0] for c in calls], ["bad", "good"])
-        self.assertEqual(calls[0][1][0]["content"], "merhaba")
+        self.assertEqual(calls[0][1][0]["content"], api.wrap_source("merhaba"))
         self.assertEqual(calls[0][2], "SYS")
 
     def test_translate_empty_key_is_user_error(self):
