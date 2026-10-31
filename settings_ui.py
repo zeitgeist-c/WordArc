@@ -1011,8 +1011,7 @@ class WindowView:
         menu = getattr(window, "settings_section_menu", None)
         self.section = menu.currentRow() if menu is not None else 0
         self.panels = {name: getattr(window, name).currentIndex() for name in (
-            "dictation_details", "dictation_advanced", "meeting_details",
-            "meeting_advanced", "file_options", "model_setup")}
+            "model_setup",)}
 
     def apply(self, window):
         """Put `window` back where the old one was."""
@@ -1048,7 +1047,7 @@ class SettingsWindow(QDialog):
     _transcribe_models_loaded = pyqtSignal(list, str)
     _local_download_done = pyqtSignal(str, str)
     _local_download_progress = pyqtSignal(object)
-    _test_done = pyqtSignal(bool, str)
+    _test_done = pyqtSignal(int, bool, str)
     _local_inspected = pyqtSignal(str, int, object)
     _vulkan_selected = pyqtSignal(str)
 
@@ -1405,7 +1404,7 @@ class SettingsWindow(QDialog):
             controls = card("Dictation", [
                 ("Microphone", self._row(self.mic, self.refresh_audio_devices)),
                 ("Speech language", self.language), ("Shortcut", self.shortcut),
-                self.shortcut_status, self.cleanup_enabled, self.auto_paste,
+                self.shortcut_status, self.cleanup_enabled,
             ])
             left = self._column([self._record_controls(kind), controls])
             recording = card("Recording", [
@@ -1413,11 +1412,8 @@ class SettingsWindow(QDialog):
                 ("Silence threshold", self.silence_db), self.skip_silent,
                 self.filter_hallucinations, self.keep_audio,
             ])
-            output = card("Output", [("Paste key", self.paste_shortcut), self.restore_clipboard])
+            output = card("Output", [self.auto_paste, ("Paste key", self.paste_shortcut), self.restore_clipboard])
             text = card("Cleanup", [self.translate_enabled, self.translate_mode, self._shared_ai_note()])
-            self.dictation_advanced = book([
-                ("Recording", [recording]), ("Output", [output]), ("Text", [text]),
-            ])
             self.dictation_output = QPlainTextEdit()
             self.dictation_output.setReadOnly(True)
             editor(self.dictation_output, 160)
@@ -1428,14 +1424,10 @@ class SettingsWindow(QDialog):
             result.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
             self.history.setMinimumHeight(80)
             self.history.setMaximumHeight(150)
-            self.dictation_details = book([
-                ("Advanced", [self.dictation_advanced]),
-                ("Latest dictation", [result]), ("History", [widgets[5]]),
-            ])
-            self.dictation_details.setCurrentIndex(1)
+            # Mockup A: no sub-tabs; every section is a card on one page.
+            right = self._column([recording, output, text, result, widgets[5]])
             for stale in widgets[:5]:
                 stale.deleteLater()
-            right = self.dictation_details
         elif kind == "meeting":
             # Sound sources remain visible. People, recording limits, model
             # and the long minutes instruction each have a bounded local page.
@@ -1443,18 +1435,12 @@ class SettingsWindow(QDialog):
             editor(self.meeting_prompt, 180)
             editor(self.meeting_participants, 60)
             self.meeting_participants.setMaximumHeight(100)
-            self.meeting_advanced = book([
-                ("Recording", [widgets[3]]), ("Who is talking", [widgets[1]]),
-                ("Minutes", [widgets[2]]), ("Minutes instruction", [widgets[4]]),
-            ])
             self.minutes_list.setMinimumHeight(70)
             self.minutes_list.setMaximumHeight(110)
             editor(self.minutes_view, 100)
             widgets[5].setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-            self.meeting_details = book([
-                ("Minutes", [widgets[5]]), ("Advanced", [self.meeting_advanced]),
-            ])
-            right = self.meeting_details
+            right = self._column([widgets[3], widgets[1], widgets[2],
+                                  widgets[4], widgets[5]])
         else:
             # File options and prompt are peers; opening the prompt cannot push
             # timestamps, the result or the run button below the window.
@@ -1467,11 +1453,8 @@ class SettingsWindow(QDialog):
             reset_holder.setLayout(reset.layout())
             editor(self.file_cleanup_prompt, 160)
             rules = card("Cleanup rules", [prompt_row, reset_holder])
-            self.file_options = book([
-                ("Options", [widgets[2], options]), ("Cleanup rules", [rules]),
-            ])
             widgets[4].setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-            left = self._column([widgets[1], self.file_options])
+            left = self._column([widgets[1], widgets[2], options, rules])
             right = self._column(widgets[4:])
             editor(self.file_output, 140)
             widgets[0].deleteLater()
@@ -1583,10 +1566,6 @@ class SettingsWindow(QDialog):
         if page_id not in self._tab_index:
             return False
         self._show_page(page_id)
-        if page_id == "history":
-            self.dictation_details.setCurrentIndex(2)
-        elif page_id == "minutes":
-            self.meeting_details.setCurrentIndex(0)
         if page_id in ("shared_ai", "application"):
             self.settings_section_menu.setCurrentRow(3 if page_id == "application" else 0)
         return True
@@ -1883,8 +1862,30 @@ class SettingsWindow(QDialog):
             return
         self._engine_scan_dialog = EngineScanDialog(self)
         self._engine_scan_dialog.selected.connect(self._on_engine_source_selected)
+        self._engine_scan_dialog.download_requested.connect(
+            self._on_scan_download_requested)
         self._engine_scan_dialog.show()
         self._engine_scan_dialog.start()
+
+    def _on_scan_download_requested(self):
+        """The scan found no models: close it and show the model download."""
+        if self._engine_scan_dialog is not None:
+            self._engine_scan_dialog.accept()
+        self.navigate_to("settings")
+        if self.settings_section_menu is not None:
+            self.settings_section_menu.setCurrentRow(0)
+
+    def _toggle_all_cleanup(self, checked):
+        """Master switch: set dictation, meeting and file cleanup together."""
+        for box in (self.cleanup_enabled, self.meeting_cleanup,
+                    self.file_cleanup):
+            box.setChecked(checked)
+
+    def _refresh_cleanup_all(self):
+        self.cleanup_all.setChecked(
+            self.cleanup_enabled.isChecked()
+            and self.meeting_cleanup.isChecked()
+            and self.file_cleanup.isChecked())
 
     def _on_engine_source_selected(self, choice):
         model = choice["model"]
@@ -2328,24 +2329,46 @@ class SettingsWindow(QDialog):
         key_help.setObjectName("muted")
         keys_body.addWidget(key_help)
 
-        self.gemini_keys_list = EmptyListWidget(t("Add an API key to use cloud models."))
-        self.gemini_keys_list.setMinimumHeight(150)
-        self.gemini_keys_list.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-        )
-        self.gemini_keys_list.currentRowChanged.connect(
-            self._refresh_gemini_key_buttons
-        )
+        stats_row = QHBoxLayout()
+        stats_row.setSpacing(8)
+        self.gemini_today_value = QLabel("0")
+        self.gemini_total_value = QLabel("0")
+        for value, caption in ((self.gemini_today_value, t("Used today")),
+                               (self.gemini_total_value, t("All time"))):
+            frame = QGroupBox()
+            frame_layout = QVBoxLayout(frame)
+            frame_layout.setSpacing(0)
+            frame_layout.setContentsMargins(10, 6, 10, 6)
+            value.setStyleSheet("font-size: 20px; font-weight: bold;")
+            caption_label = QLabel(caption)
+            caption_label.setObjectName("muted")
+            frame_layout.addWidget(value)
+            frame_layout.addWidget(caption_label)
+            stats_row.addWidget(frame)
+        keys_body.addLayout(stats_row)
+
+        # Cards replace the old single-column list: one framed card per key
+        # with its own actions, plus a strip with today's and all-time use.
+        self._gemini_selected = 0
+        self._gemini_testing = None
+        self._gemini_card_buttons = {}
+        self.gemini_keys_list = QWidget()
+        self.gemini_cards_layout = QVBoxLayout(self.gemini_keys_list)
+        self.gemini_cards_layout.setSpacing(8)
+        self.gemini_cards_layout.setContentsMargins(0, 0, 0, 0)
+        self.gemini_cards_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.gemini_empty_label = QLabel(
+            t("Add an API key to use cloud models."))
+        self.gemini_empty_label.setObjectName("muted")
+        self.gemini_empty_label.setWordWrap(True)
+        self.gemini_cards_layout.addWidget(self.gemini_empty_label)
         keys_body.addWidget(self.gemini_keys_list)
 
         self.gemini_add_button = QPushButton(t("Add API"))
         self.gemini_add_button.setObjectName("accentButton")
         self.gemini_add_button.clicked.connect(self._add_gemini_key)
-        self.gemini_test_button = QPushButton(t("Test"))
-        self.gemini_test_button.clicked.connect(self._test_gemini)
         top_row = QHBoxLayout()
         top_row.addWidget(self.gemini_add_button)
-        top_row.addWidget(self.gemini_test_button)
         top_row.addStretch(1)
         keys_body.addLayout(top_row)
 
@@ -2353,22 +2376,6 @@ class SettingsWindow(QDialog):
         self.gemini_test_label.setObjectName("muted")
         self.gemini_test_label.setWordWrap(True)
         keys_body.addWidget(self.gemini_test_label)
-
-        self.gemini_edit_button = QPushButton(t("Edit"))
-        self.gemini_edit_button.clicked.connect(self._edit_gemini_key)
-        self.gemini_remove_button = QPushButton(t("Remove"))
-        self.gemini_remove_button.setObjectName("dangerButton")
-        self.gemini_remove_button.clicked.connect(self._remove_gemini_key)
-        self.gemini_up_button = QPushButton(t("Move up"))
-        self.gemini_up_button.clicked.connect(lambda: self._move_gemini_key(-1))
-        self.gemini_down_button = QPushButton(t("Move down"))
-        self.gemini_down_button.clicked.connect(lambda: self._move_gemini_key(1))
-        item_row = QHBoxLayout()
-        for button in (self.gemini_edit_button, self.gemini_remove_button,
-                       self.gemini_up_button, self.gemini_down_button):
-            item_row.addWidget(button)
-        item_row.addStretch(1)
-        keys_body.addLayout(item_row)
         outer.addWidget(keys)
 
         stt, stt_body = self._section_card(
@@ -2379,8 +2386,9 @@ class SettingsWindow(QDialog):
             self.transcribe_engine.addItem(t(label), value)
         self.transcribe_engine.setToolTip(t(
             "Local transcribes on this computer and sends no audio anywhere. "
-            "Cloud and Live use Gemini and need an API key: Cloud types up a "
-            "recording after it ends, Live streams your speech as you speak "
+            "Batch Transcription and Instant Transcription use Gemini and need "
+            "an API key: Batch Transcription types up a recording after it "
+            "ends, Instant Transcription streams your speech as you speak "
             "and shows the words while you are still talking."))
         self.local_stt_model = FitsOnScreenCombo()
         self.local_stt_model.setProperty("searchable", True)
@@ -2495,6 +2503,12 @@ class SettingsWindow(QDialog):
 
         orr, orr_body = self._section_card(
             "Transcript cleanup", "The model that tidies transcripts.")
+        self.cleanup_all = QCheckBox(t("Clean all transcripts with a model"))
+        self.cleanup_all.setToolTip(t(
+            "Master switch for dictation, meeting and audio file cleanup. "
+            "Each tab can still be changed on its own afterwards."))
+        self.cleanup_all.toggled.connect(self._toggle_all_cleanup)
+        orr_body.addWidget(self.cleanup_all)
         self.cleanup_model = FitsOnScreenCombo()
         self.cleanup_model.setEditable(True)
         self.cleanup_model.addItems(CLEANUP_MODELS)
@@ -3390,6 +3404,7 @@ class SettingsWindow(QDialog):
 
         self.file_timestamps.setChecked(conf["file_timestamps"])
         self.file_cleanup.setChecked(conf["file_cleanup"])
+        self._refresh_cleanup_all()
         self.file_path = ""
 
         self.shortcut.setCurrentText(conf["shortcut"])
@@ -3717,7 +3732,8 @@ class SettingsWindow(QDialog):
         self._usage_timer.stop()
 
     def _on_usage_tick(self):
-        if getattr(self, "_gemini_keys", None) is not None:
+        if getattr(self, "_gemini_keys", None) is not None \
+                and self._gemini_testing is None:
             self._refresh_gemini_keys()
 
     @staticmethod
@@ -3728,41 +3744,95 @@ class SettingsWindow(QDialog):
             return stamp
         return when.strftime("%d.%m.%Y %H:%M:%S")
 
+    def _gemini_key_card(self, index, key, stamp, today, total):
+        """One framed card for a key: status, masked value, use, actions."""
+        card = QGroupBox()
+        body = QVBoxLayout(card)
+        body.setSpacing(4)
+        header = QHBoxLayout()
+        dot = QLabel("●")
+        dot.setStyleSheet(
+            "color: #22c55e;" if stamp else "color: #6b7280;")
+        title = QLabel(f"API {index + 1}")
+        masked = QLabel(self._masked_key(key))
+        masked.setFont(QFont("Consolas"))
+        badge = QLabel(t("Today: {count}", count=today))
+        badge.setObjectName("muted")
+        header.addWidget(dot)
+        header.addWidget(title)
+        header.addWidget(masked)
+        header.addStretch(1)
+        header.addWidget(badge)
+        buttons = {}
+        test_button = QPushButton(t("Test"))
+        test_button.clicked.connect(
+            lambda _checked=False, row=index: self._test_gemini(row))
+        edit_button = QPushButton(t("Edit"))
+        edit_button.clicked.connect(
+            lambda _checked=False, row=index: self._edit_gemini_key(row))
+        remove_button = QPushButton(t("Remove"))
+        remove_button.setObjectName("dangerButton")
+        remove_button.clicked.connect(
+            lambda _checked=False, row=index: self._remove_gemini_key(row))
+        up_button = QPushButton("↑")
+        up_button.setToolTip(t("Move up"))
+        up_button.clicked.connect(
+            lambda _checked=False, row=index: self._move_gemini_key(row, -1))
+        down_button = QPushButton("↓")
+        down_button.setToolTip(t("Move down"))
+        down_button.clicked.connect(
+            lambda _checked=False, row=index: self._move_gemini_key(row, +1))
+        for button in (test_button, edit_button, remove_button,
+                       up_button, down_button):
+            header.addWidget(button)
+        buttons["test"] = test_button
+        buttons["up"] = up_button
+        buttons["down"] = down_button
+        self._gemini_card_buttons[index] = buttons
+        body.addLayout(header)
+        if stamp:
+            sub = QLabel(
+                f"{t('last used: {when}', when=self._format_last_used(stamp))}"
+                f"  •  {t('Total: {count}', count=total)}")
+        else:
+            sub = QLabel(
+                f"{t('not used yet')}  •  {t('Total: {count}', count=total)}")
+        sub.setObjectName("muted")
+        sub.setWordWrap(True)
+        body.addWidget(sub)
+        return card
+
     def _refresh_gemini_keys(self, selected=None):
         if selected is None:
-            selected = self.gemini_keys_list.currentRow()
-        self.gemini_keys_list.clear()
+            selected = getattr(self, "_gemini_selected", 0)
+        self._gemini_selected = selected
+        while self.gemini_cards_layout.count():
+            item = self.gemini_cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None and widget is not self.gemini_empty_label:
+                widget.deleteLater()
+        self._gemini_card_buttons = {}
+        daily, totals = self.conf.usage_counts(len(self._gemini_keys))
+        self.gemini_today_value.setText(str(sum(daily)))
+        self.gemini_total_value.setText(str(sum(totals)))
+        self.gemini_empty_label.setVisible(not self._gemini_keys)
         stamps = self.conf.rotation_stamps(len(self._gemini_keys))
-        for index, key in enumerate(self._gemini_keys, start=1):
-            stamp = stamps[index - 1]
-            if stamp:
-                usage = t("last used: {when}",
-                          when=self._format_last_used(stamp))
-            else:
-                usage = t("not used yet")
-            self.gemini_keys_list.addItem(
-                f"API {index} — {self._masked_key(key)} — {usage}")
-        if self._gemini_keys:
-            self.gemini_keys_list.setCurrentRow(
-                min(max(selected, 0), len(self._gemini_keys) - 1)
-            )
+        for index, key in enumerate(self._gemini_keys):
+            self.gemini_cards_layout.addWidget(self._gemini_key_card(
+                index, key, stamps[index], daily[index], totals[index]))
         self._refresh_gemini_key_buttons()
 
     def _refresh_gemini_key_buttons(self, *_):
-        row = self.gemini_keys_list.currentRow()
-        selected = 0 <= row < len(self._gemini_keys)
         self.gemini_add_button.setEnabled(
             len(self._gemini_keys) < cfg.credential_store.MAX_GEMINI_KEYS
             if hasattr(cfg.credential_store, "MAX_GEMINI_KEYS") else
             len(self._gemini_keys) < 5
         )
-        self.gemini_edit_button.setEnabled(selected)
-        self.gemini_remove_button.setEnabled(selected)
-        self.gemini_up_button.setEnabled(selected and row > 0)
-        self.gemini_down_button.setEnabled(
-            selected and row + 1 < len(self._gemini_keys)
-        )
-        self.gemini_test_button.setEnabled(selected or bool(self.conf.gemini_keys()))
+        last = len(self._gemini_keys) - 1
+        for index, buttons in self._gemini_card_buttons.items():
+            buttons["test"].setEnabled(self._gemini_testing is None)
+            buttons["up"].setEnabled(index > 0)
+            buttons["down"].setEnabled(index < last)
 
     def _key_dialog(self, title, value=""):
         """The password prompt for one API key, in the interface language."""
@@ -3793,8 +3863,8 @@ class SettingsWindow(QDialog):
         self._gemini_keys.append(key)
         self._refresh_gemini_keys(len(self._gemini_keys) - 1)
 
-    def _edit_gemini_key(self):
-        row = self.gemini_keys_list.currentRow()
+    def _edit_gemini_key(self, index=None):
+        row = self._gemini_selected if index is None else index
         if not 0 <= row < len(self._gemini_keys):
             return
         key = self._prompt_gemini_key("Edit API", self._gemini_keys[row])
@@ -3806,15 +3876,19 @@ class SettingsWindow(QDialog):
         self._gemini_keys[row] = key
         self._refresh_gemini_keys(row)
 
-    def _remove_gemini_key(self):
-        row = self.gemini_keys_list.currentRow()
+    def _remove_gemini_key(self, index=None):
+        row = self._gemini_selected if index is None else index
         if 0 <= row < len(self._gemini_keys):
             self._gemini_keys.pop(row)
             self._refresh_gemini_keys(min(row, len(self._gemini_keys) - 1))
 
-    def _move_gemini_key(self, offset):
-        row = self.gemini_keys_list.currentRow()
-        target = row + offset
+    def _move_gemini_key(self, index_or_offset, offset=None):
+        if offset is None:
+            row = self._gemini_selected
+            step = index_or_offset
+        else:
+            row, step = index_or_offset, offset
+        target = row + step
         if not (0 <= row < len(self._gemini_keys)
                 and 0 <= target < len(self._gemini_keys)):
             return
@@ -3889,28 +3963,32 @@ class SettingsWindow(QDialog):
             combo.setCurrentText(current)
         self.models_label.setText(t("{count} models loaded.", count=len(models)))
 
-    def _test_gemini(self):
-        self.gemini_test_button.setEnabled(False)
-        self.gemini_test_label.setText(t("Trying…"))
-        row = self.gemini_keys_list.currentRow()
+    def _test_gemini(self, index=None):
+        row = self._gemini_selected if index is None else index
         if 0 <= row < len(self._gemini_keys):
             key = self._gemini_keys[row]
         else:
             runtime = self.conf.gemini_keys()
             key = runtime[0] if runtime else ""
+        if not key:
+            return
+        self._gemini_testing = row
+        self._refresh_gemini_key_buttons()
+        self.gemini_test_label.setText(t("Trying…"))
 
         def work():
             try:
                 models = api.gemini_models(key)
                 self._deliver(
-                    "_test_done", True,
+                    "_test_done", row, True,
                     t("Connection works. {count} models visible.", count=len(models)))
             except api.ApiError as exc:
-                self._deliver("_test_done", False, str(exc))
+                self._deliver("_test_done", row, False, str(exc))
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _on_test_done(self, ok, message):
+    def _on_test_done(self, _row, ok, message):
+        self._gemini_testing = None
         self._refresh_gemini_key_buttons()
         self.gemini_test_label.setText(("✓ " if ok else "✗ ") + message)
 

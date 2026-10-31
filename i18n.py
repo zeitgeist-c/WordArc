@@ -88,6 +88,9 @@ TR = {
     "This computer": "Bu bilgisayar",
     "Find engines and models…": "Motor ve model bul…",
     "Find local speech models": "Bilgisayardaki ses modellerini bul",
+    "No model files yet": "Henüz model dosyası yok",
+    "The engines are ready, but there is no model to run. Download a model, then choose it here.": "Motorlar hazır ama çalıştıracak model yok. Bir model indirin, sonra buradan seçin.",
+    "Download model": "Model indir",
     "Your models, already on this computer": "Modelleriniz zaten bilgisayarınızda olabilir",
     "Preparing scan…": "Tarama hazırlanıyor…",
     "Scan progress": "Tarama ilerlemesi",
@@ -216,7 +219,7 @@ TR = {
         "eleniyorsa düşür, gürültü hâlâ geçiyorsa yükselt.",
     "Recording too short, speak for at least 0.3 s": "Ses çok kısa, en az 0,3 saniye konuş",
     "Live transcription failed.": "Canlı yazı başarısız oldu.",
-    "Live (Gemini)": "Canlı (Gemini)",
+    "Instant Transcription (Gemini)": "Anlık Çeviri (Gemini)",
     "Live transcript mode": "Canlı yazı modu",
     "Smart": "Akıllı",
     "Verbatim": "Birebir",
@@ -355,6 +358,10 @@ TR = {
     "This API key is already listed.": "Bu API anahtarı zaten listede.",
     "last used: {when}": "son kullanım: {when}",
     "not used yet": "henüz kullanılmadı",
+    "Today: {count}": "Bugün: {count}",
+    "Total: {count}": "Toplam: {count}",
+    "Used today": "Bugünkü kullanım",
+    "All time": "Tüm zamanlar",
     "API {used} did not respond; trying API {number}...":
         "API {used} yanıt vermedi; API {number} deneniyor...",
     "All configured Gemini APIs failed.":
@@ -537,6 +544,8 @@ TR = {
     "Keys": "Anahtarlar",
     "Speech to text": "Sesi yazıya çevirme",
     "Transcript cleanup": "Transkripti temizleme",
+    "Clean all transcripts with a model": "Tüm yazıları modelle temizle",
+    "Master switch for dictation, meeting and audio file cleanup. Each tab can still be changed on its own afterwards.": "Dikte, toplantı ve ses dosyası temizliği için ana düğme. Her sekme sonradan tek başına değiştirilebilir.",
     "API key": "API anahtarı",
     "Model": "Model",
     "AIza… (falls back to GEMINI_API_KEY)": "AIza… (boşsa GEMINI_API_KEY kullanılır)",
@@ -652,20 +661,21 @@ TR = {
         "Konuşmayı yazıya çeviren model.",
     "Local model": "Yerel model",
     "Cloud model": "Bulut modeli",
-    "Cloud (Gemini)": "Bulut (Gemini)",
+    "Batch Transcription (Gemini)": "Toplu Çeviri (Gemini)",
     "Local (this computer)": "Yerel (bu bilgisayar)",
     "Download": "İndir",
     "quick, 141 MB": "hızlı, 141 MB",
     "middle, 464 MB": "orta, 464 MB",
     "hardest audio, 1,5 GB": "en zor ses, 1,5 GB",
     "Local transcribes on this computer and sends no audio anywhere. "
-    "Cloud and Live use Gemini and need an API key: Cloud types up a "
-    "recording after it ends, Live streams your speech as you speak "
+    "Batch Transcription and Instant Transcription use Gemini and need "
+    "an API key: Batch Transcription types up a recording after it "
+    "ends, Instant Transcription streams your speech as you speak "
     "and shows the words while you are still talking.":
         "Yerel, sesi bu bilgisayarda yazıya çevirir ve hiçbir yere göndermez. "
-        "Bulut ve Canlı, Gemini kullanır ve API anahtarı ister: Bulut, kayıt "
-        "bittikten sonra yazıya çevirir; Canlı ise konuşurken akıtır ve "
-        "kelimeleri sen daha konuşurken gösterir.",
+        "Toplu Çeviri ve Anlık Çeviri, Gemini kullanır ve API anahtarı ister: "
+        "Toplu Çeviri, kayıt bittikten sonra yazıya çevirir; Anlık Çeviri ise "
+        "konuşurken akıtır ve kelimeleri sen daha konuşurken gösterir.",
     "Measured on Turkish dictation. base is quick and the smallest download; "
     "small is in between; large-v3-turbo reads hardest audio most reliably and "
     "never invents a closing sentence.":

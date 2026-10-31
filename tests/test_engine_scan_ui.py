@@ -77,6 +77,34 @@ def test_progress_then_explicit_selection_and_activation(dialog, app, monkeypatc
     assert chosen[0]["device"] == "cpu"
 
 
+def test_empty_scan_shows_download_card_and_engine_chips(dialog, app):
+    found = discovery.Inventory(
+        models=[],
+        runtimes=[dict(path="C:/engines/whisper-vulkan", compatible=True,
+                        status="ready", detail="")],
+        backends={"cpu": dict(ready=True, status="ready", detail="int8"),
+                  "cuda": dict(ready=False, status="unavailable",
+                               detail="No NVIDIA GPU")})
+    dialog._on_finished(dialog._generation, found, "")
+    assert dialog.empty.isVisibleTo(dialog)
+    assert not dialog.results.isVisibleTo(dialog)
+    chips = dialog.backends.text()
+    assert "CPU" in chips and "CUDA" in chips and "Vulkan" in chips
+    assert not dialog.use.isEnabled()
+
+
+def test_download_button_requests_settings_download(dialog, app):
+    found = discovery.Inventory(models=[], backends={
+        "cpu": dict(ready=True, status="ready", detail="int8"),
+        "cuda": dict(ready=False, status="unavailable",
+                     detail="No NVIDIA GPU")})
+    dialog._on_finished(dialog._generation, found, "")
+    asked = []
+    dialog.download_requested.connect(lambda: asked.append(True))
+    dialog.download.click()
+    assert asked == [True]
+
+
 def test_old_results_cannot_replace_new_scan(dialog):
     dialog._generation = 4
     dialog._busy = True
@@ -84,6 +112,24 @@ def test_old_results_cannot_replace_new_scan(dialog):
     assert dialog.inventory is None and dialog._busy
     dialog._on_finished(4, inventory(), "")
     assert dialog.inventory is not None
+
+
+def test_new_scan_hides_empty_card_again(dialog, app, monkeypatch):
+    dialog._on_finished(dialog._generation, discovery.Inventory(models=[]), "")
+    assert dialog.empty.isVisibleTo(dialog)
+    entered = threading.Event()
+    def scan(**kwargs):
+        entered.set()
+        while not kwargs["stop"]():
+            time.sleep(0.005)
+        raise discovery.ScanCancelled()
+    monkeypatch.setattr(discovery, "scan", scan)
+    dialog.start()
+    assert entered.wait(1)
+    assert not dialog.empty.isVisibleTo(dialog)
+    assert dialog.results.isVisibleTo(dialog)
+    dialog.cancel.click()
+    wait(app, lambda: not dialog._busy)
 
 
 def test_cancel_terminates_worker_and_window_close_ignores_late_results(dialog, app, monkeypatch):

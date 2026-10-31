@@ -506,6 +506,10 @@ def test_setup_language_arg_accepts_only_known_codes():
         ["WordArc.exe", "--setup-language", "tr"]) == "tr"
     assert wordarc._setup_language_arg(
         ["WordArc.exe", "--setup-language", "pt-BR"]) == "pt-BR"
+    assert wordarc._setup_language_arg(
+        ["WordArc.exe", "--setup-language", "ptBR"]) == "pt-BR"
+    assert wordarc._setup_language_arg(
+        ["WordArc.exe", "--setup-language", "zhCN"]) == "zh-CN"
     assert wordarc._setup_language_arg(["WordArc.exe"]) == ""
     assert wordarc._setup_language_arg(
         ["WordArc.exe", "--setup-language", "xx"]) == ""

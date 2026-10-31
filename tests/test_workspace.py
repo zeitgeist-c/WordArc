@@ -168,14 +168,12 @@ def test_last_result_is_not_persisted_when_history_is_disabled(window):
     assert not cfg.HISTORY_FILE.exists()
 
 
-def test_file_options_stay_visible_while_instruction_is_collapsed(window):
+def test_file_cleanup_prompt_is_on_the_page(window):
     window.show()
     window.tabs.setCurrentIndex(2)
     QApplication.processEvents()
     assert window.file_timestamps.isVisibleTo(window)
     assert window.file_cleanup.isVisibleTo(window)
-    assert not window.file_cleanup_prompt.isVisibleTo(window)
-    window.file_options.setCurrentIndex(1)
     assert window.file_cleanup_prompt.isVisibleTo(window)
 
 
@@ -231,18 +229,15 @@ def test_editable_model_text_is_a_picker_target(window):
 
 def select_editor(window, tab, target):
     window.tabs.setCurrentIndex(tab)
-    workspace = window.tabs.widget(tab).findChild(settings_ui.Workspace)
-    workspace.selector.setCurrentIndex(1 if tab < 2 else 0)
-    if tab == 0:
-        window.dictation_details.setCurrentIndex(2)
-    elif tab == 1:
-        window.meeting_details.setCurrentIndex(1)
-        window.meeting_advanced.setCurrentIndex(3)
-    else:
-        window.file_options.setCurrentIndex(1)
     for _ in range(4):
         QApplication.processEvents()
-    return getattr(window, target)
+    editor = getattr(window, target)
+    workspace = window.tabs.widget(tab).findChild(settings_ui.Workspace)
+    if workspace is not None and not editor.isVisibleTo(window):
+        workspace.selector.setCurrentIndex(1)
+        for _ in range(4):
+            QApplication.processEvents()
+    return editor
 
 
 @pytest.mark.parametrize("tab,target", [(0, "history_limit"), (1, "meeting_prompt"), (2, "file_cleanup_prompt")])
@@ -251,7 +246,7 @@ def test_every_advanced_editor_is_reachable_at_large_and_small_sizes(window, tab
     window.resize(*size)
     window.show()
     editor = select_editor(window, tab, target)
-    # Scroll only inside the selected panel at small screen heights.
+    # One page per tab now: scroll inside the pane until the editor shows.
     scroll = editor.parentWidget()
     while scroll and not isinstance(scroll, settings_ui.QScrollArea):
         scroll = scroll.parentWidget()
@@ -262,32 +257,25 @@ def test_every_advanced_editor_is_reachable_at_large_and_small_sizes(window, tab
     center = editor.mapTo(scroll.viewport(), editor.rect().center())
     assert 0 <= center.y() <= scroll.viewport().height()
     assert editor.isVisibleTo(window)
-    if size == (1040, 760):
-        assert scroll.verticalScrollBar().maximum() == 0
+    assert scroll.horizontalScrollBar().maximum() == 0
 
 
-def test_language_rebuild_preserves_selected_detail_pages(window):
-    window.dictation_details.setCurrentIndex(0)
-    window.dictation_advanced.setCurrentIndex(2)
-    window.meeting_details.setCurrentIndex(1)
-    window.meeting_advanced.setCurrentIndex(3)
-    window.file_options.setCurrentIndex(1)
+def test_language_rebuild_preserves_selected_pages(window):
+    window.tabs.setCurrentIndex(2)
+    window.model_setup.setCurrentIndex(0)
     view = settings_ui.WindowView(window)
     fresh = settings_ui.SettingsWindow(window.conf, "wordarc toggle")
     try:
         view.apply(fresh)
-        assert fresh.dictation_details.currentIndex() == 0
-        assert fresh.dictation_advanced.currentIndex() == 2
-        assert fresh.meeting_details.currentIndex() == 1
-        assert fresh.meeting_advanced.currentIndex() == 3
-        assert fresh.file_options.currentIndex() == 1
+        assert fresh.tabs.currentIndex() == 2
+        assert fresh.model_setup.currentIndex() == 0
     finally:
         fresh.close()
 
 
 @pytest.mark.parametrize("size", [(1040, 760), (920, 700)])
 @pytest.mark.parametrize("language", ["tr", "en"])
-def test_selected_desktop_forms_fit_without_page_scrolling(window, size, language):
+def test_selected_desktop_forms_fit_without_horizontal_scrolling(window, size, language):
     from PyQt6.QtGui import QFontDatabase
     import i18n
     import theme
@@ -306,23 +294,13 @@ def test_selected_desktop_forms_fit_without_page_scrolling(window, size, languag
         fresh.show()
         for mode in ("dark", "light"):
             theme.ThemeManager.apply(mode, QApplication.instance())
-            for tab, name in enumerate(("dictation_details", "meeting_details", "file_options", "settings_section_stack")):
+            for tab in range(4):
                 fresh.tabs.setCurrentIndex(tab)
-                panels = getattr(fresh, name)
-                for index in range(panels.count()):
-                    panels.setCurrentIndex(index)
-                    inner = fresh.dictation_advanced if tab == 0 and index == 0 else fresh.meeting_advanced if tab == 1 and index == 1 else None
-                    for detail in range(inner.count() if inner else 1):
-                        if inner:
-                            inner.setCurrentIndex(detail)
-                        for _ in range(4):
-                            QApplication.processEvents()
-                        for scroll in fresh.tabs.widget(tab).findChildren(settings_ui.QScrollArea):
-                            if scroll.isVisibleTo(fresh):
-                                if scroll.verticalScrollBar().maximum():
-                                    fresh.grab().save(f"build/layout-failure-{language}-{size[0]}.png")
-                                assert scroll.verticalScrollBar().maximum() == 0, (size, language, mode, tab, index, detail)
-                                assert scroll.horizontalScrollBar().maximum() == 0
+                for _ in range(4):
+                    QApplication.processEvents()
+                for scroll in fresh.tabs.widget(tab).findChildren(settings_ui.QScrollArea):
+                    if scroll.isVisibleTo(fresh):
+                        assert scroll.horizontalScrollBar().maximum() == 0, (size, language, tab)
             fresh.tabs.setCurrentIndex(3)
             fresh.settings_section_stack.setCurrentIndex(0)
             fresh.transcribe_engine.setCurrentIndex(fresh.transcribe_engine.findData("local"))

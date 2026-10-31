@@ -399,6 +399,7 @@ DEFAULTS = {
     "gemini_api_key": "",
     "gemini_next_slot": 0,      # round-robin: which API slot the next cloud job starts from
     "gemini_last_used": [],     # last successful use per slot (ISO-8601 str, "" = none yet)
+    "gemini_usage": {"day": "", "daily": [], "total": []},  # per-slot counts: today and all time
     "gemini_transcribe_model": "gemini-3.5-flash-lite",
     # cloud | live | local — where dictation, audio files and meetings are transcribed.
     "transcribe_engine": "cloud",
@@ -765,8 +766,49 @@ class Config:
             # the job does not stop.
             _log.warning("rotation state could not be saved (%s)", exc)
 
+    def usage_counts(self, n_keys):
+        """(daily, total) successful-use counts per slot for n_keys.
+
+        The daily counts reset when the calendar day changes; totals never
+        reset. Lists are padded or trimmed to n_keys like rotation_stamps.
+        """
+        import datetime
+        total = self._slot_total(n_keys)
+        raw = self.data.get("gemini_usage") or {}
+        today = datetime.date.today().isoformat()
+        totals = raw.get("total") or []
+        if raw.get("day") != today:
+            daily = []
+        else:
+            daily = raw.get("daily") or []
+
+        def _numbers(values):
+            numbers = []
+            for value in values:
+                try:
+                    numbers.append(max(int(value), 0))
+                except (TypeError, ValueError):
+                    numbers.append(0)
+            return (numbers + [0] * total)[:total]
+
+        return _numbers(daily), _numbers(totals)
+
+    def _bump_usage(self, used_slot, total):
+        """Count one successful job on used_slot for today and all time."""
+        import datetime
+        if not 0 <= used_slot < total:
+            return
+        daily, totals = self.usage_counts(total)
+        daily[used_slot] += 1
+        totals[used_slot] += 1
+        self.data["gemini_usage"] = {
+            "day": datetime.date.today().isoformat(),
+            "daily": daily,
+            "total": totals,
+        }
+
     def record_api_success(self, used_slot, n_keys):
-        """Successful job: write the stamp, move the order forward, save."""
+        """Successful job: write the stamp, count the use, move order, save."""
         import datetime
         total = self._slot_total(n_keys)
         if total <= 0:
@@ -776,6 +818,7 @@ class Config:
             if 0 <= used_slot < total:
                 stamps[used_slot] = datetime.datetime.now().astimezone().replace(
                     microsecond=0).isoformat()
+                self._bump_usage(used_slot, total)
                 nxt = (used_slot + 1) % total
             else:
                 nxt = self.claim_api_slot(total)
