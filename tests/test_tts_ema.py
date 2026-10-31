@@ -226,7 +226,7 @@ class TestPlaybackWatchdog(unittest.TestCase):
                 daemon=True)
             thread.start()
             time.sleep(0.2)
-            stop.set()  # the Durdur button
+            stop.set()  # the Stop button
             thread.join(10)
             self.assertFalse(thread.is_alive())
             self.assertIsInstance(errors[0], InterruptedError)

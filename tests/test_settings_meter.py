@@ -1,8 +1,9 @@
-"""Ayarlar > Arayüz: ses dalgası biçimi seçimi ve canlı önizlemeler.
+"""Settings > Interface: sound wave style selection and live previews.
 
-Kullanıcı dört biçimi de programda istedi ve seçilenin neye benzediğini
-görmek istedi. Önizleme, üretim çizimiyle aynı fonksiyondan geçer; seçili
-biçimin önizlemesi çerçeveli durur. Bu dosya o sözleşmeyi korur.
+A user asked for all four styles in the program and wanted to see what the
+chosen one looks like. The preview goes through the same function as the
+production drawing; the preview of the selected style stays framed. This file
+pins that contract.
 """
 import os
 
@@ -86,11 +87,11 @@ class TestMeterSettings(unittest.TestCase):
         fresh.close()
 
     def test_framed_style_survives_the_first_item(self):
-        """Kayıtlı biçim listenin ilk maddesi olsa da çerçeve çizilmeli.
+        """The frame must be drawn even when the saved style is the first item.
 
-        Açılışta indeks zaten 0 ise açılır kutu sinyal yaymaz; çerçeveleme
-        yalnız sinyale bağlı olsaydı kullanıcı hiçbirinin seçili olmadığını
-        görürdü.
+        On open the combo emits no signal if the index is already 0; if the
+        framing were driven by the signal alone the user would see none of
+        them as selected.
         """
         self.window.meter_style.setCurrentIndex(
             self.window.meter_style.findData("bars"))
@@ -108,10 +109,10 @@ class TestMeterSettings(unittest.TestCase):
             self.assertEqual(self._framed(self.window), [style], style)
 
     def test_previews_are_drawn_with_their_own_style(self):
-        """Her önizleme kendi biçimini çizer: piksel imzaları ayrışmalı.
+        """Each preview draws its own style: the pixel signatures must differ.
 
-        Önizleme üretim çizimini çağırdığı için bu, şeritte göreceği şeyin
-        aynısıdır; imzalar eşitse önizleme yalan söylüyor demektir.
+        Because the preview calls the production drawing, this is the same as
+        what the ribbon will show; equal signatures mean the preview lies.
         """
         from PyQt6.QtGui import QImage, QPainter
         signatures = {}

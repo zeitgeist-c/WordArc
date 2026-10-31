@@ -1,8 +1,8 @@
-"""Motor seçimi popup'ı: kısa liste tam sığar, uzun liste kaydırılır.
+"""Engine picker popup: a short list fits whole, a long list scrolls.
 
-Kullanıcı 0.7.0'da üç satırlık motor listesinde kaydırma çubuğu ve alttan
-taşma gördü: yükseklik 34 px'lik sabit bir satır varsayımıyla hesaplanıyordu
-ve satırlar gerçekte daha yüksek çiziliyordu.
+A user saw a scroll bar and bottom overflow in the three-row engine list in
+0.7.0: the height was computed assuming a fixed 34 px row while the rows were
+really drawn taller.
 """
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -43,10 +43,10 @@ def test_engine_list_fits_without_scrolling():
         rows = combo._picker_rows
         assert rows.count() == len(localspeech.ENGINES)
         sb = rows.verticalScrollBar()
-        assert sb.maximum() == 0, "üç satırlık liste kaydırmamalı"
+        assert sb.maximum() == 0, "a three-row list must not scroll"
         bottom = max(rows.visualRect(rows.model().index(i, 0)).bottom()
                      for i in range(rows.count()))
-        assert bottom < rows.viewport().height(), "son satır kırpılmamalı"
+        assert bottom < rows.viewport().height(), "the last row must not be clipped"
     finally:
         _close(combo)
 
@@ -58,7 +58,7 @@ def test_a_scrolling_list_reaches_its_last_row(count):
     Half a row at the bottom edge of a scrolling list is normal. What is not
     normal is a list that needs scrolling to show the row the user came for.
     """
-    items = [(f"Seçenek {i}", i) for i in range(count)]
+    items = [(f"Option {i}", i) for i in range(count)]
     app, combo = _combo(items)
     try:
         rows = combo._picker_rows

@@ -29,10 +29,11 @@ Set-Location -LiteralPath $PSScriptRoot
 if ($Cuda -and $CpuOnly) { throw 'Choose CUDA or CPU-only, not both.' }
 Invoke-Gate { & $Python -m pip install -r (Join-Path $PSScriptRoot 'requirements-native-build.txt') } 'Vulkan build tool installation failed.'
 Invoke-Gate { & $Python (Join-Path $PSScriptRoot 'tools\build_vulkan.py') } 'Vulkan runtime build/verification failed.'
-# NOT: package_vulkan_runtime.py bilerek cagrilmiyor. runtime.json canonical
-# pin'dir (v0.10.4 URL + hash); her build'de yeniden yazmak URL'yi o anki
-# surume cevirip 404 uretiyordu (AUD-WORD-002). Yeni Vulkan gerektiginde
-# manuel uret + release'e yukle + runtime.json'u guncelle.
+# NOTE: package_vulkan_runtime.py is deliberately not called. runtime.json is
+# the canonical pin (v0.10.4 URL + hash); rewriting it on every build turned the
+# URL into whatever version was current and produced a 404 (AUD-WORD-002). When
+# a new Vulkan build is needed: produce it by hand, upload it to the release,
+# and update runtime.json.
 if (-not $CpuOnly) {
     # Standard deliveries include CUDA libraries; the driver stays external.
     Invoke-Gate { & $Python -m pip install -r (Join-Path $PSScriptRoot 'requirements-cuda.txt') } 'CUDA runtime installation failed.'
@@ -82,7 +83,8 @@ $RawExe = Join-Path $PSScriptRoot "dist\wordarc.exe"
 if (-not (Test-Path -LiteralPath $RawExe)) {
     throw "Expected dist\wordarc.exe was not produced."
 }
-# Sabit iç ad: kurulu klasörde sürümlü dosya birikmez, update üzerine yazar.
+# Fixed inner name: versioned files never pile up in the installed folder, and
+# an update overwrites in place.
 $InnerDir = Join-Path $PSScriptRoot "dist\inner"
 New-Item -ItemType Directory -Path $InnerDir -Force | Out-Null
 $InnerExe = Join-Path $InnerDir "WordArc.exe"
@@ -94,13 +96,13 @@ $IsccCandidates += "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
 $IsccCandidates += "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
 $Iscc = $IsccCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
 if (-not $Iscc) {
-    throw "Inno Setup 6 (ISCC.exe) bulunamadı. https://www.innosetup.com/isdl.php kurun veya ISCC.exe'yi PATH'e ekleyin."
+    throw "Inno Setup 6 (ISCC.exe) was not found. Install it from https://www.innosetup.com/isdl.php or add ISCC.exe to PATH."
 }
 $env:WORDARC_VERSION = $AppVersion
 $VersionNum = ($AppVersion -replace '[^0-9.]', '').Trim('.')
 while (($VersionNum.Split('.')).Count -lt 4) { $VersionNum += ".0" }
 $env:WORDARC_VERSION_NUM = $VersionNum
-Invoke-Gate { & $Iscc (Join-Path $PSScriptRoot "installer\wordarc.iss") } "Inno Setup derlemesi başarısız."
+Invoke-Gate { & $Iscc (Join-Path $PSScriptRoot "installer\wordarc.iss") } "Inno Setup build failed."
 $SetupName = "WordArc-$AppVersion.exe"
 $SetupExe = Join-Path $PSScriptRoot "dist\$SetupName"
 if (-not (Test-Path -LiteralPath $SetupExe)) {

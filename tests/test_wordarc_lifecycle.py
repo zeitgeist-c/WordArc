@@ -12,9 +12,9 @@ def test_singleton_mutex_allows_one_owner_and_can_be_handed_over():
         return  # the mutex is a Windows singleton guard
     name = f"Local\\wordarc-test-{os.getpid()}-{uuid.uuid4().hex}"
     assert wordarc._acquire_instance_mutex(name)
-    assert not wordarc._acquire_instance_mutex(name), "ikinci sahip olamaz"
+    assert not wordarc._acquire_instance_mutex(name), "a second owner must not get it"
     wordarc._release_instance_mutex()
-    assert wordarc._acquire_instance_mutex(name), "bırakılan kilit yeniden alınmalı"
+    assert wordarc._acquire_instance_mutex(name), "a released lock must be reacquirable"
     wordarc._release_instance_mutex()
 
 
@@ -125,7 +125,7 @@ def test_ocr_result_lands_in_the_clipboard_or_the_warning_tray():
                            return_value=clipboard):
         controller._on_screenshot_ocr("")
     clipboard.setText.assert_not_called()
-    assert len(messages) == 1, "boş sonuç uyarı olarak bildirilmeli"
+    assert len(messages) == 1, "an empty result must be reported as a warning"
 
 
 def test_startup_registration_runs_once_and_respects_the_switch():

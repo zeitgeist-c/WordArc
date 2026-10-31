@@ -99,8 +99,8 @@ class Pipeline(QObject):
         started = time.monotonic()
         self.stage.emit(stage_message, operation_id)
         keys = conf.gemini_keys()
-        # Sıra, işlem gerçekten bulut API kullanıyorsa ilerler: yerel
-        # transkripsiyon API harcamaz ama temizleme/çeviri hâlâ Gemini'ye gider.
+        # The order advances when the job really uses the cloud API: local
+        # transcription spends no API, but cleanup/translation still go to Gemini.
         uses_cloud = (conf.get("transcribe_engine") != "local"
                       or conf["cleanup_enabled"]
                       or conf.get("translate_enabled"))
@@ -126,9 +126,9 @@ class Pipeline(QObject):
                               paste.PasteError)):
             _log.warning("pipeline failed (%s)", type(exc).__name__)
             print(f"wordarc: {exc}", file=sys.stderr)
-            # Yalnız API hatası sırayı ilerletir: pano ya da yerel motor
-            # arızası başka bir API'nin suçu değildir. İptal yukarıda
-            # ayrı dalda tutulur, sıraya dokunmaz.
+            # Only an API error advances the order: a clipboard or local engine
+            # failure is not another API's fault. A cancellation is kept in a
+            # separate branch above and never touches the order.
             if (uses_cloud and client is not None
                     and isinstance(exc, api.ApiError)):
                 conf.record_api_attempt(client.active_slot, len(keys))
@@ -162,10 +162,10 @@ class Pipeline(QObject):
 
     def _deliver(self, raw, wav_path, duration, rms_values, operation_id,
                  auto_paste, client, keys, uses_cloud, started):
-        """Transcribe sonrası ortak kuyruk: sessizlik → temizlik → yapıştır.
+        """The shared queue after transcription: silence -> cleanup -> paste.
 
-        ``wav_path`` None olabilir (canlı motor): o zaman silinecek kayıt
-        yoktur, metin doğrudan teslim edilir.
+        ``wav_path`` may be None (live engine): then there is no recording to
+        delete and the text is delivered directly.
         """
         conf = self.conf
         should_paste = conf["auto_paste"] if auto_paste is None else auto_paste

@@ -2,7 +2,7 @@ PyQt6>=6.11,<6.12
 sounddevice>=0.5.5,<0.6
 SoundCard>=0.4.6,<0.5
 numpy>=1.26,<3
-# Primary OCR for the screenshot editor (Metni ayıkla): RapidOCR — PaddleOCR
+# Primary OCR for the screenshot editor (Extract text): RapidOCR — PaddleOCR
 # models on ONNX Runtime. onnxruntime is already present for local speech;
 # these add the recogniser itself plus its small geometry/config helpers.
 rapidocr==3.10.0

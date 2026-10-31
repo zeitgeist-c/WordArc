@@ -189,12 +189,11 @@ def _display_level(peak):
 
 
 class MeterPreview(QWidget):
-    """Bir stil seçeneğinin gerçek çizimiyle canlı önizlemesi.
+    """A live preview of one style option, drawn with its real rendering.
 
-    Ayarlar listesinde her satırın yanında o stilin nasıl göründüğü durur;
-    seçenek adı tek başına "Dalga" ile "Kapsüller" arasındaki farkı
-    anlatamaz. Önizleme, üretimde kullanılan aynı çizim kodunu çağırır, o
-    yüzden gördüğü şey çalışırken gördüğü şeydir.
+    In the settings list every row shows how that style looks; the option name
+    alone cannot tell "Wave" from "Capsules". The preview calls the same drawing
+    code production uses, so what it shows is what runs while recording.
     """
 
     WIDTH = 148

@@ -1105,8 +1105,8 @@ class SettingsWindow(QDialog):
         # the whole app. Without a parent the object outlives the window and
         # Qt drops signals to dead slots safely.
         self.transcriber = FileTranscriber(conf)
-        # Damgalar işlemler tarafından pencereden bağımsız yazılır; açık
-        # kalan liste 5 saniyede bir tazelenir, gizlenince durur.
+        # Stamps are written by the jobs independently of the window; a list left
+        # open is refreshed every 5 seconds and stops while hidden.
         self._usage_timer = QTimer(self)
         self._usage_timer.timeout.connect(self._on_usage_tick)
         self.setObjectName("settingsRoot")
@@ -2051,7 +2051,7 @@ class SettingsWindow(QDialog):
         self.header_theme.setText(t(self.THEME_LABELS[mode]))
 
     def _toggle_lang(self):
-        """Header dil butonu: 13 dili menüden seç, anında uygula."""
+        """Header language button: pick one of 13 languages from the menu, apply at once."""
         from PyQt6.QtWidgets import QMenu
         menu = QMenu(self)
         current = self.conf["ui_language"]
@@ -2063,7 +2063,7 @@ class SettingsWindow(QDialog):
         menu.exec(self.header_lang.mapToGlobal(self.header_lang.rect().bottomLeft()))
 
     def _apply_lang(self, code):
-        """Seçili dili kaydet ve pencereyi yeniden kur."""
+        """Save the selected language and rebuild the window."""
         if code == self.conf["ui_language"]:
             return
         self.conf["ui_language"] = code
@@ -2245,7 +2245,7 @@ class SettingsWindow(QDialog):
         layout.addWidget(interface)
 
         def highlight_preview():
-            """Seçili biçimin önizlemesi belirgin dursun."""
+            """Keep the selected format's preview visibly marked."""
             chosen = self.meter_style.currentData()
             for widget in self.meter_previews:
                 widget.set_selected(widget.style == chosen)
@@ -3547,7 +3547,7 @@ class SettingsWindow(QDialog):
         except cfg.credential_store.CredentialError as exc:
             warn_box(self, t("Error"), str(exc))
             return
-        # Anahtarlık değiştiyse damgalar slotlara göre kırpılır/uzatılır.
+        # If the key ring changed the stamps are trimmed/extended per slot.
         conf["gemini_last_used"] = conf.rotation_stamps(len(self._gemini_keys))
         try:
             conf.save()
@@ -3728,8 +3728,8 @@ class SettingsWindow(QDialog):
 
     def showEvent(self, event):
         super().showEvent(event)
-        # İşlemler pencereden bağımsız koşar; liste her açılışta kayıtlı
-        # damgaları yeniden okur, açık kaldığı sürece de tikle tazelenir.
+        # Jobs run independently of the window; the list re-reads the saved
+        # stamps on every open and is refreshed by the tick while it stays open.
         if getattr(self, "_gemini_keys", None) is not None:
             self._refresh_gemini_keys()
         self._usage_timer.start(5000)

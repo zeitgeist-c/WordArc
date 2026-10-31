@@ -47,12 +47,12 @@ def test_frame_answers_ping_with_pong():
         reader = _Socket(right, bytearray())
         carry = bytearray()
         _send_frame(sender, 9, b"ping-data")
-        # Ping tek başına kullanıcı mesajı değildir; sonraki gerçek
-        # mesaj okunur, pong karşıya yazılmış olur.
+        # A ping is not a user message on its own; the next real
+        # message is read and the pong has been written back.
         _send_frame(sender, 1, b"after")
         assert _read_message(reader, carry, 5) == b"after"
         import select
-        assert select.select([left], [], [], 1)[0], "pong yazılmadı"
+        assert select.select([left], [], [], 1)[0], "pong was not written"
     finally:
         left.close()
         right.close()
@@ -112,7 +112,7 @@ def test_connect_rejects_non_101_status():
         _connect("DUMMYKEY", socket_factory=lambda host, port, timeout: FakeSock())
     except LiveError:
         return
-    raise AssertionError("401 el sıkışması kabul edildi")
+    raise AssertionError("a 401 handshake was accepted")
 
 
 def _feed(session, *messages):
@@ -149,7 +149,7 @@ def test_server_error_sets_redacted_error():
 
 
 def _server_send(sock, payload):
-    """Sunucu gibi maskesiz çerçeve yaz (test yardımcısı)."""
+    """Write an unmasked frame like the server does (test helper)."""
     import json
     from livespeech import _send_frame, _Socket
     raw = json.dumps(payload).encode("utf-8")
@@ -199,7 +199,7 @@ def test_finish_without_speech_raises():
             session.finish()
         except LiveError:
             return
-        raise AssertionError("sessiz kayıt metin döndürdü")
+        raise AssertionError("a silent recording returned text")
     finally:
         server.close()
 
@@ -221,7 +221,7 @@ def test_open_without_key_raises():
         LiveSession(api_key="").open()
     except LiveError:
         return
-    raise AssertionError("anahtarsız oturum açıldı")
+    raise AssertionError("a session opened without a key")
 
 
 def test_open_with_keys_falls_over_to_second_key():
@@ -270,6 +270,6 @@ def test_open_with_keys_all_rejected_raises():
                                        socket_factory=factory)
         except LiveError:
             return
-        raise AssertionError("reddedilen anahtar kabul edildi")
+        raise AssertionError("a rejected key was accepted")
     finally:
         server_end.close()

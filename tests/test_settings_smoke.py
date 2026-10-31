@@ -307,16 +307,18 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertTrue(window.max_seconds.isVisibleTo(window))
 
     def test_header_buttons_toggle_and_persist(self):
-        # QMenu.exec() offscreen'da modal kalır; menüde ilgili dili
-        # seçmiş gibi davranan stub ile aynı akış (_apply_lang) işletilir.
+        # QMenu.exec() stays modal offscreen; the same flow (_apply_lang) is
+        # run through a stub that behaves as if the language was picked in the
+        # menu.
         window = self.window
         fired = []
         window.language_changed.connect(lambda: fired.append(True))
         self.assertEqual(window.header_lang.text(), "English")
 
         def _click_as(lang):
-            # connect anında alınan bağlı-metod kopyası sınıf patch'inden
-            # etkilenmez; menüde dili seçmiş gibi _apply_lang işletilir.
+            # The bound-method copy taken at connect time is not affected by
+            # the class patch; _apply_lang runs as if the language had been
+            # picked in the menu.
             window.header_lang.clicked.disconnect()
             window.header_lang.clicked.connect(lambda: window._apply_lang(lang))
             window.header_lang.click()
@@ -516,7 +518,7 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertIn("27.09.2026 14:32:11", after)
 
     def test_key_usage_refreshes_while_window_stays_open(self):
-        """Açık kalan pencerede damgalar 5 sn'lik tikle tazelenir."""
+        """While the window stays open the stamps refresh on a 5 s tick."""
         window = self.window
         window._gemini_keys = ["key-1-aaaa"]
         window._refresh_gemini_keys()
