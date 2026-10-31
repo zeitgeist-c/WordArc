@@ -109,6 +109,11 @@ def main():
                for name in reader.toc), 'missing vector splash renderer'
     assert BRAND.version in list(constants(archive.extract("brand"))), "wrong embedded version"
     assert "brand_icon" in list(constants(archive.extract("brand"))), "missing resilient application icon"
+    # The screenshot editor hides OCR/Speak when the stack is absent, so a
+    # bundle without it ships a silent feature loss: fail loudly instead.
+    assert "rapidocr" in archive.toc, "missing RapidOCR engine"
+    assert "cv2" in archive.toc, "missing OpenCV runtime"
+    assert any("winrt" in name for name in archive.toc), "missing WinRT OCR fallback"
     assert "vulkan_runtime" in archive.toc, "missing engine discovery/repair module"
     for name in ("engine_discovery", "engine_scan_ui", "speech_sources", "engine_scan_diagnostic", "update_protocol", "installation_check"):
         assert name in archive.toc, f"missing engine scan module: {name}"
