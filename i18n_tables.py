@@ -6,7 +6,6 @@ Bölümler eski parça düzenini korur (DE1..DE7 gibi); i18n.py bunları _merge 
 # --- Almanca ---
 DE1 = {
 "Preparing installation. Approve the Windows permission request; this window stays open until setup is ready.": "Installation wird vorbereitet. Bestätigen Sie die Windows-Berechtigungsanfrage; dieses Fenster bleibt offen, bis das Setup bereit ist.",
-"Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Zuerst WordArc-, Hermes- und Modell-Caches durchsuchen, dann Benutzerordner und lokale Laufwerke. Wählen Sie ein Modell; gemeinsame Dateien bleiben erhalten.",
 "not_checked": "Nicht geprüft",
 "Could not save settings": "Einstellungen konnten nicht gespeichert werden",
 "Close": "Schließen",
@@ -15,7 +14,6 @@ DE1 = {
 "Find engines and models…": "Engines und Modelle suchen…",
 "Find local speech models": "Lokale Sprachmodelle suchen",
 "Your models, already on this computer": "Ihre Modelle, bereits auf diesem Computer",
-"Search WordArc, Hermes, Hugging Face and your user folders. Choose a model and where it runs; shared files stay in place.": "WordArc, Hermes, Hugging Face und Ihre Benutzerordner durchsuchen. Wählen Sie ein Modell und wo es läuft; gemeinsame Dateien bleiben erhalten.",
 "Preparing scan…": "Scan wird vorbereitet…",
 "Scan progress": "Scanfortschritt",
 "Discovered models": "Gefundene Modelle",
@@ -41,7 +39,6 @@ DE1 = {
 "Validating the selected model and engine…": "Gewähltes Modell und Engine werden validiert…",
 "Could not use this model: {error}": "Dieses Modell konnte nicht verwendet werden: {error}",
 "Disconnect": "Trennen",
-"Disconnect this shared model? Its files stay available to Hermes and other applications.": "Dieses gemeinsame Modell trennen? Seine Dateien bleiben für Hermes und andere Anwendungen verfügbar.",
 "ready": "bereit",
 "unavailable": "nicht verfügbar",
 "unverified": "ungeprüft",
@@ -789,11 +786,9 @@ DE7 = {
 "Text and PDF files to turn into audio, in order.": "Text- und PDF-Dateien, die nacheinander in Audio umgewandelt werden.",
 "Text to read": "Vorlesetext",
 "The Turkish text to read aloud.": "Der türkische Text, der vorgelesen wird.",
-"The directory the command runs in, which decides which project's instructions and files it can see. Your own skills and services are there whichever one it is.": "Das Verzeichnis, in dem der Befehl läuft; es entscheidet, welche Anweisungen und Dateien eines Projekts er sieht. Ihre eigenen Skills und Dienste sind da, welches es auch ist.",
 "The local engine needs {packages}. Install them automatically and continue with the setup?": "Die lokale Engine benötigt {packages}. Automatisch installieren und mit der Einrichtung fortfahren?",
 "The recording stopped on its own; the sound device may have gone away. Keeping what was captured.": "Die Aufnahme wurde von selbst beendet; das Audiogerät ist möglicherweise verschwunden. Das Aufgezeichnete wird behalten.",
 "There is no readable text.": "Es gibt keinen lesbaren Text.",
-"This shortcut records the same way dictation does, but the transcript is not what gets pasted. It goes to an agent as a command, and what comes back is pasted instead: the answer to a question, or a sentence saying what was done. Claude Code and Codex run as the session you would have opened yourself, with your skills, your connected services and your account.": "Dieses Kürzel nimmt genauso auf wie das Diktat, aber eingefügt wird nicht das Transkript. Es geht als Befehl an einen Agenten, und eingefügt wird, was zurückkommt: die Antwort auf eine Frage oder ein Satz, der sagt, was getan wurde. Claude Code und Codex laufen als die Sitzung, die Sie selbst geöffnet hätten – mit Ihren Skills, Ihren verbundenen Diensten und Ihrem Konto.",
 "Told to the agent alongside every command, on top of whatever your own configuration already says.": "Wird dem Agenten mit jedem Befehl mitgeteilt, zusätzlich zu dem, was Ihre eigene Konfiguration bereits sagt.",
 "Translate dictation to English": "Diktat ins Englische übersetzen",
 "Translating…": "Wird übersetzt…",
@@ -819,13 +814,14 @@ DE7 = {
 "{name} is not downloaded yet — {size}. Downloaded once, it works offline after that.": "{name} ist noch nicht heruntergeladen — {size}. Einmal heruntergeladen, funktioniert es danach offline.",
 "{seconds} s": "{seconds} s",
 "{shortcut} is also used by:\n\n{list}\n\nInstall anyway?": "{shortcut} wird auch verwendet von:\n\n{list}\n\nTrotzdem installieren?",
+"Search WordArc and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Zuerst WordArc- und Modell-Caches durchsuchen, dann Benutzerordner und lokale Laufwerke. Wählen Sie ein Modell; gemeinsame Dateien bleiben erhalten.",
+"Disconnect this shared model? Its files stay available to other applications.": "Dieses gemeinsame Modell trennen? Seine Dateien bleiben für andere Anwendungen verfügbar.",
 }
 
 
 # --- İspanyolca ---
 ES1 = {
 "Preparing installation. Approve the Windows permission request; this window stays open until setup is ready.": "Preparando la instalación. Apruebe la solicitud de permiso de Windows; esta ventana permanece abierta hasta que la instalación esté lista.",
-"Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Busque primero en las cachés de WordArc, Hermes y modelos, luego en carpetas de usuario y unidades locales. Elija un modelo; los archivos compartidos permanecen en su lugar.",
 "not_checked": "No comprobado",
 "Could not save settings": "No se pudo guardar la configuración",
 "Close": "Cerrar",
@@ -834,7 +830,6 @@ ES1 = {
 "Find engines and models…": "Buscar motores y modelos…",
 "Find local speech models": "Buscar modelos de voz locales",
 "Your models, already on this computer": "Sus modelos, ya en este equipo",
-"Search WordArc, Hermes, Hugging Face and your user folders. Choose a model and where it runs; shared files stay in place.": "Busque en WordArc, Hermes, Hugging Face y sus carpetas de usuario. Elija un modelo y dónde se ejecuta; los archivos compartidos permanecen en su lugar.",
 "Preparing scan…": "Preparando análisis…",
 "Scan progress": "Progreso del análisis",
 "Discovered models": "Modelos descubiertos",
@@ -860,7 +855,6 @@ ES1 = {
 "Validating the selected model and engine…": "Validando el modelo y el motor seleccionados…",
 "Could not use this model: {error}": "No se pudo usar este modelo: {error}",
 "Disconnect": "Desconectar",
-"Disconnect this shared model? Its files stay available to Hermes and other applications.": "¿Desconectar este modelo compartido? Sus archivos siguen disponibles para Hermes y otras aplicaciones.",
 "ready": "listo",
 "unavailable": "no disponible",
 "unverified": "sin verificar",
@@ -1517,11 +1511,9 @@ ES6 = {
 "focused application.": "aplicación enfocada.",
 "Artificial intelligence": "Inteligencia artificial",
 "Search…": "Buscar…",
-"This shortcut records the same way dictation does, but the transcript is not what gets pasted. It goes to an agent as a command, and what comes back is pasted instead: the answer to a question, or a sentence saying what was done. Claude Code and Codex run as the session you would have opened yourself, with your skills, your connected services and your account.": "Este atajo graba igual que el dictado, pero lo que se pega no es la transcripción. Va a un agente como comando y en su lugar se pega lo que vuelve: la respuesta a una pregunta o una frase que dice qué se hizo. Claude Code y Codex se ejecutan como la sesión que usted habría abierto, con sus skills, sus servicios conectados y su cuenta.",
 "More thinking is slower, and you are standing in front of the screen while it happens. Worth it for a job that has to be worked out rather than looked up.": "Pensar más es más lento, y usted está delante de la pantalla mientras ocurre. Vale la pena para una tarea que hay que resolver y no consultar.",
 "{binary} is not on your PATH, so this cannot run yet. Install it, or pick another one above.": "{binary} no está en el PATH, así que esto todavía no puede ejecutarse. Instálelo o elija otro de los de arriba.",
 "A name like “sonnet” always means the newest model of that line. Opus thinks harder and answers slower, which is felt here more than anywhere else: you are standing in front of the screen.": "Un nombre como «sonnet» siempre significa el modelo más nuevo de esa línea. Opus piensa más y tarda más en responder, lo que aquí se nota más que en ningún otro sitio: usted está delante de la pantalla.",
-"The directory the command runs in, which decides which project's instructions and files it can see. Your own skills and services are there whichever one it is.": "El directorio en el que se ejecuta el comando, que decide qué instrucciones y archivos de qué proyecto puede ver. Sus propias skills y servicios están ahí sea cual sea.",
 "A command still running after this is given up on. The tray menu can stop one earlier.": "Un comando que siga en marcha después de este tiempo se da por perdido. El menú de la bandeja puede detenerlo antes.",
 "Commands within this long of each other are one conversation, so “and move that to Thursday” knows what “that” is. After it, the next command starts fresh.": "Los comandos que llegan dentro de este intervalo son una sola conversación, así que «y mueve eso al jueves» sabe qué es «eso». Pasado ese tiempo, el siguiente comando empieza de cero.",
 "Off by default: Claude reads through “erm” and “you know” without help, and cleanup costs an API call and a second or two.": "Desactivado por defecto: Claude lee «esto» y «o sea» sin ayuda, y la limpieza cuesta una llamada API y un par de segundos.",
@@ -1632,13 +1624,14 @@ ES7 = {
 "Files": "Archivos",
 "Recent": "Recientes",
 "Text and PDF files to turn into audio, in order.": "Archivos de texto y PDF para convertir en audio, en orden.",
+"Search WordArc and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Busque primero en las cachés de WordArc y modelos, luego en carpetas de usuario y unidades locales. Elija un modelo; los archivos compartidos permanecen en su lugar.",
+"Disconnect this shared model? Its files stay available to other applications.": "¿Desconectar este modelo compartido? Sus archivos siguen disponibles para otras aplicaciones.",
 }
 
 
 # --- Fransızca ---
 FR1 = {
 "Preparing installation. Approve the Windows permission request; this window stays open until setup is ready.": "Préparation de l'installation. Approuvez la demande d'autorisation Windows ; cette fenêtre reste ouverte jusqu'à ce que l'installation soit prête.",
-"Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Recherchez d'abord dans les caches WordArc, Hermes et de modèles, puis dans les dossiers utilisateur et lecteurs locaux. Choisissez un modèle ; les fichiers partagés restent en place.",
 "not_checked": "Non vérifié",
 "Could not save settings": "Impossible d'enregistrer les paramètres",
 "Close": "Fermer",
@@ -1647,7 +1640,6 @@ FR1 = {
 "Find engines and models…": "Rechercher moteurs et modèles…",
 "Find local speech models": "Rechercher des modèles vocaux locaux",
 "Your models, already on this computer": "Vos modèles, déjà sur cet ordinateur",
-"Search WordArc, Hermes, Hugging Face and your user folders. Choose a model and where it runs; shared files stay in place.": "Recherchez dans WordArc, Hermes, Hugging Face et vos dossiers utilisateur. Choisissez un modèle et où il s'exécute ; les fichiers partagés restent en place.",
 "Preparing scan…": "Préparation de l'analyse…",
 "Scan progress": "Progression de l'analyse",
 "Discovered models": "Modèles découverts",
@@ -1673,7 +1665,6 @@ FR1 = {
 "Validating the selected model and engine…": "Validation du modèle et du moteur sélectionnés…",
 "Could not use this model: {error}": "Impossible d'utiliser ce modèle : {error}",
 "Disconnect": "Déconnecter",
-"Disconnect this shared model? Its files stay available to Hermes and other applications.": "Déconnecter ce modèle partagé ? Ses fichiers restent disponibles pour Hermes et d'autres applications.",
 "ready": "prêt",
 "unavailable": "indisponible",
 "unverified": "non vérifié",
@@ -2415,11 +2406,9 @@ FR7 = {
 "Text and PDF files to turn into audio, in order.": "Fichiers texte et PDF à convertir en audio, dans l'ordre.",
 "Text to read": "Texte à lire",
 "The Turkish text to read aloud.": "Le texte turc à lire à voix haute.",
-"The directory the command runs in, which decides which project's instructions and files it can see. Your own skills and services are there whichever one it is.": "Le répertoire dans lequel la commande s'exécute ; il décide quelles instructions et quels fichiers d'un projet elle voit. Vos propres skills et services y sont, quel qu'il soit.",
 "The local engine needs {packages}. Install them automatically and continue with the setup?": "Le moteur local nécessite {packages}. Les installer automatiquement et poursuivre la configuration ?",
 "The recording stopped on its own; the sound device may have gone away. Keeping what was captured.": "L'enregistrement s'est arrêté tout seul ; le périphérique audio a peut-être disparu. Conservation de ce qui a été capturé.",
 "There is no readable text.": "Il n'y a aucun texte lisible.",
-"This shortcut records the same way dictation does, but the transcript is not what gets pasted. It goes to an agent as a command, and what comes back is pasted instead: the answer to a question, or a sentence saying what was done. Claude Code and Codex run as the session you would have opened yourself, with your skills, your connected services and your account.": "Ce raccourci enregistre comme la dictée, mais ce qui est collé n'est pas la transcription. Elle part vers un agent comme commande, et c'est ce qui revient qui est collé à la place : la réponse à une question, ou une phrase disant ce qui a été fait. Claude Code et Codex tournent comme la session que vous auriez ouverte vous-même, avec vos skills, vos services connectés et votre compte.",
 "Told to the agent alongside every command, on top of whatever your own configuration already says.": "Transmis à l'agent avec chaque commande, en plus de ce que votre propre configuration dit déjà.",
 "Translate dictation to English": "Traduire la dictée en anglais",
 "Translating…": "Traduction…",
@@ -2445,13 +2434,14 @@ FR7 = {
 "{name} is not downloaded yet — {size}. Downloaded once, it works offline after that.": "{name} n'est pas encore téléchargé — {size}. Une fois téléchargé, il fonctionne hors ligne ensuite.",
 "{seconds} s": "{seconds} s",
 "{shortcut} is also used by:\n\n{list}\n\nInstall anyway?": "{shortcut} est aussi utilisé par :\n\n{list}\n\nInstaller quand même ?",
+"Search WordArc and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Recherchez d'abord dans les caches WordArc et de modèles, puis dans les dossiers utilisateur et lecteurs locaux. Choisissez un modèle ; les fichiers partagés restent en place.",
+"Disconnect this shared model? Its files stay available to other applications.": "Déconnecter ce modèle partagé ? Ses fichiers restent disponibles pour d'autres applications.",
 }
 
 
 # --- İtalyanca ---
 IT1 = {
 "Preparing installation. Approve the Windows permission request; this window stays open until setup is ready.": "Preparazione dell'installazione. Approva la richiesta di autorizzazione di Windows; questa finestra resta aperta finché il setup è pronto.",
-"Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Cerca prima nelle cache di WordArc, Hermes e dei modelli, poi nelle cartelle utente e nelle unità locali. Scegli un modello; i file condivisi restano al loro posto.",
 "not_checked": "Non verificato",
 "Could not save settings": "Impossibile salvare le impostazioni",
 "Close": "Chiudi",
@@ -2460,7 +2450,6 @@ IT1 = {
 "Find engines and models…": "Trova motori e modelli…",
 "Find local speech models": "Trova modelli vocali locali",
 "Your models, already on this computer": "I tuoi modelli, già su questo computer",
-"Search WordArc, Hermes, Hugging Face and your user folders. Choose a model and where it runs; shared files stay in place.": "Cerca in WordArc, Hermes, Hugging Face e le tue cartelle utente. Scegli un modello e dove eseguirlo; i file condivisi restano al loro posto.",
 "Preparing scan…": "Preparazione scansione…",
 "Scan progress": "Avanzamento scansione",
 "Discovered models": "Modelli trovati",
@@ -2486,7 +2475,6 @@ IT1 = {
 "Validating the selected model and engine…": "Convalida del modello e motore selezionati…",
 "Could not use this model: {error}": "Impossibile usare questo modello: {error}",
 "Disconnect": "Disconnetti",
-"Disconnect this shared model? Its files stay available to Hermes and other applications.": "Disconnettere questo modello condiviso? I suoi file restano disponibili per Hermes e altre applicazioni.",
 "ready": "pronto",
 "unavailable": "non disponibile",
 "unverified": "non verificato",
@@ -3142,11 +3130,9 @@ IT6 = {
 "focused application.": "applicazione attiva.",
 "Artificial intelligence": "Intelligenza artificiale",
 "Search…": "Cerca…",
-"This shortcut records the same way dictation does, but the transcript is not what gets pasted. It goes to an agent as a command, and what comes back is pasted instead: the answer to a question, or a sentence saying what was done. Claude Code and Codex run as the session you would have opened yourself, with your skills, your connected services and your account.": "Questa scorciatoia registra come la dettatura, ma quello che viene incollato non è la trascrizione. Va a un agente come comando e al suo posto viene incollato ciò che torna: la risposta a una domanda o una frase che dice cosa è stato fatto. Claude Code e Codex girano come la sessione che avresti aperto tu, con le tue skill, i tuoi servizi collegati e il tuo account.",
 "More thinking is slower, and you are standing in front of the screen while it happens. Worth it for a job that has to be worked out rather than looked up.": "Pensare di più è più lento, e mentre succede sei davanti allo schermo. Vale la pena per un lavoro che va risolto, non cercato.",
 "{binary} is not on your PATH, so this cannot run yet. Install it, or pick another one above.": "{binary} non è nel PATH, quindi non può ancora partire. Installalo o scegline un altro qui sopra.",
 "A name like “sonnet” always means the newest model of that line. Opus thinks harder and answers slower, which is felt here more than anywhere else: you are standing in front of the screen.": "Un nome come «sonnet» significa sempre il modello più recente di quella linea. Opus pensa di più e risponde più lentamente, e qui si sente più che altrove: sei davanti allo schermo.",
-"The directory the command runs in, which decides which project's instructions and files it can see. Your own skills and services are there whichever one it is.": "La directory in cui gira il comando, che decide quali istruzioni e file di quale progetto può vedere. Le tue skill e i tuoi servizi ci sono comunque, qualunque sia.",
 "A command still running after this is given up on. The tray menu can stop one earlier.": "Un comando ancora in corso dopo questo tempo viene abbandonato. Il menu tray può fermarne uno prima.",
 "Commands within this long of each other are one conversation, so “and move that to Thursday” knows what “that” is. After it, the next command starts fresh.": "I comandi che arrivano entro questo intervallo sono un'unica conversazione, così «e sposta quello a giovedì» sa cos'è «quello». Dopo, il comando successivo riparte da zero.",
 "Off by default: Claude reads through “erm” and “you know” without help, and cleanup costs an API call and a second or two.": "Disattivato per impostazione predefinita: Claude legge «ehm» e «sai» anche senza aiuto, e la pulizia costa una chiamata API e un secondo o due.",
@@ -3257,13 +3243,14 @@ IT7 = {
 "Files": "File",
 "Recent": "Recenti",
 "Text and PDF files to turn into audio, in order.": "File di testo e PDF da convertire in audio, in ordine.",
+"Search WordArc and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Cerca prima nelle cache di WordArc e dei modelli, poi nelle cartelle utente e nelle unità locali. Scegli un modello; i file condivisi restano al loro posto.",
+"Disconnect this shared model? Its files stay available to other applications.": "Disconnettere questo modello condiviso? I suoi file restano disponibili per altre applicazioni.",
 }
 
 
 # --- Brezilya Portekizcesi ---
 PB1 = {
 "Preparing installation. Approve the Windows permission request; this window stays open until setup is ready.": "Preparando a instalação. Aprove a solicitação de permissão do Windows; esta janela fica aberta até o setup estar pronto.",
-"Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Pesquise primeiro nos caches do WordArc, Hermes e de modelos, depois nas pastas do usuário e unidades locais. Escolha um modelo; arquivos compartilhados ficam no lugar.",
 "not_checked": "Não verificado",
 "Could not save settings": "Não foi possível salvar as configurações",
 "Close": "Fechar",
@@ -3272,7 +3259,6 @@ PB1 = {
 "Find engines and models…": "Localizar mecanismos e modelos…",
 "Find local speech models": "Localizar modelos de voz locais",
 "Your models, already on this computer": "Seus modelos, já neste computador",
-"Search WordArc, Hermes, Hugging Face and your user folders. Choose a model and where it runs; shared files stay in place.": "Pesquise no WordArc, Hermes, Hugging Face e suas pastas. Escolha um modelo e onde ele roda; arquivos compartilhados ficam no lugar.",
 "Preparing scan…": "Preparando verificação…",
 "Scan progress": "Progresso da verificação",
 "Discovered models": "Modelos descobertos",
@@ -3298,7 +3284,6 @@ PB1 = {
 "Validating the selected model and engine…": "Validando o modelo e o mecanismo selecionados…",
 "Could not use this model: {error}": "Não foi possível usar este modelo: {error}",
 "Disconnect": "Desconectar",
-"Disconnect this shared model? Its files stay available to Hermes and other applications.": "Desconectar este modelo compartilhado? Seus arquivos continuam disponíveis para o Hermes e outros aplicativos.",
 "ready": "pronto",
 "unavailable": "indisponível",
 "unverified": "não verificado",
@@ -3954,11 +3939,9 @@ PB6 = {
 "focused application.": "aplicativo ativo.",
 "Artificial intelligence": "Inteligência artificial",
 "Search…": "Pesquisar…",
-"This shortcut records the same way dictation does, but the transcript is not what gets pasted. It goes to an agent as a command, and what comes back is pasted instead: the answer to a question, or a sentence saying what was done. Claude Code and Codex run as the session you would have opened yourself, with your skills, your connected services and your account.": "Este atalho grava como o ditado, mas o que é colado não é a transcrição. Ela vai para um agente como comando e, no lugar, cola-se o que volta: a resposta a uma pergunta ou uma frase dizendo o que foi feito. Claude Code e Codex rodam como a sessão que você mesmo abriria, com suas skills, seus serviços conectados e sua conta.",
 "More thinking is slower, and you are standing in front of the screen while it happens. Worth it for a job that has to be worked out rather than looked up.": "Pensar mais é mais lento, e você fica diante da tela enquanto isso acontece. Vale a pena para uma tarefa que precisa ser resolvida, não pesquisada.",
 "{binary} is not on your PATH, so this cannot run yet. Install it, or pick another one above.": "{binary} não está no PATH, então isto ainda não pode rodar. Instale-o ou escolha outro acima.",
 "A name like “sonnet” always means the newest model of that line. Opus thinks harder and answers slower, which is felt here more than anywhere else: you are standing in front of the screen.": "Um nome como “sonnet” sempre significa o modelo mais novo daquela linha. O Opus pensa mais e responde mais devagar, e isso aqui se sente mais do que em qualquer outro lugar: você está diante da tela.",
-"The directory the command runs in, which decides which project's instructions and files it can see. Your own skills and services are there whichever one it is.": "O diretório em que o comando roda, que decide quais instruções e arquivos de qual projeto ele pode ver. Suas próprias skills e serviços estão lá seja qual for.",
 "A command still running after this is given up on. The tray menu can stop one earlier.": "Um comando ainda em execução depois disso é abandonado. O menu da bandeja pode parar um antes.",
 "Commands within this long of each other are one conversation, so “and move that to Thursday” knows what “that” is. After it, the next command starts fresh.": "Comandos dentro desse intervalo são uma só conversa, então “e move isso para quinta” sabe o que é “isso”. Depois disso, o próximo comando começa do zero.",
 "Off by default: Claude reads through “erm” and “you know” without help, and cleanup costs an API call and a second or two.": "Desativado por padrão: o Claude entende “né” e “tipo assim” sem ajuda, e a limpeza custa uma chamada de API e um segundo ou dois.",
@@ -4069,13 +4052,14 @@ PB7 = {
 "Files": "Arquivos",
 "Recent": "Recentes",
 "Text and PDF files to turn into audio, in order.": "Arquivos de texto e PDF para converter em áudio, na ordem.",
+"Search WordArc and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Pesquise primeiro nos caches do WordArc e de modelos, depois nas pastas do usuário e unidades locais. Escolha um modelo; arquivos compartilhados ficam no lugar.",
+"Disconnect this shared model? Its files stay available to other applications.": "Desconectar este modelo compartilhado? Seus arquivos continuam disponíveis para outros aplicativos.",
 }
 
 
 # --- Rusça ---
 RU1 = {
 "Preparing installation. Approve the Windows permission request; this window stays open until setup is ready.": "Подготовка к установке. Подтвердите запрос разрешения Windows; это окно остаётся открытым, пока setup не будет готов.",
-"Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Сначала ищите в кэшах WordArc, Hermes и моделей, затем в папках пользователя и локальных дисках. Выберите модель; общие файлы остаются на месте.",
 "not_checked": "Не проверено",
 "Could not save settings": "Не удалось сохранить настройки",
 "Close": "Закрыть",
@@ -4084,7 +4068,6 @@ RU1 = {
 "Find engines and models…": "Найти движки и модели…",
 "Find local speech models": "Найти локальные речевые модели",
 "Your models, already on this computer": "Ваши модели, уже на этом компьютере",
-"Search WordArc, Hermes, Hugging Face and your user folders. Choose a model and where it runs; shared files stay in place.": "Ищите в WordArc, Hermes, Hugging Face и ваших папках. Выберите модель и где она работает; общие файлы остаются на месте.",
 "Preparing scan…": "Подготовка сканирования…",
 "Scan progress": "Прогресс сканирования",
 "Discovered models": "Найденные модели",
@@ -4110,7 +4093,6 @@ RU1 = {
 "Validating the selected model and engine…": "Проверка выбранной модели и движка…",
 "Could not use this model: {error}": "Не удалось использовать эту модель: {error}",
 "Disconnect": "Отключить",
-"Disconnect this shared model? Its files stay available to Hermes and other applications.": "Отключить эту общую модель? Её файлы останутся доступны для Hermes и других приложений.",
 "ready": "готов",
 "unavailable": "недоступен",
 "unverified": "не проверен",
@@ -4852,11 +4834,9 @@ RU7 = {
 "Text and PDF files to turn into audio, in order.": "Текстовые файлы и PDF для преобразования в аудио, по порядку.",
 "Text to read": "Текст для чтения",
 "The Turkish text to read aloud.": "Турецкий текст для чтения вслух.",
-"The directory the command runs in, which decides which project's instructions and files it can see. Your own skills and services are there whichever one it is.": "Каталог, в котором выполняется команда; он определяет, какие инструкции и файлы проекта она видит. Ваши собственные навыки и сервисы есть там, какой бы он ни был.",
 "The local engine needs {packages}. Install them automatically and continue with the setup?": "Локальному движку нужны {packages}. Установить их автоматически и продолжить настройку?",
 "The recording stopped on its own; the sound device may have gone away. Keeping what was captured.": "Запись остановилась сама; возможно, звуковое устройство пропало. Сохраняем записанное.",
 "There is no readable text.": "Читаемого текста нет.",
-"This shortcut records the same way dictation does, but the transcript is not what gets pasted. It goes to an agent as a command, and what comes back is pasted instead: the answer to a question, or a sentence saying what was done. Claude Code and Codex run as the session you would have opened yourself, with your skills, your connected services and your account.": "Эта клавиша записывает так же, как диктовка, но вставляется не транскрипт. Он уходит агенту как команда, а вместо него вставляется ответ: ответ на вопрос или фраза о том, что сделано. Claude Code и Codex работают как сессия, которую вы открыли бы сами, — с вашими навыками, подключёнными сервисами и вашим аккаунтом.",
 "Told to the agent alongside every command, on top of whatever your own configuration already says.": "Сообщается агенту вместе с каждой командой, сверх того, что уже говорит ваша конфигурация.",
 "Translate dictation to English": "Переводить диктовку на английский",
 "Translating…": "Перевод…",
@@ -4882,13 +4862,14 @@ RU7 = {
 "{name} is not downloaded yet — {size}. Downloaded once, it works offline after that.": "{name} ещё не загружена — {size}. После однократной загрузки она работает оффлайн.",
 "{seconds} s": "{seconds} с",
 "{shortcut} is also used by:\n\n{list}\n\nInstall anyway?": "{shortcut} также используется:\n\n{list}\n\nВсё равно установить?",
+"Search WordArc and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Сначала выполните поиск в кэшах WordArc и моделей, затем в папках пользователя и на локальных дисках. Выберите модель; общие файлы остаются на месте.",
+"Disconnect this shared model? Its files stay available to other applications.": "Отключить эту общую модель? Её файлы останутся доступны другим приложениям.",
 }
 
 
 # --- Lehçe ---
 PL1 = {
 "Preparing installation. Approve the Windows permission request; this window stays open until setup is ready.": "Przygotowanie instalacji. Zatwierdź żądanie uprawnień Windows; to okno pozostaje otwarte do czasu gotowości instalatora.",
-"Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Najpierw przeszukaj pamięci podręczne WordArc, Hermes i modeli, potem foldery użytkownika i dyski lokalne. Wybierz model; współdzielone pliki zostają na miejscu.",
 "not_checked": "Niesprawdzone",
 "Could not save settings": "Nie można zapisać ustawień",
 "Close": "Zamknij",
@@ -4897,7 +4878,6 @@ PL1 = {
 "Find engines and models…": "Znajdź silniki i modele…",
 "Find local speech models": "Znajdź lokalne modele mowy",
 "Your models, already on this computer": "Twoje modele, już na tym komputerze",
-"Search WordArc, Hermes, Hugging Face and your user folders. Choose a model and where it runs; shared files stay in place.": "Przeszukaj WordArc, Hermes, Hugging Face i swoje foldery. Wybierz model i gdzie działa; współdzielone pliki zostają na miejscu.",
 "Preparing scan…": "Przygotowanie skanowania…",
 "Scan progress": "Postęp skanowania",
 "Discovered models": "Znalezione modele",
@@ -4923,7 +4903,6 @@ PL1 = {
 "Validating the selected model and engine…": "Weryfikacja wybranego modelu i silnika…",
 "Could not use this model: {error}": "Nie można użyć tego modelu: {error}",
 "Disconnect": "Odłącz",
-"Disconnect this shared model? Its files stay available to Hermes and other applications.": "Odłączyć ten współdzielony model? Jego pliki pozostaną dostępne dla Hermesa i innych aplikacji.",
 "ready": "gotowy",
 "unavailable": "niedostępny",
 "unverified": "niezweryfikowany",
@@ -5665,11 +5644,9 @@ PL7 = {
 "Text and PDF files to turn into audio, in order.": "Pliki tekstowe i PDF do zamiany na audio, po kolei.",
 "Text to read": "Tekst do czytania",
 "The Turkish text to read aloud.": "Turecki tekst do przeczytania na głos.",
-"The directory the command runs in, which decides which project's instructions and files it can see. Your own skills and services are there whichever one it is.": "Katalog, w którym działa polecenie; decyduje, które instrukcje i pliki projektu widzi. Twoje własne umiejętności i usługi są tam niezależnie od tego, który to katalog.",
 "The local engine needs {packages}. Install them automatically and continue with the setup?": "Lokalny silnik wymaga {packages}. Zainstalować je automatycznie i kontynuować konfigurację?",
 "The recording stopped on its own; the sound device may have gone away. Keeping what was captured.": "Nagranie zatrzymało się samo; urządzenie dźwiękowe mogło zniknąć. Zachowuję to, co przechwycono.",
 "There is no readable text.": "Nie ma czytelnego tekstu.",
-"This shortcut records the same way dictation does, but the transcript is not what gets pasted. It goes to an agent as a command, and what comes back is pasted instead: the answer to a question, or a sentence saying what was done. Claude Code and Codex run as the session you would have opened yourself, with your skills, your connected services and your account.": "Ten skrót nagrywa tak samo jak dyktowanie, ale wklejany jest nie transkrypt. Trafia on do agenta jako polecenie, a wkleja się to, co wróci: odpowiedź na pytanie albo zdanie mówiące, co zrobiono. Claude Code i Codex działają jako sesja, którą sam byś otworzył — z Twoimi umiejętnościami, podłączonymi usługami i Twoim kontem.",
 "Told to the agent alongside every command, on top of whatever your own configuration already says.": "Przekazywane agentowi przy każdym poleceniu, oprócz tego, co mówi już Twoja konfiguracja.",
 "Translate dictation to English": "Tłumacz dyktowanie na angielski",
 "Translating…": "Tłumaczenie…",
@@ -5695,13 +5672,14 @@ PL7 = {
 "{name} is not downloaded yet — {size}. Downloaded once, it works offline after that.": "{name} nie jest jeszcze pobrany — {size}. Po jednorazowym pobraniu działa offline.",
 "{seconds} s": "{seconds} s",
 "{shortcut} is also used by:\n\n{list}\n\nInstall anyway?": "{shortcut} jest też używany przez:\n\n{list}\n\nZainstalować mimo to?",
+"Search WordArc and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Najpierw przeszukaj pamięci podręczne WordArc i modeli, potem foldery użytkownika i dyski lokalne. Wybierz model; wspólne pliki pozostają na miejscu.",
+"Disconnect this shared model? Its files stay available to other applications.": "Odłączyć ten współdzielony model? Jego pliki pozostaną dostępne dla innych aplikacji.",
 }
 
 
 # --- Felemenkçe ---
 NL1 = {
 "Preparing installation. Approve the Windows permission request; this window stays open until setup is ready.": "Installatie voorbereiden. Keur het Windows-machtigingsverzoek goed; dit venster blijft open tot de setup klaar is.",
-"Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Zoek eerst in WordArc-, Hermes- en modelcaches, dan in gebruikersmappen en lokale schijven. Kies een model; gedeelde bestanden blijven staan.",
 "not_checked": "Niet gecontroleerd",
 "Could not save settings": "Instellingen konden niet worden opgeslagen",
 "Close": "Sluiten",
@@ -5710,7 +5688,6 @@ NL1 = {
 "Find engines and models…": "Engines en modellen zoeken…",
 "Find local speech models": "Lokale spraakmodellen zoeken",
 "Your models, already on this computer": "Uw modellen, al op deze computer",
-"Search WordArc, Hermes, Hugging Face and your user folders. Choose a model and where it runs; shared files stay in place.": "Zoek in WordArc, Hermes, Hugging Face en uw mappen. Kies een model en waar het draait; gedeelde bestanden blijven staan.",
 "Preparing scan…": "Scan voorbereiden…",
 "Scan progress": "Scanvoortgang",
 "Discovered models": "Gevonden modellen",
@@ -5736,7 +5713,6 @@ NL1 = {
 "Validating the selected model and engine…": "Geselecteerde model en engine valideren…",
 "Could not use this model: {error}": "Dit model kon niet worden gebruikt: {error}",
 "Disconnect": "Verbinding verbreken",
-"Disconnect this shared model? Its files stay available to Hermes and other applications.": "Dit gedeelde model loskoppelen? De bestanden blijven beschikbaar voor Hermes en andere applicaties.",
 "ready": "klaar",
 "unavailable": "niet beschikbaar",
 "unverified": "niet geverifieerd",
@@ -6478,11 +6454,9 @@ NL7 = {
 "Text and PDF files to turn into audio, in order.": "Tekst- en PDF-bestanden die na elkaar naar audio worden omgezet.",
 "Text to read": "Voor te lezen tekst",
 "The Turkish text to read aloud.": "De Turkse tekst die wordt voorgelezen.",
-"The directory the command runs in, which decides which project's instructions and files it can see. Your own skills and services are there whichever one it is.": "De map waarin de opdracht draait; die bepaalt welke instructies en bestanden van een project zichtbaar zijn. Uw eigen skills en diensten zijn er, welke het ook is.",
 "The local engine needs {packages}. Install them automatically and continue with the setup?": "De lokale engine heeft {packages} nodig. Die automatisch installeren en doorgaan met de installatie?",
 "The recording stopped on its own; the sound device may have gone away. Keeping what was captured.": "De opname stopte vanzelf; mogelijk is het geluidsapparaat weggevallen. Wat is vastgelegd, wordt bewaard.",
 "There is no readable text.": "Er is geen leesbare tekst.",
-"This shortcut records the same way dictation does, but the transcript is not what gets pasted. It goes to an agent as a command, and what comes back is pasted instead: the answer to a question, or a sentence saying what was done. Claude Code and Codex run as the session you would have opened yourself, with your skills, your connected services and your account.": "Deze sneltoets neemt op zoals dicteren dat doet, maar wat wordt geplakt is niet het transcript. Het gaat als opdracht naar een agent, en wat terugkomt wordt geplakt: het antwoord op een vraag, of een zin die zegt wat er is gedaan. Claude Code en Codex draaien als de sessie die u zelf zou hebben geopend, met uw skills, uw verbonden diensten en uw account.",
 "Told to the agent alongside every command, on top of whatever your own configuration already says.": "Wordt bij elke opdracht aan de agent meegegeven, bovenop wat uw eigen configuratie al zegt.",
 "Translate dictation to English": "Dicteertekst naar het Engels vertalen",
 "Translating…": "Vertalen…",
@@ -6508,13 +6482,14 @@ NL7 = {
 "{name} is not downloaded yet — {size}. Downloaded once, it works offline after that.": "{name} is nog niet gedownload — {size}. Eenmaal gedownload werkt het daarna offline.",
 "{seconds} s": "{seconds} s",
 "{shortcut} is also used by:\n\n{list}\n\nInstall anyway?": "{shortcut} wordt ook gebruikt door:\n\n{list}\n\nToch installeren?",
+"Search WordArc and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Doorzoek eerst de WordArc- en modelcaches, daarna gebruikersmappen en lokale schijven. Kies een model; gedeelde bestanden blijven staan.",
+"Disconnect this shared model? Its files stay available to other applications.": "Dit gedeelde model loskoppelen? De bestanden blijven beschikbaar voor andere toepassingen.",
 }
 
 
 # --- Basitleştirilmiş Çince ---
 ZH1 = {
 "Preparing installation. Approve the Windows permission request; this window stays open until setup is ready.": "正在准备安装。请批准 Windows 权限请求；此窗口将保持打开，直到安装程序就绪。",
-"Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "先搜索 WordArc、Hermes 和模型缓存，再搜索用户文件夹和本地驱动器。选择一个模型；共享文件保持不动。",
 "not_checked": "未检查",
 "Could not save settings": "无法保存设置",
 "Close": "关闭",
@@ -6523,7 +6498,6 @@ ZH1 = {
 "Find engines and models…": "查找引擎和模型…",
 "Find local speech models": "查找本地语音模型",
 "Your models, already on this computer": "您的模型，已在此电脑上",
-"Search WordArc, Hermes, Hugging Face and your user folders. Choose a model and where it runs; shared files stay in place.": "搜索 WordArc、Hermes、Hugging Face 和您的用户文件夹。选择一个模型及其运行位置；共享文件保持不动。",
 "Preparing scan…": "正在准备扫描…",
 "Scan progress": "扫描进度",
 "Discovered models": "发现的模型",
@@ -6549,7 +6523,6 @@ ZH1 = {
 "Validating the selected model and engine…": "正在验证所选模型和引擎…",
 "Could not use this model: {error}": "无法使用此模型：{error}",
 "Disconnect": "断开连接",
-"Disconnect this shared model? Its files stay available to Hermes and other applications.": "断开此共享模型？其文件仍可供 Hermes 和其他应用使用。",
 "ready": "就绪",
 "unavailable": "不可用",
 "unverified": "未验证",
@@ -7084,7 +7057,6 @@ ZH5 = {
 "It was not allowed to use: {tools}": "不允许使用：{tools}",
 "The model returned an empty reply.": "模型返回了空回复。",
 "Agent": "代理",
-"This shortcut records the same way dictation does, but the transcript is not what gets pasted. It goes to an agent as a command, and what comes back is pasted instead: the answer to a question, or a sentence saying what was done. Claude Code and Codex run as the session you would have opened yourself, with your skills, your connected services and your account.": "此快捷键的录音方式与听写相同，但粘贴出来的不是转写文本。转写会作为命令发送给代理，返回的内容才会被粘贴：一个问题的答案，或一句话说明做了什么。Claude Code 和 Codex 以你自己会打开的会话身份运行，带着你的技能、已连接的服务和你的账户。",
 "account.": "账户。",
 "How it runs": "运行方式",
 "Runs on": "运行于",
@@ -7165,7 +7137,6 @@ ZH6 = {
 "More thinking is slower, and you are standing in front of the screen while it happens. Worth it for a job that has to be worked out rather than looked up.": "思考越多越慢，而这段时间你正站在屏幕前等着。对于需要推算而不是查一下就行的任务，这值得。",
 "{binary} is not on your PATH, so this cannot run yet. Install it, or pick another one above.": "{binary} 不在你的 PATH 中，所以暂时无法运行。请安装它，或在上面选择另一个。",
 "A name like “sonnet” always means the newest model of that line. Opus thinks harder and answers slower, which is felt here more than anywhere else: you are standing in front of the screen.": "像“sonnet”这样的名字始终指该系列的最新模型。Opus 思考更用力、回答更慢，而这一点在这里比任何地方都更明显：你正站在屏幕前等着。",
-"The directory the command runs in, which decides which project's instructions and files it can see. Your own skills and services are there whichever one it is.": "命令运行所在的目录，决定它能看见哪个项目的指令和文件。无论选哪一个，你自己的技能和服务都在那里。",
 "A command still running after this is given up on. The tray menu can stop one earlier.": "超过此时长仍在运行的命令会被放弃。托盘菜单可以更早停止。",
 "Commands within this long of each other are one conversation, so “and move that to Thursday” knows what “that” is. After it, the next command starts fresh.": "在此时间内相继发出的命令算作一次对话，所以“把那个改到周四”知道“那个”指什么。超过之后，下一条命令重新开始。",
 "Off by default: Claude reads through “erm” and “you know” without help, and cleanup costs an API call and a second or two.": "默认关闭：Claude 无需帮助也能读通“嗯”和“那个”，而清理要花一次 API 调用和一两秒。",
@@ -7318,13 +7289,14 @@ ZH7 = {
 "Files": "文件",
 "Recent": "最近",
 "Text and PDF files to turn into audio, in order.": "要转换为音频的文本和 PDF 文件，按顺序。",
+"Search WordArc and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "首先搜索 WordArc 和模型缓存，然后搜索用户文件夹和本地驱动器。选择一个模型；共享文件保持不动。",
+"Disconnect this shared model? Its files stay available to other applications.": "断开此共享模型？其文件仍可供其他应用程序使用。",
 }
 
 
 # --- Japonca ---
 JA1 = {
 "Preparing installation. Approve the Windows permission request; this window stays open until setup is ready.": "インストールを準備しています。Windows の許可要求を承認してください。セットアップの準備ができるまでこのウィンドウは開いたままです。",
-"Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "まず WordArc、Hermes、モデルキャッシュを検索し、次にユーザーフォルダーとローカルドライブを検索します。モデルを選択してください。共有ファイルはそのまま残ります。",
 "not_checked": "未確認",
 "Could not save settings": "設定を保存できませんでした",
 "Close": "閉じる",
@@ -7333,7 +7305,6 @@ JA1 = {
 "Find engines and models…": "エンジンとモデルを検索…",
 "Find local speech models": "ローカル音声モデルを検索",
 "Your models, already on this computer": "お使いのモデル、このコンピューターにあり",
-"Search WordArc, Hermes, Hugging Face and your user folders. Choose a model and where it runs; shared files stay in place.": "WordArc、Hermes、Hugging Face、ユーザーフォルダーを検索します。モデルと実行場所を選択してください。共有ファイルはそのまま残ります。",
 "Preparing scan…": "スキャンを準備中…",
 "Scan progress": "スキャンの進捗",
 "Discovered models": "検出されたモデル",
@@ -7359,7 +7330,6 @@ JA1 = {
 "Validating the selected model and engine…": "選択したモデルとエンジンを検証中…",
 "Could not use this model: {error}": "このモデルを使用できませんでした：{error}",
 "Disconnect": "切断",
-"Disconnect this shared model? Its files stay available to Hermes and other applications.": "この共有モデルを切断しますか？ファイルは Hermes や他のアプリで引き続き利用可能です。",
 "ready": "準備完了",
 "unavailable": "利用不可",
 "unverified": "未検証",
@@ -7892,7 +7862,6 @@ JA5 = {
 "It was not allowed to use: {tools}": "使用が許可されませんでした：{tools}",
 "The model returned an empty reply.": "モデルは空の応答を返しました。",
 "Agent": "エージェント",
-"This shortcut records the same way dictation does, but the transcript is not what gets pasted. It goes to an agent as a command, and what comes back is pasted instead: the answer to a question, or a sentence saying what was done. Claude Code and Codex run as the session you would have opened yourself, with your skills, your connected services and your account.": "このショートカットはディクテーションと同じように録音しますが、貼り付けられるのは文字起こしではありません。文字起こしはコマンドとしてエージェントに渡され、代わりに返ってきたものが貼り付けられます。質問への答えか、何が行われたかを述べた一文です。Claude Code と Codex は、自分で開いた場合と同じセッションとして動作し、スキル、接続済みのサービス、自分のアカウントがそのまま使われます。",
 "account.": "アカウント。",
 "How it runs": "実行方法",
 "Runs on": "実行環境",
@@ -7973,7 +7942,6 @@ JA6 = {
 "More thinking is slower, and you are standing in front of the screen while it happens. Worth it for a job that has to be worked out rather than looked up.": "より多く考えるほど遅くなり、その間あなたは画面の前に立っています。調べれば済む仕事ではなく、考え抜く必要がある仕事に向いています。",
 "{binary} is not on your PATH, so this cannot run yet. Install it, or pick another one above.": "{binary} が PATH にないため、まだ実行できません。インストールするか、上から別のものを選んでください。",
 "A name like “sonnet” always means the newest model of that line. Opus thinks harder and answers slower, which is felt here more than anywhere else: you are standing in front of the screen.": "「sonnet」のような名前は常にその系列の最新モデルを指します。Opus はより深く考え、答えるのが遅くなり、それがどこよりもここで実感されます。画面の前で待っているからです。",
-"The directory the command runs in, which decides which project's instructions and files it can see. Your own skills and services are there whichever one it is.": "コマンドを実行するディレクトリ。どのプロジェクトの指示とファイルが見えるかを決めます。どのディレクトリであっても、自分のスキルとサービスはそこにあります。",
 "A command still running after this is given up on. The tray menu can stop one earlier.": "これを過ぎても実行中のコマンドは打ち切られます。トレイメニューからはもっと早く停止できます。",
 "Commands within this long of each other are one conversation, so “and move that to Thursday” knows what “that” is. After it, the next command starts fresh.": "この時間内に続けて出したコマンドは 1 つの会話として扱われるので、「それを木曜に移して」と言えば「それ」が何か分かります。この時間を過ぎると、次のコマンドは新しく始まります。",
 "Off by default: Claude reads through “erm” and “you know” without help, and cleanup costs an API call and a second or two.": "既定ではオフです。Claude は「えーと」や「あのね」を助けなしで読み飛ばせますし、クリーンアップには API 呼び出し 1 回と 1〜2 秒かかります。",
@@ -8128,13 +8096,14 @@ JA7 = {
 "Files": "ファイル",
 "Recent": "最近",
 "Text and PDF files to turn into audio, in order.": "音声に変換するテキストと PDF ファイル（順番どおり）。",
+"Search WordArc and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "まず WordArc とモデルのキャッシュを検索し、次にユーザーフォルダーとローカルドライブを検索します。モデルを選択してください。共有ファイルはそのまま残ります。",
+"Disconnect this shared model? Its files stay available to other applications.": "この共有モデルを切断しますか？ファイルは他のアプリケーションから引き続き利用できます。",
 }
 
 
 # --- Korece ---
 KO1 = {
 "Preparing installation. Approve the Windows permission request; this window stays open until setup is ready.": "설치를 준비하고 있습니다. Windows 권한 요청을 승인하세요. 설치 프로그램이 준비될 때까지 이 창은 열린 상태로 유지됩니다.",
-"Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "먼저 WordArc, Hermes, 모델 캐시를 검색한 다음 사용자 폴더와 로컬 드라이브를 검색하세요. 모델을 선택하세요. 공유 파일은 그대로 유지됩니다.",
 "not_checked": "확인 안 됨",
 "Could not save settings": "설정을 저장할 수 없습니다",
 "Close": "닫기",
@@ -8143,7 +8112,6 @@ KO1 = {
 "Find engines and models…": "엔진 및 모델 찾기…",
 "Find local speech models": "로컬 음성 모델 찾기",
 "Your models, already on this computer": "사용자 모델, 이미 이 컴퓨터에 있음",
-"Search WordArc, Hermes, Hugging Face and your user folders. Choose a model and where it runs; shared files stay in place.": "WordArc, Hermes, Hugging Face 및 사용자 폴더를 검색하세요. 모델과 실행 위치를 선택하세요. 공유 파일은 그대로 유지됩니다.",
 "Preparing scan…": "검사 준비 중…",
 "Scan progress": "검사 진행률",
 "Discovered models": "발견된 모델",
@@ -8169,7 +8137,6 @@ KO1 = {
 "Validating the selected model and engine…": "선택한 모델 및 엔진 검증 중…",
 "Could not use this model: {error}": "이 모델을 사용할 수 없습니다: {error}",
 "Disconnect": "연결 해제",
-"Disconnect this shared model? Its files stay available to Hermes and other applications.": "이 공유 모델의 연결을 해제할까요? 파일은 Hermes 및 다른 앱에서 계속 사용할 수 있습니다.",
 "ready": "준비됨",
 "unavailable": "사용 불가",
 "unverified": "미검증",
@@ -8704,7 +8671,6 @@ KO5 = {
 "It was not allowed to use: {tools}": "사용이 허용되지 않았습니다: {tools}",
 "The model returned an empty reply.": "모델이 빈 응답을 반환했습니다.",
 "Agent": "에이전트",
-"This shortcut records the same way dictation does, but the transcript is not what gets pasted. It goes to an agent as a command, and what comes back is pasted instead: the answer to a question, or a sentence saying what was done. Claude Code and Codex run as the session you would have opened yourself, with your skills, your connected services and your account.": "이 단축키는 받아쓰기와 같은 방식으로 녹음하지만, 붙여넣어지는 것은 받아쓰기 결과가 아닙니다. 그 텍스트는 명령으로 에이전트에 전달되고, 대신 돌아온 내용이 붙여넣어집니다. 질문에 대한 답이나 무엇을 했는지 알려주는 한 문장입니다. Claude Code와 Codex는 직접 열었을 세션 그대로 실행되며, 스킬과 연결된 서비스, 계정이 함께 쓰입니다.",
 "account.": "계정.",
 "How it runs": "실행 방식",
 "Runs on": "실행 위치",
@@ -8785,7 +8751,6 @@ KO6 = {
 "More thinking is slower, and you are standing in front of the screen while it happens. Worth it for a job that has to be worked out rather than looked up.": "더 많이 생각할수록 느려지고, 그동안 당신은 화면 앞에 서 있게 됩니다. 찾아보면 되는 일이 아니라 풀어내야 하는 일에 값어치가 있습니다.",
 "{binary} is not on your PATH, so this cannot run yet. Install it, or pick another one above.": "{binary}이(가) PATH에 없어 아직 실행할 수 없습니다. 설치하거나 위에서 다른 것을 선택하세요.",
 "A name like “sonnet” always means the newest model of that line. Opus thinks harder and answers slower, which is felt here more than anywhere else: you are standing in front of the screen.": "“sonnet” 같은 이름은 항상 해당 계열의 최신 모델을 뜻합니다. Opus는 더 깊이 생각하고 더 느리게 답하는데, 그 차이는 어디보다 여기서 크게 느껴집니다. 화면 앞에서 기다리고 있기 때문입니다.",
-"The directory the command runs in, which decides which project's instructions and files it can see. Your own skills and services are there whichever one it is.": "명령이 실행되는 디렉터리로, 어느 프로젝트의 지침과 파일을 볼 수 있는지 결정합니다. 어느 디렉터리든 자신의 스킬과 서비스는 그대로 있습니다.",
 "A command still running after this is given up on. The tray menu can stop one earlier.": "이 시간이 지나도 실행 중인 명령은 포기됩니다. 트레이 메뉴에서 더 일찍 중지할 수 있습니다.",
 "Commands within this long of each other are one conversation, so “and move that to Thursday” knows what “that” is. After it, the next command starts fresh.": "이 시간 안에 이어서 내린 명령은 하나의 대화로 처리되므로 “그거 목요일로 옮겨”라고 해도 “그거”가 무엇인지 압니다. 이 시간이 지나면 다음 명령은 새로 시작합니다.",
 "Off by default: Claude reads through “erm” and “you know” without help, and cleanup costs an API call and a second or two.": "기본값은 꺼짐입니다. Claude는 “음”이나 “그러니까”를 도움 없이 잘 읽어내고, 정리에는 API 호출 한 번과 1~2초가 듭니다.",
@@ -8938,5 +8903,7 @@ KO7 = {
 "Files": "파일",
 "Recent": "최근",
 "Text and PDF files to turn into audio, in order.": "오디오로 변환할 텍스트 및 PDF 파일, 순서대로.",
+"Search WordArc and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "먼저 WordArc 및 모델 캐시를 검색한 다음 사용자 폴더와 로컬 드라이브를 검색하세요. 모델을 선택하세요. 공유 파일은 그대로 유지됩니다.",
+"Disconnect this shared model? Its files stay available to other applications.": "이 공유 모델의 연결을 해제할까요? 파일은 다른 애플리케이션에서 계속 사용할 수 있습니다.",
 }
 

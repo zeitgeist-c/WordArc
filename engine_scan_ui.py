@@ -37,7 +37,7 @@ class EngineScanDialog(QDialog):
         title.setStyleSheet("font-size: 20px; font-weight: 600;")
         title.setWordWrap(True)
         layout.addWidget(title)
-        subtitle = QLabel(t("Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place."))
+        subtitle = QLabel(t("Search WordArc and model caches first, then user folders and local drives. Choose a model; shared files stay in place."))
         subtitle.setObjectName("muted")
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)

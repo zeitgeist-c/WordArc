@@ -81,7 +81,6 @@ def name(text, case=""):
 TR = {
     "cancelled": "İptal edildi",
     "Preparing installation. Approve the Windows permission request; this window stays open until setup is ready.": "Kurulum hazırlanıyor. Windows izin isteğini onaylayın; kurulum hazır olana kadar bu pencere açık kalır.",
-    "Search WordArc, Hermes and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Önce WordArc, Hermes ve model önbellekleri, ardından kullanıcı klasörleri ve yerel diskler taranır. Modelinizi seçin; ortak dosyalar yerinde kalır.",
     "not_checked": "Henüz kontrol edilmedi",
     "Could not save settings": "Ayarlar kaydedilemedi",
     "Close": "Kapat",
@@ -90,7 +89,6 @@ TR = {
     "Find engines and models…": "Motor ve model bul…",
     "Find local speech models": "Bilgisayardaki ses modellerini bul",
     "Your models, already on this computer": "Modelleriniz zaten bilgisayarınızda olabilir",
-    "Search WordArc, Hermes, Hugging Face and your user folders. Choose a model and where it runs; shared files stay in place.": "WordArc, Hermes, Hugging Face ve kullanıcı klasörleriniz taranır. Modelinizi ve çalışacağı aygıtı seçin; ortak dosyalar yerinde kalır.",
     "Preparing scan…": "Tarama hazırlanıyor…",
     "Scan progress": "Tarama ilerlemesi",
     "Discovered models": "Bulunan modeller",
@@ -116,7 +114,6 @@ TR = {
     "Validating the selected model and engine…": "Seçtiğiniz model ve motor doğrulanıyor…",
     "Could not use this model: {error}": "Bu model kullanılamadı: {error}",
     "Disconnect": "Bağlantıyı kaldır",
-    "Disconnect this shared model? Its files stay available to Hermes and other applications.": "Bu ortak modelin bağlantısı kaldırılsın mı? Dosyalar Hermes ve diğer uygulamalar için yerinde kalır.",
     "ready": "Hazır",
     "unavailable": "Kullanılamıyor",
     "unverified": "Bulundu; seçimde doğrulanacak",
@@ -848,18 +845,6 @@ TR = {
 
     # --- settings: the agent ------------------------------------------------
     "Agent": "Ajan",
-    "This shortcut records the same way dictation does, but the transcript is "
-    "not what gets pasted. It goes to an agent as a command, and what comes "
-    "back is pasted instead: the answer to a question, or a sentence saying "
-    "what was done. Claude Code and Codex run as the session you would have "
-    "opened yourself, with your skills, your connected services and your "
-    "account.":
-        "Bu kısayol dikte ile aynı şekilde kaydeder, ama yapıştırılan şey "
-        "transkript değildir. Transkript bir ajana komut olarak gider ve yerine "
-        "oradan döneni yapıştırılır: bir sorunun cevabı ya da ne yapıldığını "
-        "söyleyen bir cümle. Claude Code ve Codex, kendi açacağın oturumun "
-        "aynısı olarak çalışır: skill'lerinle, bağlı servislerinle ve kendi "
-        "hesabınla.",
     "How it runs": "Nasıl çalışıyor",
     "Runs on": "Şunun üstünde çalışır",
     "Where it runs": "Nerede çalışsın",
@@ -900,12 +885,6 @@ TR = {
     "Only what needs no permission": "Yalnızca izin gerektirmeyenler",
     "Working directory": "Çalışma dizini",
     "Choose…": "Seç…",
-    "The directory the command runs in, which decides which project's "
-    "instructions and files it can see. Your own skills and services are there "
-    "whichever one it is.":
-        "Komutun içinde çalıştığı dizin; hangi projenin talimatlarını ve "
-        "dosyalarını göreceğini bu belirler. Kendi skill'lerin ve servislerin "
-        "hangi dizin olursa olsun oradadır.",
     "Give up after": "Şu süreden sonra vazgeç",
     "A command still running after this is given up on. The tray menu can stop "
     "one earlier.":
@@ -1166,6 +1145,12 @@ def _merge(*parts):
     for p in parts:
         m.update(p or {})
     return m
+
+
+TR.update({
+    "Search WordArc and model caches first, then user folders and local drives. Choose a model; shared files stay in place.": "Önce WordArc ve model önbellekleri, ardından kullanıcı klasörleri ve yerel diskler taranır. Modelinizi seçin; ortak dosyalar yerinde kalır.",
+    "Disconnect this shared model? Its files stay available to other applications.": "Bu ortak modelin bağlantısı kaldırılsın mı? Dosyalar diğer uygulamalar için yerinde kalır.",
+})
 
 
 TABLES = {
