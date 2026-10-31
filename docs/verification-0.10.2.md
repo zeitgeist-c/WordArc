@@ -1,57 +1,44 @@
-# WordArc 0.10.2 — 24.10.2026 güncelleme denetimi
+# WordArc 0.10.2 — verification (October 24, 2026)
 
-Kullanıcı ekranında denetim `Denetleniyor…` durumunda kalıyor. Mevcut uygulama
-logunda aynı yolun üç hatası görüldü (09:30, 12:34, 13:27): `_UpdateWorker.run`
-→ `update.fetch_latest` → `urllib.request.urlopen` → varsayılan SSL context
-oluşturulurken `ssl.SSLError: [X509] BIO lib`. Bu hata UpdateError olmadığı için
-worker'dan kaçıyor; ne sonuç ne hata sinyali gönderiliyor. Önceki kabul yalnız
-kaynak HTTP isteğini sınamıştı; donmuş uygulamanın arayüz denetimini kapsamıyordu.
+The update check could hang on `Checking…`: an SSL error raised while the
+default certificate store loaded escaped the worker, so neither a result
+nor an error ever reached the UI.
 
-## Düzeltme
+## Fix
 
-- Güncelleme sorgusu ve indirmesi, paketlenen certifi CA verisinden açıkça HTTPS
-  context oluşturur ve bellekte tutar. `CERT_REQUIRED` ve hostname doğrulaması
-  açık kalır; doğrulama devre dışı bırakılmaz. Varsayılan Windows sertifika
-  yükleyicisinin BIO hatasına sebep olan yol kullanılmaz.
-- SSL/ağ/bozuk JSON hata yolları UpdateError olur. Worker beklenmeyen istisnaları
-  da loglayıp arayüze terminal hata sinyali iletir.
-- 30 saniyelik Qt zamanlayıcısı, uzun süren denetimi sonuçlandırır. Düğme yeniden
-  kullanılabilir olur. Her denetimin kimliği vardır; süresi dolmuş isteğin geç
-  cevabı sonraki denetimin durumunu değiştiremez.
-- Yeniden deneme eski indirme teklifini temizler; güncel/hata sonucu butonları
-  tutarlı biçimde geri getirir.
-- `--update-check --output <json>` yalnız açık tanılama kipidir. Gerçek worker,
-  Qt sinyalleri, durum metodu ve HTTPS yolunu kullanır; kullanıcı ayarı, kayıt,
-  kimlik bilgisi ya da kurulu uygulama üzerinde değişiklik yapmaz.
+- The update query and the download build their HTTPS context explicitly
+  from the packaged certifi CA roots and keep it in memory. `CERT_REQUIRED`
+  and hostname verification stay on; verification is never disabled.
+- SSL, network, and malformed-response paths all become UpdateError. The
+  worker also logs unexpected exceptions and forwards a terminal error to
+  the UI.
+- A 30-second Qt timer settles a long check and re-enables the button. Every
+  check has an identity; a late reply from an expired check cannot change a
+  later check's state.
+- Retrying clears the stale download offer; up-to-date and error outcomes
+  restore the buttons consistently.
 
-## Doğrulama
+## Verification
 
-- Düzeltme öncesi logdaki SSL hatasını temsil eden iki test başarısızdı;
-  düzeltme sonrası güncelleme/arayüz grubu 95 test geçti.
-- Tam grup: **710 passed, 2 skipped, 12 subtests**, 83,10 s.
-- `check.ps1 -Audit` import/derleme/installer kontrolleri ve bağımlılık denetimi
-  geçti; bilinen açık bulunmadı.
-- Gerçek kaynak Ayarlar penceresinde düğmeye tıklanarak kontrol tamamlandı;
-  güncel sürüm sonucu ve etkin düğme doğrulandı. Kaynak tanılama JSON'u: başarı,
-  state=latest, check_enabled=true, tls_verified=true, yaklaşık 0,80 s.
-- Donmuş uygulama kabulü artık `verify_release_package.py` kapısına dahildir:
-  gerçek GitHub isteği + Qt callback sonucu + sertifika doğrulaması zorunludur.
-- Teslimin iç EXE'sinde gerçek HTTPS + Qt denetimi **0,35 s** içinde latest
-  sonucuyla tamamlandı. İzole `--version` 4,51 s (EXE açılımı dahil).
-  Gömülü kaynak, sürüm, varlık, motor manifesti ve onarım ZIP'i doğrulandı.
-- `WordArc-0.10.2.exe`: 312221827 bayt; SHA256
+- The two tests reproducing the logged SSL failure failed before the fix;
+  after it, the update/UI group passes (full suite **710 passed, 2 skipped,
+  12 subtests**).
+- Audit gates (imports, build, installer flags, dependency scan) passed with
+  no known issues.
+- Real click-through on a Settings window completed the check with an
+  up-to-date result and a live button (~0.80 s, TLS verified).
+- Frozen-app acceptance is now part of `verify_release_package.py`: a real
+  GitHub request plus Qt callback result plus certificate verification.
+- Shipped inner EXE: real HTTPS + Qt check in **0.35 s** with a latest
+  result; isolated `--version` 4.51 s (extraction included). Embedded source,
+  version, assets, engine manifest, and repair ZIP verified.
+- `WordArc-0.10.2.exe`: 312,221,827 bytes; SHA256
   `b5db20fa2c4fbcfb2ed7359a4231de82dff0a060d212153aab8a5c383252358e`.
-  `WordArcVulkan-1.9.2.zip` değişmedi: 19741654 bayt; SHA256
-  `a38e401921fecb9e5b71f95b84405a6d88a2d9ec816a53ccd586af309abc0786`.
+  `WordArcVulkan-1.9.2.zip` unchanged.
 
-## Sınırlar
+## Limits
 
-SSL context'in eski pakette neden BIO hatası verdiği, belirli bir Windows
-sertifikasının bozuk olduğu anlamına gelmez; tek bir sertifika/kayıt kök nedeni
-kanıtlanmadı. Kanıtlanan neden SSL yükleme hatasının yakalanmaması ve arayüze
-sonuç iletilmemesidir. Ağ işlemi yapan Python thread'i zorla öldürülmez; zaman
-aşımından sonraki yanıtı yok sayılır. Kurulu eski uygulama otomatik değiştirilmez.
-
-Önceden bulunan `installer/wordarc.iss` AppPublisher=Geeker değişikliği korunur
-ve sürüm commit'ine alınmaz. Derleme ayrı kopyada bu dosyanın HEAD sürümüyle
-yapılır. Kaynak deposu private kalır; dağıtım `WordArc-Releases` deposundadır.
+The single root cause (one bad certificate vs. store loading) was not
+proven; what is proven is that a store-loading failure is now caught and
+reported. Python threads doing network I/O are never killed; a post-timeout
+reply is ignored. An installed app is never replaced automatically.
