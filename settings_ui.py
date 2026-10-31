@@ -812,28 +812,6 @@ class FitsOnScreenCombo(QComboBox):
         else:
             super().keyPressEvent(event)
 
-    def _reposition_popup(self):
-        """Slide an already-open popup back onto the screen.
-
-        Separate from _open_where_it_fits because by the time a key arrives the
-        list has scrolled, so the height is Qt's to decide and only the
-        position is ours to fix.
-        """
-        popup = self.view().window()
-        if not popup.isVisible():
-            return
-        screen = self.screen() or QGuiApplication.primaryScreen()
-        if screen is None:
-            return
-        avail = screen.availableGeometry()
-        rect = popup.geometry()
-        if rect.bottom() <= avail.bottom() and rect.top() >= avail.top():
-            return
-        if rect.height() <= avail.height():
-            y = min(max(rect.y(), avail.top()),
-                    avail.bottom() - rect.height() + 1)
-            popup.setGeometry(rect.x(), y, rect.width(), rect.height())
-
 
 class HotkeyEdit(QWidget):
     """Press-to-assign shortcut field, game-style.
@@ -4146,12 +4124,6 @@ class SettingsWindow(QDialog):
         self.update_install_button.setEnabled(False)
         self.update_cancel_button.setEnabled(False)
         self.update_check_button.setEnabled(False)
-
-    def show_update_ready(self, version):
-        self.update_progress.setVisible(False)
-        self.update_status.setText(t(
-            "Version {version} is ready. WordArc will restart to finish.").format(
-                version=version))
 
     # ---- minutes ---------------------------------------------------------
 

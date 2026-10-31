@@ -252,19 +252,6 @@ class MeterPreview(QWidget):
             set_meter(saved)
 
 
-def show_live_text_enabled():
-    """Whether the interim transcript is drawn on the recording ribbon."""
-    return _SHOW_LIVE_TEXT
-
-
-_SHOW_LIVE_TEXT = True
-
-
-def set_show_live_text(enabled):
-    global _SHOW_LIVE_TEXT
-    _SHOW_LIVE_TEXT = bool(enabled)
-
-
 def set_theme(colors):
     """Apply the central WordArc palette to existing and future overlays."""
     global BG, BORDER, TEXT, MUTED, BUSY, THEM, ASK, STATE_COLORS
@@ -554,15 +541,6 @@ class Overlay(QWidget):
                          self.levels, REC, style=style)
         _draw_meter_into(painter, QRectF(46.0, 4.0 + half, span, half),
                          self.levels2, THEM, style=style)
-
-    def _draw_live_caption(self, painter, accent):
-        """Kept for the record: the interim transcript is no longer drawn.
-
-        Live dictation now shows the same meter as every other recording —
-        the words arrive when the recording ends. Nothing calls this; the
-        method stays one release so an old call site cannot break a build.
-        """
-        return
 
     def _draw_indicator(self, painter, accent):
         cx, cy = 26.0, self.height() / 2
