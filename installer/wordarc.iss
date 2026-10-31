@@ -153,6 +153,67 @@ begin
   Result := ExpandConstant('{param:WORDARC_MANAGED|0}') <> '1';
 end;
 
+{ Backstop for manual runs: the in-app updater closes the program itself, but
+  a setup started by hand (or a stray second copy) still holds the target
+  files and
+  RestartManager cannot close versions that only hide to the tray. Ask once,
+  then terminate every WordArc.exe running from the target directory. Silent
+  managed updates never kill: the supervisor owns that lifecycle, and a stray
+  copy there might be recording. }
+function CloseLingeringCopies(const Dir: String): String;
+var
+  WMI, Service, Procs, Proc: Variant;
+  ExePath, Msg: String;
+  i, Answer, n: Integer;
+  Turkish: Boolean;
+begin
+  Result := '';
+  if (Dir = '') or (not NotManagedUpdate()) then
+    Exit;
+  try
+    WMI := CreateOleObject('WbemScripting.SWbemLocator');
+    Service := WMI.ConnectServer('.', 'root\CIMV2');
+    Procs := Service.ExecQuery(
+      'SELECT ExecutablePath FROM Win32_Process WHERE Name="WordArc.exe"');
+  except
+    Exit; { No WMI: leave it to RestartManager's own dialog. }
+  end;
+  Turkish := CompareText(ActiveLanguage(), 'turkish') = 0;
+  n := Procs.Count;
+  for i := 0 to n - 1 do
+  begin
+    Proc := Procs.ItemIndex(i);
+    try
+      ExePath := Lowercase(String(Proc.ExecutablePath));
+    except
+      ExePath := '';
+    end;
+    if (ExePath = '') or (Pos(Lowercase(RemoveBackslash(Dir)), ExePath) <> 1) then
+      Continue;
+    if Turkish then
+      Msg := 'WordArc şu anda çalışıyor ve kurulumun değiştirmesi gereken ' +
+        'dosyaları tutuyor. Kapatılıp kuruluma devam edilsin mi?' + #13#10#13#10 +
+        'Devam eden bir kayıt varsa kaybolur.'
+    else
+      Msg := 'WordArc is currently running and holding files the setup must ' +
+        'replace. Close it and continue?' + #13#10#13#10 +
+        'Any recording in progress will be lost.';
+    Answer := MsgBox(Msg, mbConfirmation, MB_YESNO);
+    if Answer <> IDYES then
+    begin
+      if Turkish then
+        Result := 'Kurulum iptal edildi.'
+      else
+        Result := 'Installation cancelled.';
+      Exit;
+    end;
+    try
+      Proc.Terminate();
+    except
+    end;
+  end;
+end;
+
 function KeepDesktopLink(): Boolean;
 begin
   Result := WizardIsTaskSelected('desktopicon') or
@@ -234,6 +295,10 @@ begin
     end;
     Sleep(1000); { Allow the one-file bootloader to release the executable. }
   end;
+  { Manual runs have no old-PID wait above; stray copies are asked about here.
+    A non-empty answer aborts with that message. }
+  if Result = '' then
+    Result := CloseLingeringCopies(ExpandConstant('{app}'));
 end;
 
 procedure CleanPreviousInstall();
@@ -329,9 +394,20 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
+    { A skipped locked file leaves the old exe behind: refuse to declare
+      success instead of leaving a half-installed program. }
     if GetSHA256OfFile(ExpandConstant('{app}\WordArc.exe')) <>
        GetSHA256OfFile(ExpandConstant('{tmp}\WordArc.exe')) then
-      RaiseException('Installed WordArc does not match the verified payload.');
+    begin
+      if CompareText(ActiveLanguage(), 'turkish') = 0 then
+        RaiseException('Yeni dosyalar yazılamadı (kilitli bir dosya ' +
+          'atlanmış olabilir). Önceki sürüm duruyor; WordArc kapalı iken ' +
+          'kurulumu yeniden çalıştırın.')
+      else
+        RaiseException('The new files could not be written (a locked file ' +
+          'may have been skipped). The previous version is still installed; ' +
+          'close WordArc and run setup again.');
+    end;
 #ifndef WordArcTest
     if NotManagedUpdate() then
       CleanOldPortable();
