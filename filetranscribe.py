@@ -84,8 +84,8 @@ class FileTranscriber(QObject):
                 self.progress.emit(t("Splitting into {count} chunks…", count=len(chunks)))
 
             keys = conf.gemini_keys()
-            # Yerel transkripsiyon + temizleme kapalıysa buluta hiç
-            # gidilmez; sıra o zaman oynamaz.
+            # If local transcription + cleanup are both off, the cloud is never
+            # called; the order does not move in that case.
             uses_cloud = (conf.get("transcribe_engine") != "local"
                           or do_cleanup)
             start = conf.claim_api_slot(len(keys)) if uses_cloud else 0
@@ -148,8 +148,8 @@ class FileTranscriber(QObject):
             self.progress.emit(t("Stopped."))
         except (api.ApiError, localspeech.LocalSpeechError, OSError,
                 subprocess.SubprocessError, wave.Error) as exc:
-            # Yalnız API hatası sırayı ilerletir; iptal yukarıdaki dalda
-            # tutulur ve sıraya dokunmaz.
+            # Only an API error advances the order; a cancellation is kept in the
+            # branch above and never touches the order.
             if uses_cloud and isinstance(exc, api.ApiError):
                 conf.record_api_attempt(client.active_slot, len(keys))
             self.failed.emit(str(exc))

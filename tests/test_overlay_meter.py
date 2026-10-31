@@ -1,10 +1,10 @@
-"""Ses göstergesi biçimleri: seçim, çizim ve birbirinden ayrışma.
+"""Sound meter styles: selection, drawing and how they differ.
 
-0.7.2'de dört biçim vardı ama Spectrum ile Capsules %88 aynı çiziyordu —
-ayarlardan seçmenin anlamı kalmamıştı. Ayrıca `set_meter` modül geneli olduğu
-için dört Overlay'i aynı anda gösterip tek karede yakalamak imkânsız: hepsi
-son stille çizilir. Bu yüzden ölçüm, üretimin kendi çizim fonksiyonuna
-doğrudan verilir.
+0.7.2 shipped four styles, but Spectrum and Capsules drew 88% the same — the
+choice in Settings no longer meant anything. On top of that, because
+`set_meter` is module-wide, showing four Overlays at once and capturing a
+single frame is impossible: they all draw with the last style. So the
+measurement feeds production's own drawing function directly.
 """
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -21,7 +21,7 @@ _APP = QApplication.instance() or QApplication([])
 
 
 def _render(style, width=240, height=46):
-    """Bir stili sabit bir tuvale çiz: üretimin kendi fonksiyonuyla."""
+    """Draw one style onto a fixed canvas, with production's own function."""
     image = QImage(width, height, QImage.Format.Format_ARGB32)
     image.fill(0)
     painter = QPainter(image)
@@ -34,7 +34,7 @@ def _render(style, width=240, height=46):
 
 
 def _features(style, width=240, height=46):
-    """(ayrı blok, en geniş blok, renkli sütun) — çizimin yapısal imzası."""
+    """(separate runs, widest run, coloured columns) — the drawing's structural signature."""
     image = _render(style, width, height)
     columns = {}
     for y in range(height):
@@ -72,7 +72,7 @@ def _box(style, state="recording"):
 
 
 def _ribbon_counts(box):
-    """Gerçek şeritte kırmızı (mikrofon) ve mavi (karşı taraf) piksel sayısı."""
+    """Pixel counts of red (microphone) and blue (other party) in the real ribbon."""
     image = QImage(box.width(), box.height(), QImage.Format.Format_ARGB32)
     image.fill(0)
     painter = QPainter(image)
@@ -141,41 +141,41 @@ def test_meeting_channels_share_the_curve_and_start_silent():
 
 @pytest.mark.parametrize("style", STYLES)
 def test_every_style_draws_something(style):
-    """Çizim var: göze görünür bir iz (dalga tek bloktur, çubuklar çok)."""
+    """There is drawing: a visible mark (the wave is one run, the bars are many)."""
     runs, _widest, pixels = _features(style)
     assert runs >= 1 and pixels > 30, (style, runs, pixels)
 
 
 @pytest.mark.parametrize("style", STYLES)
 def test_every_style_draws_on_a_ribbon(style):
-    """Şeritte de çiziyor: bu kez gerçek Overlay üzerinden."""
+    """It draws on the ribbon too: this time through the real Overlay."""
     red, _cyan = _ribbon_counts(_box(style))
     assert red > 40, (style, red)
 
 
 def test_every_style_has_its_own_signature():
-    """Her biçimin yapısal imzası farklı olmalı.
+    """Every style must have its own structural signature.
 
-    0.7.2'de Spectrum ile Capsules %88 aynı çiziyordu; seçim hiçbir şey
-    değiştirmiyordu. İmzaların eşitliği o hatanın geri geldiğini gösterir.
+    In 0.7.2 Spectrum and Capsules drew 88% the same; the choice changed
+    nothing. Equal signatures mean that bug is back.
     """
     signatures = {style: _features(style) for style in STYLES}
     seen = {}
     for style, signature in signatures.items():
         assert signature[2] > 30, (style, signature)
         assert signature not in seen, \
-            f"{style} ile {seen.get(signature)} aynı imza: {signature}"
+            f"{style} and {seen.get(signature)} share a signature: {signature}"
         seen[signature] = style
 
 
 def test_name_matches_shape():
-    """Adı neyse çizimi o: çubuk ince, dalga tek gövde, kapsül kalın."""
+    """The name matches the shape: bars thin, the wave one body, the capsule thick."""
     bars_runs, bars_widest, _ = _features("bars")
     wave_runs, wave_widest, _ = _features("wave")
     capsule_runs, capsule_widest, _ = _features("capsule")
     spectrum_runs, spectrum_widest, _ = _features("spectrum")
-    assert bars_runs >= 20, bars_runs            # ince tarak: çok blok
-    assert wave_runs == 1, wave_runs              # tek gövde
+    assert bars_runs >= 20, bars_runs            # thin comb: many runs
+    assert wave_runs == 1, wave_runs              # a single body
     assert wave_widest >= 100, wave_widest
     assert capsule_widest > bars_widest + 3, (bars_widest, capsule_widest)
     assert 8 <= spectrum_runs <= 24, spectrum_runs
@@ -183,19 +183,19 @@ def test_name_matches_shape():
 
 
 def test_signatures_stay_distinct_on_a_narrow_ribbon():
-    """Dar şeritte (170 px) de dördü ayrı kalmalı."""
+    """All four must stay distinct on a narrow ribbon (170 px) too."""
     signatures = {style: _features(style, width=170, height=56)
                   for style in STYLES}
     seen = {}
     for style, signature in signatures.items():
         assert signature[2] > 30, (style, signature)
         assert signature not in seen, \
-            f"dar şeritte {style} ile {seen.get(signature)} aynı imza"
+            f"on the narrow ribbon {style} and {seen.get(signature)} share a signature"
         seen[signature] = style
 
 
 def test_meeting_shows_both_channels():
-    """Toplantı görünümü seçilen biçimle, iki kanal hâlinde çizilir."""
+    """The meeting view is drawn in the chosen style, as two channels."""
     for style in STYLES:
         red, cyan = _ribbon_counts(_box(style, state="meeting"))
         assert red > 20 and cyan > 20, (style, red, cyan)
@@ -211,20 +211,20 @@ def test_unknown_style_keeps_the_current_one():
 
 def test_live_text_is_no_longer_painted():
     box = _box("spectrum")
-    box.show_live_text("merhaba dünya bu metin çizilmemeli")
+    box.show_live_text("hello world this text must not be painted")
     assert box.message == ""
 
 
 def test_ribbon_stays_compact_in_every_style():
     for style in STYLES:
         box = _box(style)
-        box.show_live_text("uzun bir cümle şeridi büyütmemeli")
+        box.show_live_text("a long sentence must not grow the ribbon")
         assert overlay.MIN_WIDTH <= box.width() <= overlay.MAX_WIDTH
         assert box.height() == overlay.HEIGHT
 
 
 def test_preview_widget_uses_the_same_drawing():
-    """Ayarlardaki önizleme üretim çizimini kullanır (kopya değil)."""
+    """The preview in Settings uses the production drawing (not a copy)."""
     frames = {}
     for style in STYLES:
         widget = overlay.MeterPreview(style)

@@ -1,8 +1,8 @@
-"""Canlı diktede ses dalgası: seviye sinyali bağlı mı?
+"""Live dictation waveform: is the level signal connected?
 
-Kullanıcı 0.7.2'de canlı diktede dalganın hiç oynamadığını bildirdi.
-Kök neden: LiveStreamer.level sinyali hiçbir yere bağlanmamıştı, bu yüzden
-overlay'in seviye listesi hep 0.0 kalıyor ve çubuklar en kısa hâlde çiziliyordu.
+A user reported in 0.7.2 that the waveform never moved during live dictation.
+Root cause: LiveStreamer.level was never connected to anything, so the
+overlay's level list stayed at 0.0 and the bars were drawn at their shortest.
 """
 import os
 
@@ -23,7 +23,7 @@ _QT_APP = QApplication.instance() or QApplication([])
 
 
 class _FakeStreamer(QObject):
-    """Gerçek LiveStreamer yerine: sinyalleri taşır, cihaz açmaz."""
+    """Stands in for the real LiveStreamer: carries signals, opens no device."""
 
     chunk = pyqtSignal(bytes)
     level = pyqtSignal(float)
@@ -80,22 +80,22 @@ def _controller():
 
 
 def test_live_level_signal_reaches_the_overlay():
-    """Asıl sözleşme: canlı yakalayıcıdan gelen seviye overlay'e ulaşmalı."""
+    """The real contract: a level from the live capture must reach the overlay."""
     controller = _controller()
-    # Üretimdeki bağlantıyı kur (__init__ bu testte çalışmıyor).
+    # Wire it the way production does (__init__ does not run in this test).
     controller.live_streamer.level.connect(controller._on_level)
     controller.overlay.levels = [0.0] * overlay.BARS
     controller.live_streamer.level.emit(0.85)
     _QT_APP.processEvents()
-    assert max(controller.overlay.levels) > 0.5, "seviye overlay'e ulaşmadı"
+    assert max(controller.overlay.levels) > 0.5, "level did not reach the overlay"
 
 
 def test_production_init_connects_the_streamer_level():
-    """__init__ gerçekten bağlıyor mu: kaynak düzeyinde kontrol."""
+    """Does __init__ really connect it: a source-level check."""
     import inspect
     source = inspect.getsource(wordarc.WordArc.__init__)
     assert "live_streamer.level.connect" in source, \
-        "canlı yakalayıcının level sinyali bağlanmamış"
+        "the live capture's level signal is not connected"
 
 
 def _ink(box):
@@ -118,7 +118,7 @@ def _ink(box):
 
 
 def test_pushed_levels_move_the_meter():
-    """Seviyeler geldikçe dalga gerçekten değişmeli (piksel ölçümü)."""
+    """The waveform must really change as levels arrive (pixel measurement)."""
     for style in ("bars", "spectrum", "wave", "capsule"):
         overlay.set_meter(style)
         box = overlay.Overlay()
@@ -132,7 +132,7 @@ def test_pushed_levels_move_the_meter():
 
 
 def test_streamer_emits_level_from_callback():
-    """audio.LiveStreamer._callback gerçekten level yayıyor mu."""
+    """Does audio.LiveStreamer._callback really emit a level."""
     streamer = audio.LiveStreamer()
     seen = []
     streamer.level.connect(seen.append)

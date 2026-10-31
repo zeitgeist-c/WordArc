@@ -442,7 +442,7 @@ def _play_pcm(audio, stop, timeout=None):
     """Play mono float32 audio without ever hanging the worker thread.
 
     The old blocking-write loop could stall forever inside PortAudio
-    (no error, no sound, busy stuck, Durdur useless). This version feeds
+    (no error, no sound, busy stuck, Stop useless). This version feeds
     a callback stream and watches a deadline: stop aborts within a
     buffer, a stalled device aborts as a timeout error.
     """

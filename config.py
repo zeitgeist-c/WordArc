@@ -127,7 +127,7 @@ code fence. Add no text for an empty source."""
 
 
 def translate_prompt(mode):
-    """'game' -> oyun promptu, diğer her şey -> akademik prompt."""
+    """'game' -> game prompt, everything else -> academic prompt."""
     return TRANSLATE_PROMPT_GAME if mode == "game" else TRANSLATE_PROMPT_ACADEMIC
 
 # A file transcript is not dictation: it becomes subtitles, and a subtitle is read
@@ -392,14 +392,14 @@ da senin soracağın soruya verilecek bir yanıt yok.
 
 DEFAULTS = {
     "config_schema": CONFIG_SCHEMA,
-    "ui_language": "en",                # 13 dil kodu; boş/legacy 'auto' -> 'en'
+    "ui_language": "en",                # 13 language codes; empty/legacy 'auto' -> 'en'
     "theme_mode": "dark",               # dark | light
     "settings_size": [],                # remembered settings window [w, h]; [] = auto
     "start_with_windows": True,
     "close_to_tray": True,
     "gemini_api_key": "",
-    "gemini_next_slot": 0,      # round-robin: sıradaki bulut işlemi hangi API slotundan başlar
-    "gemini_last_used": [],     # slot başına son başarılı kullanım (ISO-8601 str, "" = henüz yok)
+    "gemini_next_slot": 0,      # round-robin: which API slot the next cloud job starts from
+    "gemini_last_used": [],     # last successful use per slot (ISO-8601 str, "" = none yet)
     "gemini_transcribe_model": "gemini-3.5-flash-lite",
     # cloud | live | local — where dictation, audio files and meetings are transcribed.
     "transcribe_engine": "cloud",
@@ -476,7 +476,7 @@ DEFAULTS = {
     "assistant_paste": True,        # paste the answer, not just copy it
     "assistant_session_minutes": 30,  # 0 -> every command starts fresh
     "assistant_timeout": 240,
-    "translate_enabled": False,    # True -> temizleme yerine Ingilizce ceviri
+    "translate_enabled": False,    # True -> English translation instead of cleanup
     "translate_mode": "academic",      # academic | game
     "gemini_translate_model": "gemini-3.5-flash-lite",
 }
@@ -547,9 +547,9 @@ def _keep_unreadable_config():
 class Config:
     def __init__(self):
         self.data = dict(DEFAULTS)
-        # Taze kurulum: config dosyası daha önce yoktu (ilk açılış dil
-        # seçimi ve kurulum dilinin devralınması yalnız burada çalışır).
-        # Bozuk dosya fresh sayılmaz: kullanıcının ayarı vardı.
+        # Fresh install: there was no config file before (the first-run language
+        # choice and the handing over of the installer language run only here).
+        # A broken file does not count as fresh: the user had settings.
         self.fresh = not CONFIG_FILE.exists()
         self.load()
 
@@ -589,7 +589,7 @@ class Config:
                 self.data[key] = ""
         for key in ("cleanup_reasoning", "meeting_reasoning"):
             self.data[key] = {"none": "minimal", "xhigh": "high", "max": "high"}.get(self.data[key], self.data[key])
-        # Legacy 'auto'/bilinmeyen dil kayıtları açık İngilizce varsayılana çekilir.
+        # Legacy 'auto'/unknown language records are pulled to explicit English.
         self.data["ui_language"] = i18n.resolve(self.data.get("ui_language"))
         i18n.set_language(self.data["ui_language"])
 
@@ -722,9 +722,10 @@ class Config:
         return keys[0] if keys else ""
 
     # --- API rotation -----------------------------------------------------
-    # Birden fazla anahtar varsa her yeni bulut işlemi sıradaki slotla başlar.
-    # Sıra anahtar değerine değil listedeki konuma bağlıdır; damga yalnız
-    # başarılı işlemde yazılır, başarısız deneme sırayı sessizce ilerletir.
+    # With more than one key every new cloud job starts from the next slot.
+    # The order depends on the position in the list, not on the key value; the
+    # stamp is written only on a successful job, a failed attempt moves the
+    # order on silently.
 
     @staticmethod
     def _slot_total(n_keys):
@@ -735,7 +736,7 @@ class Config:
         return max(total, 0)
 
     def claim_api_slot(self, n_keys):
-        """Sıradaki bulut işlemi hangi slotla başlayacak (ilerletmeden)."""
+        """Which slot the next cloud job will start with (without advancing)."""
         total = self._slot_total(n_keys)
         if total <= 0:
             return 0
@@ -748,7 +749,7 @@ class Config:
         return slot
 
     def rotation_stamps(self, n_keys):
-        """Slot başına son kullanım damgaları, anahtar sayısına uyarlanmış."""
+        """Last-use stamps per slot, adjusted to the number of keys."""
         stamps = self.data.get("gemini_last_used") or []
         stamps = [stamp if isinstance(stamp, str) else "" for stamp in stamps]
         if len(stamps) < n_keys:
@@ -761,11 +762,12 @@ class Config:
         try:
             self.save()
         except OSError as exc:
-            # Ayar yazılamazsa sıra yalnız bellekte ilerler; işlem durmaz.
+            # If the setting cannot be written the order advances in memory only;
+            # the job does not stop.
             _log.warning("rotation state could not be saved (%s)", exc)
 
     def record_api_success(self, used_slot, n_keys):
-        """Başarılı işlem: damgayı yaz, sırayı bir sonraya al, kaydet."""
+        """Successful job: write the stamp, move the order forward, save."""
         import datetime
         total = self._slot_total(n_keys)
         if total <= 0:
@@ -781,7 +783,7 @@ class Config:
             self._store_rotation(stamps, nxt)
 
     def record_api_attempt(self, used_slot, n_keys):
-        """Başarısız işlem: damgaya dokunmadan sırayı bir sonraya al, kaydet."""
+        """Failed job: move the order forward without touching the stamp, save."""
         total = self._slot_total(n_keys)
         if total <= 0:
             return

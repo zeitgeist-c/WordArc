@@ -30,9 +30,9 @@ def test_keep_audio_keeps_the_recording_when_it_cannot_be_filed_away(caplog):
                                pathlib.Path(tmp) / "recordings"):
             with caplog.at_level("WARNING", logger="wordarc.worker"):
                 pipeline._discard(str(wav))
-        assert wav.exists(), "kayıt silinmemeliydi"
+        assert wav.exists(), "the recording must not have been deleted"
         assert any("could not file the recording away" in record.message
-                   for record in caplog.records), "sessiz kalmamalı"
+                   for record in caplog.records), "it must not stay silent"
 
 
 def test_keep_audio_files_the_recording_away():
@@ -60,7 +60,7 @@ def _dictation_conf(**overrides):
                       "cleanup_enabled": True, "translate_enabled": False,
                       "history_enabled": False,
                       "keep_audio": False, "auto_paste": True,
-                      # Sıra durumu gerçek kullanıcı ayarından sızmamalı.
+                      # Rotation state must not leak in from the real user settings.
                       "gemini_next_slot": 0, "gemini_last_used": []})
     conf.data.update(overrides)
     return conf
@@ -105,7 +105,7 @@ def test_successful_dictation_starts_at_claimed_slot_and_advances():
     assert len(finished) == 1 and not failures
     assert conf["gemini_next_slot"] == 0
     assert conf["gemini_last_used"][0] == ""
-    assert conf["gemini_last_used"][1] != "", "başarılı işlem damga yazmalı"
+    assert conf["gemini_last_used"][1] != "", "a successful run must write a stamp"
 
 
 def test_failed_dictation_advances_without_a_stamp():
@@ -113,9 +113,9 @@ def test_failed_dictation_advances_without_a_stamp():
     created, _client, finished, failures = _run_dictation(
         conf, ["k1", "k2"],
         transcribe_effect=worker.api.ApiError("busy", 429, "temporary"))
-    assert not finished and failures, "hata kullanıcıya ulaşmalı"
+    assert not finished and failures, "the error must reach the user"
     assert conf["gemini_next_slot"] == 1
-    assert conf["gemini_last_used"] == ["", ""], "başarısız deneme damga yazmamalı"
+    assert conf["gemini_last_used"] == ["", ""], "a failed attempt must not write a stamp"
 
 
 def test_local_dictation_without_cleanup_leaves_rotation_alone():
@@ -124,7 +124,7 @@ def test_local_dictation_without_cleanup_leaves_rotation_alone():
     assert len(finished) == 1 and not failures
     assert created["kwargs"]["start_slot"] == 0
     assert conf["gemini_next_slot"] == 0
-    assert conf["gemini_last_used"] == [], "bulut kullanılmadı, sıra oynamamalı"
+    assert conf["gemini_last_used"] == [], "the cloud was not used, rotation must not move"
 
 
 def test_local_dictation_with_cleanup_rotates_the_cleanup_api():
@@ -169,11 +169,12 @@ def test_stages_log_their_durations(caplog):
 
 
 def test_fallback_stage_names_the_failing_slot():
-    """Rotasyonda 'Default API' yalan söyler; mesaj giden slotu adıyla söyler."""
+    """'Default API' lies during rotation; the message names the slot it went to."""
     import i18n
     old_lang = i18n.language()
     conf = _dictation_conf()
-    # Config() dili saklanan ui_language'e sıfırlar; test dilini sonra kur.
+    # Config() resets the language to the stored ui_language; set the test
+    # language afterwards.
     i18n.set_language("en")
     try:
         pipeline = worker.Pipeline(conf)
@@ -228,7 +229,7 @@ def test_a_stop_during_cleanup_is_not_a_cleanup_failure():
         pipeline._work("no-such-recording.wav", 1.0, [], "op-1", auto_paste=True)
 
     assert seen["cancelled"] == 1
-    assert seen["finished"] == 0, "iptal edilen dikte yapıştırılmamalı"
+    assert seen["finished"] == 0, "a cancelled dictation must not be pasted"
     copied.assert_not_called()
     pressed.assert_not_called()
 
@@ -252,7 +253,7 @@ def test_a_failed_paste_puts_the_clipboard_back():
         pipeline._work("no-such-recording.wav", 1.0, [], "op-2", auto_paste=True)
 
     restored.assert_called_once_with(b"onceki icerik")
-    assert failures, "hata kullanıcıya ulaşmalı"
+    assert failures, "the error must reach the user"
 
 
 def test_transcript_entry_skips_transcription_but_cleans_and_pastes():

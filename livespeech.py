@@ -1,9 +1,9 @@
-"""Gemini Live API ile akan konuşma yazımı (üçüncü motor: ``live``).
+"""Streaming speech transcription over the Gemini Live API (third engine: ``live``).
 
-Bulut motoru (``api.py``) sesi kaydedip tek REST çağrısıyla yazıya çevirir;
-bu modül sesi 100 ms parçalar hâlinde websocket üzerinden akıtır ve ara
-metni daha kayıt sürerken verir. Harici bağımlılık yok: websocket el sıkışma
-ve çerçeveleme stdlib (``socket`` + ``ssl``) ile yapılır.
+The cloud engine (``api.py``) records the audio and transcribes it with one REST
+call; this module streams the audio over a websocket in 100 ms pieces and gives
+the interim text while the recording is still running. No external dependency:
+the websocket handshake and framing are done with stdlib (``socket`` + ``ssl``).
 """
 
 from __future__ import annotations
@@ -27,14 +27,14 @@ PATH = ("/ws/google.ai.generativelanguage.v1beta.GenerativeService."
 RATE = 16000
 WIDTH = 2
 CHUNK = 3200  # 100 ms, 1600 frames
-MAX_PCM = 8 * 60 * RATE * WIDTH  # yumuşak sınır: 8 dk (sunucu 10 dk keser)
-MIN_PCM = RATE * WIDTH // 5  # 0,2 sn altı kayıt sayılmaz
+MAX_PCM = 8 * 60 * RATE * WIDTH  # soft limit: 8 min (the server cuts at 10 min)
+MIN_PCM = RATE * WIDTH // 5  # anything under 0.2 s is not counted as a recording
 MIME = "audio/pcm;rate=16000"
 MODEL = "models/gemini-3.5-transcribe-live"
 
 
 class LiveSession:
-    """Tek canlı yazı oturumu: aç, PCM it, bitir ya da iptal et."""
+    """A single live transcription session: open, push PCM, finish or cancel."""
 
     def __init__(self, api_key, mode="SMART"):
         self._key = (api_key or "").strip()
@@ -63,10 +63,10 @@ class LiveSession:
     @classmethod
     def open_with_keys(cls, keys, mode="SMART", socket_factory=None,
                        should_stop=None):
-        """Sırayla anahtar dene; kurulumu kabul edeni döndür.
+        """Try the keys in order; return the one whose setup was accepted.
 
-        Bir oturum tek anahtar kullanır: kimlik hatası ortada değil,
-        açılışta belli olur, o yüzden failover burada, kayıt başlamadan.
+        A session uses a single key: an auth error shows up at open time, not
+        in the middle, so failover happens here, before the recording starts.
         """
         last_error = ""
         tried = 0
@@ -98,7 +98,7 @@ class LiveSession:
         }
 
     def preview(self):
-        """Kayıt sürerken ekrana basılacak metin (iplik güvenli)."""
+        """Text to put on screen while the recording runs (thread-safe)."""
         return self._text()
 
     def open(self, socket_factory=None):
@@ -239,8 +239,8 @@ class LiveSession:
             self._apply(message)
 
     def _collect_final(self):
-        # Sunucu bitiş işaretine generationComplete ile cevap verir (genelde
-        # 0,3-0,7 sn). Metin yatışınca da dönülür, sonsuz beklenmez.
+        # The server answers the end marker with generationComplete (usually
+        # 0.3-0.7 s). It is also returned once the text settles; no endless wait.
         self._drain(0)
         self._completed = False
         started = _now()
@@ -307,8 +307,8 @@ class LiveSession:
                     self._finals[-1] = text
                 elif text:
                     self._finals.append(text)
-                # Kesin metin, yerini aldığı aranın gerisinde kalabilir;
-                # aranın kalanı ekranda tutulur.
+                # The final text can lag behind the interim it replaced; the
+                # rest of the interim is kept on screen.
                 self._interim = _remainder(self._interim, text)
 
 
@@ -329,11 +329,11 @@ def _failure(message, key):
 
 
 class LiveError(Exception):
-    """Kullanıcıya gösterilebilir canlı-yazı hatası."""
+    """A live-transcription error that can be shown to the user."""
 
 
 class _Socket:
-    """Ham ya da TLS'li soket + okunmamış artı baytlar."""
+    """A raw or TLS socket plus the unread extra bytes."""
 
     def __init__(self, sock, leftover):
         self.sock = sock
@@ -371,7 +371,7 @@ def _read_message(holder, carry, timeout):
         if frame is None:
             return None
         fin, kind, payload = frame
-        if kind == 9:  # ping: pong yaz, kullanıcı mesajı beklemeye devam et
+        if kind == 9:  # ping: write pong, keep waiting for a user message
             _send_frame(holder, 10, payload)
             continue
         if kind == 8:
@@ -457,10 +457,10 @@ def _default_open(host, port, timeout):
 
 
 def _connect(key, socket_factory=None):
-    """TLS + websocket el sıkışması; hazır soketi döndürür.
+    """TLS + websocket handshake; returns a ready socket.
 
-    ``socket_factory`` yalnız testler içindir: (host, port, timeout)
-    alıp konuşmaya hazır soket verir, TLS sarma atlanır.
+    ``socket_factory`` is for tests only: it takes (host, port, timeout)
+    and returns a socket ready to talk, skipping the TLS wrap.
     """
     opener = socket_factory or _default_open
     try:
@@ -520,7 +520,7 @@ def _read_headers(sock):
 
 
 def _redact(text, key):
-    """Hata metninden API anahtarını ayıkla (log/ekran sızdırmasın)."""
+    """Strip the API key out of an error text (so logs/screens do not leak it)."""
     out = str(text or "")
     if key and len(key) >= 8:
         out = out.replace(key, "***")

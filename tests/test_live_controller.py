@@ -52,7 +52,7 @@ def _live_controller(**conf_overrides):
 
 
 class _InlineThread:
-    """threading.Thread yerine: run() çağrısını anında, aynı iplikte yapar."""
+    """Stands in for threading.Thread: runs run() at once, on the same thread."""
     def __init__(self, target=None, args=(), daemon=None):
         self._target = target
         self._args = args

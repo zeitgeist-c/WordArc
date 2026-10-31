@@ -107,10 +107,10 @@ class NativeHost:
         return False
 
     def report_failure(self, message, folder, recovered):
-        text = "Güncelleme tamamlanamadı.\n" + message + "\n\nKurulum günlüğü: " + str(folder / "setup.log")
+        text = "The update did not complete.\n" + message + "\n\nSetup log: " + str(folder / "setup.log")
         if recovered:
-            text += "\nÖnceki sürüm yeniden açıldı."
-        ctypes.windll.user32.MessageBoxW(None, text, "WordArc güncellemesi", 0x10)
+            text += "\nThe previous version was reopened."
+        ctypes.windll.user32.MessageBoxW(None, text, "WordArc update", 0x10)
 
 
 def clean_environment_from_job(environment):

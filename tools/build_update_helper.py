@@ -8,8 +8,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 DEST = ROOT / "tools" / "vendor" / "update-helper"
-# PyInstaller ara dosyaları proje .cache'inde antivirüs/dizin kilidine
-# takılabiliyor; ara çıktılar sistem geçici dizinine yazılır.
+# PyInstaller intermediate files can trip antivirus or directory locks inside
+# the project's .cache, so they are written to the system temp directory.
 WORK = Path(tempfile.gettempdir()) / "wordarc-update-helper-build"
 SPEC = Path(tempfile.gettempdir()) / "wordarc-update-helper-spec"
 

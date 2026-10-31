@@ -104,7 +104,7 @@ def _translate_conf(**overrides):
                       "translate_mode": "academic",
                       "history_enabled": False,
                       "keep_audio": False, "auto_paste": True,
-                      # Sıra durumu gerçek kullanıcı ayarından sızmamalı.
+                      # Rotation state must not leak in from the real user settings.
                       "gemini_next_slot": 0, "gemini_last_used": []})
     conf.data.update(overrides)
     return conf
@@ -173,7 +173,7 @@ class TestTranslatePipeline(unittest.TestCase):
         self.assertEqual(len(finished), 1)
         raw, text, warning, _op = finished[0]
         self.assertEqual(text, "ham metin")
-        self.assertTrue(warning, "hata gizlenmemeli")
+        self.assertTrue(warning, "the error must not be hidden")
 
     def test_history_holds_both_languages(self):
         conf = _translate_conf(translate_enabled=True, history_enabled=True)

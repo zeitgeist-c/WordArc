@@ -704,7 +704,7 @@ def _friendly_name(name):
     Windows hands PortAudio the raw driver string for the Bluetooth Hands-Free
     endpoint — "@System32\\drivers\\bthhfenum.sys,#2;%1 Hands-Free%0 ;(REDMI
     Buds 8 Lite)" — with the %1/%0 placeholders it normally fills in itself.
-    Rebuild it as "Kulaklık (REDMI Buds 8 Lite) — Hands-Free".
+    Rebuild it as "Headphones (REDMI Buds 8 Lite) — Hands-Free".
     """
     flat = " ".join((name or "").split())
     if "@" not in flat or "%" not in flat:

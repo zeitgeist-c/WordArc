@@ -1061,7 +1061,7 @@ TR = {
     "Delete this meeting, its minutes and its recording?":
         "Bu toplantı, tutanağı ve ses kaydı silinsin mi?",
 
-    # --- ic tasarim + dil temizligi -----------------------------------
+    # --- ui design + language cleanup ----------------------------------
     "File": "Dosya",
     "Models, language, startup and appearance.":
         "Modeller, dil, başlangıç ve görünüm.",

@@ -438,9 +438,10 @@ class TestStaleStreams(unittest.TestCase):
 class TestMicFailureDiagnostics(unittest.TestCase):
     """A microphone that will not open must say why, not just that it did not.
 
-    The frozen app once reported only "Mikrofon açılamadı." while the log
-    stayed silent about the PortAudio reason, so a busy or vanished device
-    could not be told apart from a broken one.
+    The frozen app once reported only "Mikrofon açılamadı." ("the microphone
+    could not be opened") while the log stayed silent about the PortAudio
+    reason, so a busy or vanished device could not be told apart from a
+    broken one.
     """
 
     def _start_failing(self, recorder, target, first, second=None):

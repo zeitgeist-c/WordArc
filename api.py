@@ -416,7 +416,7 @@ class GeminiClient:
 
     @property
     def active_slot(self):
-        """İşin gerçekten yapıldığı slot (failover sonrası değişmiş olabilir)."""
+        """The slot the work was actually done on (may have changed after failover)."""
         return self._active
 
     @staticmethod

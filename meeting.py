@@ -111,8 +111,8 @@ class MeetingPipeline(QObject):
         # has already paid for.
         have_transcript = False
         try:
-            # Tutanak her koşulda bulut API ile yazılır, o yüzden toplantı
-            # transkripsiyonu yerelde koşsa da sıraya girer.
+            # The minutes are always written with the cloud API, so a meeting
+            # takes the order even when its transcription runs locally.
             keys = self.conf.gemini_keys()
             client = api.GeminiClient(
                 keys,
@@ -162,8 +162,8 @@ class MeetingPipeline(QObject):
         except (api.ApiError, localspeech.LocalSpeechError, OSError,
                 subprocess.SubprocessError, wave.Error) as exc:
             _log.warning("meeting pipeline failed (%s)", type(exc).__name__)
-            # Yalnız API hatası sırayı ilerletir; iptal yukarıdaki dalda
-            # tutulur ve sıraya dokunmaz.
+            # Only an API error advances the order; a cancellation is kept in the
+            # branch above and never touches the order.
             if isinstance(exc, api.ApiError):
                 self.conf.record_api_attempt(client.active_slot, len(keys))
             # The audio stays put no matter what the keep setting says: it is the

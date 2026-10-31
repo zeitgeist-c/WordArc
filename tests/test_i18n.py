@@ -25,8 +25,9 @@ class TestI18n(unittest.TestCase):
         os.environ["LANG"] = "C"
         self.assertEqual(i18n.resolve("auto"), "en")
     def test_resolve_legacy_auto_always_en(self):
-        # 'auto' kalktı: eski kayıtlardaki auto dahil bilinmeyen her kod
-        # açık İngilizce varsayılana düşer; OS dili öne geçmez.
+        # 'auto' is gone: every unknown code, including auto in old configs,
+        # falls back to the explicit English default; the OS language does not
+        # take precedence.
         os.environ["LANG"] = "tr_TR.UTF-8"
         self.assertEqual(i18n.resolve("auto"), "en")
         self.assertEqual(i18n.resolve("xx"), "en")
@@ -129,14 +130,14 @@ class TestRuntimeLabels(unittest.TestCase):
         missing = [label for label
                    in screenshot_capture.RegionOverlay.TOOL_LABELS.values()
                    if label not in i18n.TR]
-        self.assertFalse(missing, f"TR karsiligi yok: {missing}")
+        self.assertFalse(missing, f"no TR entry: {missing}")
 
     def test_shortcut_field_strings_have_turkish_entries(self):
         for label in ("Press shortcut keys…", "Press the keys now…",
                       "Press Save to apply.",
                       "Windows reserves this combination: {shortcut}",
                       "This key combination cannot be assigned."):
-            self.assertIn(label, i18n.TR, f"TR karsiligi yok: {label!r}")
+            self.assertIn(label, i18n.TR, f"no TR entry: {label!r}")
 
 
 class TestTranslationCoverage(unittest.TestCase):
@@ -147,7 +148,7 @@ class TestTranslationCoverage(unittest.TestCase):
                 if text in UNTRANSLATED or text in i18n.TR:
                     continue
                 missing.append(f"{name}:{line}: {text!r}")
-        self.assertFalse(missing, "TR karsiligi yok:\n" + "\n".join(missing))
+        self.assertFalse(missing, "no TR entry:\n" + "\n".join(missing))
 
     def test_no_plain_literal_reaches_a_message_box(self):
         plain = []
@@ -163,12 +164,12 @@ class TestTranslationCoverage(unittest.TestCase):
                         arg = node.args[index]
                         if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
                             plain.append(f"{name}:{node.lineno}: {arg.value!r}")
-        self.assertFalse(plain, "t() icinden gecmeyen kutu metni:\n" + "\n".join(plain))
+        self.assertFalse(plain, "box text that does not go through t():\n" + "\n".join(plain))
 
     def test_turkish_table_has_no_untranslated_duplicates(self):
         leftovers = [key for key, value in i18n.TR.items()
                      if key == value and key not in UNTRANSLATED]
-        self.assertFalse(leftovers, f"cevrilmemis TR kaydi: {leftovers}")
+        self.assertFalse(leftovers, f"untranslated TR entry: {leftovers}")
 
     def test_tab_titles_and_descriptions_are_translated(self):
         """The specs list is the one place a literal reaches t() unseen."""
@@ -179,7 +180,7 @@ class TestTranslationCoverage(unittest.TestCase):
                     and any(isinstance(target, ast.Name) and target.id == "specs"
                             for target in node.targets)):
                 specs = node.value
-        self.assertIsNotNone(specs, "specs listesi bulunamadi")
+        self.assertIsNotNone(specs, "specs list not found")
         self.assertEqual(len(specs.elts), 6)
         for element in specs.elts:
             for index in (2, 3):
@@ -189,8 +190,9 @@ class TestTranslationCoverage(unittest.TestCase):
 
     def test_combo_label_lists_are_translated(self):
         import settings_ui
-        # UI_LANGUAGES etiketleri her dilin kendi adıdır (Türkçe, Deutsch…);
-        # çevrilmez, HeraAi'deki dil seçicideki sözleşmeyle aynı.
+        # UI_LANGUAGES labels are each language's own name (Türkçe, Deutsch…);
+        # they are not translated, matching the contract of the language
+        # picker in HeraAi.
         own_names = {label for label, _code in settings_ui.UI_LANGUAGES}
         self.assertEqual(len(own_names), 13)
         for label, _value in (settings_ui.LANGUAGES
@@ -198,14 +200,15 @@ class TestTranslationCoverage(unittest.TestCase):
             self.assertIn(label, i18n.TR)
         for corner in settings_ui.CORNERS:
             self.assertIn(corner, i18n.TR)
-        # Ayar dil listesi ortak 13 dil sözleşmesiyle birebir eşleşmeli.
+        # The settings language list must match the shared 13-language contract
+        # exactly.
         self.assertEqual([code for _label, code in settings_ui.UI_LANGUAGES],
                          [code for code, _label in i18n.LANGUAGES])
 
 
 class TestAllLanguagesParity(unittest.TestCase):
-    """13 dil işi: her TR anahtarı 11 dilde de olmalı, yoksa arayüzde
-    o metin sessizce İngilizceye düşer."""
+    """The 13-language job: every TR key must exist in the other 11 languages
+    too, otherwise that text silently falls back to English in the UI."""
 
     def test_every_turkish_key_exists_in_all_languages(self):
         missing = []
@@ -217,7 +220,7 @@ class TestAllLanguagesParity(unittest.TestCase):
                     missing.append(f"{code}: {key!r}")
         self.assertFalse(
             missing,
-            f"{len(missing)} çeviri eksik (ilk 10):\n" + "\n".join(missing[:10]))
+            f"{len(missing)} translations missing (first 10):\n" + "\n".join(missing[:10]))
 
 
 if __name__ == "__main__":

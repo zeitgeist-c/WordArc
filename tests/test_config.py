@@ -149,7 +149,7 @@ class TestConfigLoadSave(unittest.TestCase):
         c = cfg.Config()
         self.assertEqual(c["cleanup_prompt"], cfg.DEFAULTS["cleanup_prompt"])
         kept = cfg.CONFIG_FILE.parent / (cfg.CONFIG_FILE.name + ".corrupt")
-        self.assertTrue(kept.exists(), "okunamayan ayar dosyası saklanmalı")
+        self.assertTrue(kept.exists(), "an unreadable settings file must be kept")
 
     def test_a_setting_of_the_wrong_type_falls_back_to_its_default(self):
         """A hand-edited file can hold a number where a string belongs, and the
@@ -185,11 +185,11 @@ class TestPromptAssembly(unittest.TestCase):
         import i18n; i18n.set_language("tr")
         self.assertIn("toplantı tutanağı", cfg.default_meeting_prompt())
     def test_pipeline_prompts_keep_their_instruction_guard(self):
-        """Transkript/talimat karıştırma koruması dillerde de durmalı.
+        """The transcript/instruction confusion guard must hold in every language.
 
-        Temizleme, dosya ve tutanak promptları her iki dilde de konuşulan
-        metni talimat saymamalı; asistan promptu bilinçli olarak hariçtir
-        (ürün, söylenen komutu yerine getirmektir).
+        The cleanup, file and minutes prompts must never treat spoken text as
+        an instruction in either language; the assistant prompt is deliberately
+        excluded (the product's job is to carry out what was said).
         """
         import i18n
         previous = i18n.language()

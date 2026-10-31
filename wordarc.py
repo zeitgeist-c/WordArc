@@ -1432,8 +1432,8 @@ class WordArc:
         _release_instance_mutex()
         child_args = _restart_args(sys.argv)
         if getattr(sys, "frozen", False):
-            # Paketlenmiş onefile exe'de __file__ geçici _MEI klasörünü gösterir;
-            # yeni süreç yalnız exe + kullanıcı argümanlarıyla başlatılmalı.
+            # In a packaged onefile exe __file__ points at the temporary _MEI
+            # folder; the new process must be started with the exe + user args only.
             subprocess.Popen([sys.executable] + child_args)
         else:
             subprocess.Popen([sys.executable, os.path.realpath(__file__)]
@@ -1606,7 +1606,7 @@ SETUP_LANGUAGE_FLAG = "--setup-language"
 
 
 def _setup_language_arg(argv):
-    """Installer sihirbazında seçilen dil kodu, geçersizse ''."""
+    """The language code picked in the installer wizard, or '' when invalid."""
     if SETUP_LANGUAGE_FLAG in argv:
         index = argv.index(SETUP_LANGUAGE_FLAG)
         if index + 1 < len(argv) and argv[index + 1] in i18n.CODES:
@@ -1615,7 +1615,8 @@ def _setup_language_arg(argv):
 
 
 def _ask_first_run_language():
-    """Taze kurulumda kurulum dili taşınamadıysa sor: kod veya '' (vazgeçti)."""
+    """On a fresh install, ask when the installer language could not be carried
+    over: a code or '' (cancelled)."""
     from PyQt6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox,
                                  QLabel, QVBoxLayout)
     dialog = QDialog()
@@ -1637,7 +1638,7 @@ def _ask_first_run_language():
 
 
 def _apply_first_run_language(conf, setup_lang):
-    """Taze kurulum dilini belirle, kaydet; diyalog gerekti ve soruldu."""
+    """Set and save the fresh-install language; the dialog ran when it was needed."""
     if not conf.fresh:
         return
     if setup_lang:

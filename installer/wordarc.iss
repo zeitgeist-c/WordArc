@@ -1,11 +1,11 @@
 ; WordArc installer (Inno Setup 6).
-; Sürüm build.ps1 tarafından WORDARC_VERSION env üzerinden verilir;
-; buraya asla sabit sürüm yazılmaz.
+; The version is supplied by build.ps1 through the WORDARC_VERSION env;
+; a fixed version is never written here.
 ;
-; Düzen: Program Files (admin), sabit ad WordArc.exe, kısayollar + açılış
-; girdisi Inno tarafından yönetilir. Kullanıcı verisi
-; (%APPDATA%/WordArc, %LOCALAPPDATA%/WordArc: kayıtlar, toplantılar,
-; modeller) installer'in dışındadır; update ve uninstall dokunmaz.
+; Layout: Program Files (admin), fixed name WordArc.exe, shortcuts + startup
+; entry managed by Inno. User data
+; (%APPDATA%/WordArc, %LOCALAPPDATA%/WordArc: recordings, meetings,
+; models) lives outside the installer; update and uninstall leave it alone.
 
 #define AppVersion GetEnv("WORDARC_VERSION")
 #define AppVersionNum GetEnv("WORDARC_VERSION_NUM")
@@ -46,8 +46,8 @@ WizardStyle=modern
 ; The setup file itself carries the product icon instead of the
 ; generic download arrow; brand assets are rendered by build_brand_assets.
 SetupIconFile=..\assets\brand\wordarc.ico
-; Elle çalıştırmada canlı WordArc açıksa kapatmayı önerir. Program içi
-; güncelleme setup'tan önce zaten kapanır; bu yalnız manuel çalıştırma içindir.
+; Offers to close a running WordArc when setup is started by hand. The in-app
+; updater already closes it before setup; this is only for manual runs.
 CloseApplications=yes
 RestartApplications=no
 
@@ -58,8 +58,9 @@ Source: "{#WordArcTestPayload}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\inner\WordArc.exe"; DestDir: "{app}"; Flags: ignoreversion
 #endif
 
-; 13 arayüz dili: Name uygulama dil kodudur ({language} olduğu gibi
-; --setup-language'e geçer), MessagesFile Inno'nun resmi çevirisidir.
+; 13 interface languages: Name is the application language code ({language}
+; passes through as-is to --setup-language), MessagesFile is Inno's official
+; translation.
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "tr"; MessagesFile: "compiler:Languages\Turkish.isl"
@@ -118,10 +119,10 @@ Name: "{autodesktop}\WordArc"; Filename: "{app}\WordArc.exe"; Check: KeepDesktop
 Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "WordArc"; ValueData: "{app}\WordArc.exe"; Flags: uninsdeletevalue; Tasks: autostart
 #endif
 
-; Hem taze kurulumda hem sessiz güncellemede uygulamayı kurulum sonunda
-; kullanıcının kendisi olarak (elevasyonsuz) başlatır. Taze kurulumda
-; sihirbazda seçilen dil --setup-language ile ilk açılışa taşınır;
-; yönetilen güncellemede çalışmaz, kayıtlı dil korunur.
+; Launches the app at the end of setup, both on a fresh install and on a silent
+; update, as the user themselves (unelevated). On a fresh install the language
+; picked in the wizard carries over to the first launch through --setup-language;
+; it does not run on a managed update, where the saved language is kept.
 [Run]
 Filename: "{app}\WordArc.exe"; Parameters: "--setup-language {language}"; Flags: nowait runasoriginaluser; Check: NotManagedUpdate; BeforeInstall: CleanLaunchEnvironment
 
@@ -264,9 +265,10 @@ begin
         'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8890F12E-2735-49F7-AFBA-FD21D9C12EC8}}_is1');
 #endif
 end;
-{ Eski portable düzenden (sürümlü exe, %LocalAppData%\Programs\WordArc)
-  tek seferlik göç. Yalnız kurulum artefaktları silinir; kayıt, toplantı,
-  model barındıran %APPDATA%/WordArc ve %LOCALAPPDATA%/WordArc'ya dokunulmaz. }
+{ One-time migration from the old portable layout (versioned exe,
+  %LocalAppData%\Programs\WordArc). Only install artifacts are deleted;
+  %APPDATA%/WordArc and %LOCALAPPDATA%/WordArc, which hold user data,
+  are left untouched. }
 procedure CleanOldPortable();
 var
   Dir, Path: String;
@@ -305,8 +307,8 @@ begin
       RemoveDir(Dir);
   end;
 
-  { Eski kullanıcı Run girdisi portable yolu gösteriyorsa kaldır;
-    güncel HKLM girdisi [Registry] bölümünden gelir. }
+  { Drop the old per-user Run entry if it points at the portable path;
+    the current HKLM entry comes from the [Registry] section. }
   if RegQueryStringValue(HKCU,
     'SOFTWARE\Microsoft\Windows\CurrentVersion\Run', 'WordArc', RunValue) then
   begin
@@ -317,7 +319,7 @@ begin
   RegDeleteValue(HKCU,
     'SOFTWARE\Microsoft\Windows\CurrentVersion\Run', 'Verbatim');
 
-  { Eski Başlat menüsü artıkları. }
+  { Old Start menu leftovers. }
   DeleteFile(ExpandConstant('{userprograms}\Verbatim.lnk'));
   DeleteFile(ExpandConstant('{commonprograms}\Verbatim.lnk'));
   DeleteFile(ExpandConstant('{userprograms}\WordArc.lnk'));

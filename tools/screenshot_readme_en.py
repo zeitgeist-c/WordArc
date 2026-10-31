@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 OUT = Path(__file__).resolve().parent.parent / "docs" / "screenshots"
 
 SHOTS = [
-    # (dosya, sekme_index, tema)
+    # (file, tab index, theme)
     ("01-dikte.png", 0, "light"),
     ("02-toplanti.png", 1, "light"),
     ("03-ses-dosyasi.png", 2, "light"),

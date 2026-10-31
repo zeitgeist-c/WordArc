@@ -165,14 +165,15 @@ class TestUploadStreaming(unittest.TestCase):
             os.unlink(path)
         uploads = [call for call in calls if call["upload"]]
         self.assertEqual((name, uri), ("files/1", "g://1"))
-        self.assertEqual(len(uploads), 2, "500 alan yükleme tekrar denenmeli")
+        self.assertEqual(len(uploads), 2, "a failing upload must be retried")
         self.assertTrue(all(call["streamed"] for call in uploads),
-                        "gövde bytes değil, akış olmalı")
+                        "the body must be a stream, not bytes")
         self.assertEqual([call["sent"] for call in uploads], [10, 10],
-                         "retry dosyayı baştan okumalı")
+                         "a retry must re-read the file from the start")
         self.assertEqual([call["head"] for call in uploads], [b"0123456789"] * 2)
         self.assertEqual([call["length"] for call in uploads], ["10", "10"],
-                         "Content-Length her denemede bulunmalı (chunked'a düşmesin)")
+                         "Content-Length must be present on every attempt "
+                         "(no falling back to chunked)")
 
     def test_upload_does_not_read_the_whole_file_into_memory(self):
         path = self._temp_wav(b"")
@@ -192,9 +193,11 @@ class TestUploadStreaming(unittest.TestCase):
             tracemalloc.stop()
             os.unlink(path)
         upload = [call for call in calls if call["upload"]][0]
-        self.assertEqual(upload["sent"], 32 * 1024 * 1024, "tüm dosya gitmeli")
+        self.assertEqual(upload["sent"], 32 * 1024 * 1024,
+                         "the whole file must be sent")
         self.assertLess(peak, 8 * 1024 * 1024,
-                        "32 MB dosya belleğe alınmamalı (tepe %d bayt)" % peak)
+                        "a 32 MB file must not be read into memory "
+                        "(peak %d bytes)" % peak)
 
 
 class TestGeminiFallback(unittest.TestCase):
