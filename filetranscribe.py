@@ -170,6 +170,7 @@ class FileTranscriber(QObject):
                 conf["cleanup_model"],
                 prompt,
                 reasoning=conf["cleanup_reasoning"],
+                allow_empty=True,
             ))
         return ("\n" if timestamps else "\n\n").join(out)
 

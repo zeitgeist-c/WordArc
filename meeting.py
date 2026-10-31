@@ -148,6 +148,7 @@ class MeetingPipeline(QObject):
                 self.conf.meeting_prompt(),
                 reasoning=self.conf["meeting_reasoning"],
                 timeout=600,
+                allow_empty=True,
             )
             title = self._write(doc_path, minutes, transcript, entry)
             cfg.update_meeting(base, status="done", error="", title=title,
@@ -292,6 +293,7 @@ class MeetingPipeline(QObject):
                 conf["cleanup_model"],
                 prompt,
                 reasoning=conf["cleanup_reasoning"],
+                allow_empty=True,
             ))
         return "\n".join(out)
 

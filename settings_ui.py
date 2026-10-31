@@ -657,7 +657,6 @@ class FitsOnScreenCombo(QComboBox):
         for index in range(self.count()):
             item = QListWidgetItem(self.itemText(index))
             item.setData(Qt.ItemDataRole.UserRole, index)
-            item.setToolTip(self.itemText(index))
             rows.addItem(item)
         rows.setCurrentRow(self.currentIndex())
         def filter_rows(query):
@@ -2351,6 +2350,7 @@ class SettingsWindow(QDialog):
         # with its own actions, plus a strip with today's and all-time use.
         self._gemini_selected = 0
         self._gemini_testing = None
+        self._gemini_test_results = {}
         self._gemini_card_buttons = {}
         self.gemini_keys_list = QWidget()
         self.gemini_cards_layout = QVBoxLayout(self.gemini_keys_list)
@@ -3364,6 +3364,7 @@ class SettingsWindow(QDialog):
         self.keep_audio.setChecked(conf["keep_audio"])
 
         self._gemini_keys = conf.stored_gemini_keys()
+        self._gemini_labels = conf.key_labels(len(self._gemini_keys))
         self._refresh_gemini_keys()
         self.transcribe_model.setCurrentText(conf["gemini_transcribe_model"])
         self._select_data(self.transcribe_engine, conf["transcribe_engine"])
@@ -3542,6 +3543,7 @@ class SettingsWindow(QDialog):
             return
         # If the key ring changed the stamps are trimmed/extended per slot.
         conf["gemini_last_used"] = conf.rotation_stamps(len(self._gemini_keys))
+        conf["gemini_labels"] = list(self._gemini_labels)
         try:
             conf.save()
         except OSError as exc:
@@ -3744,7 +3746,7 @@ class SettingsWindow(QDialog):
             return stamp
         return when.strftime("%d.%m.%Y %H:%M:%S")
 
-    def _gemini_key_card(self, index, key, stamp, today, total):
+    def _gemini_key_card(self, index, key, label, stamp, today, total):
         """One framed card for a key: status, masked value, use, actions."""
         card = QGroupBox()
         body = QVBoxLayout(card)
@@ -3753,16 +3755,13 @@ class SettingsWindow(QDialog):
         dot = QLabel("●")
         dot.setStyleSheet(
             "color: #22c55e;" if stamp else "color: #6b7280;")
-        title = QLabel(f"API {index + 1}")
+        title = QLabel(label or f"API {index + 1}")
         masked = QLabel(self._masked_key(key))
         masked.setFont(QFont("Consolas"))
-        badge = QLabel(t("Today: {count}", count=today))
-        badge.setObjectName("muted")
         header.addWidget(dot)
         header.addWidget(title)
         header.addWidget(masked)
         header.addStretch(1)
-        header.addWidget(badge)
         buttons = {}
         test_button = QPushButton(t("Test"))
         test_button.clicked.connect(
@@ -3791,15 +3790,23 @@ class SettingsWindow(QDialog):
         self._gemini_card_buttons[index] = buttons
         body.addLayout(header)
         if stamp:
-            sub = QLabel(
-                f"{t('last used: {when}', when=self._format_last_used(stamp))}"
-                f"  •  {t('Total: {count}', count=total)}")
+            usage = t("last used: {when}",
+                      when=self._format_last_used(stamp))
         else:
-            sub = QLabel(
-                f"{t('not used yet')}  •  {t('Total: {count}', count=total)}")
+            usage = t("not used yet")
+        sub = QLabel(
+            f"{usage}  •  {t('Today: {count}', count=today)}"
+            f"  •  {t('Total: {count}', count=total)}")
         sub.setObjectName("muted")
         sub.setWordWrap(True)
         body.addWidget(sub)
+        tested = self._gemini_test_results.get(index)
+        if tested is not None:
+            ok, message = tested
+            verdict = QLabel(("✓ " if ok else "✗ ") + message)
+            verdict.setObjectName("muted")
+            verdict.setWordWrap(True)
+            body.addWidget(verdict)
         return card
 
     def _refresh_gemini_keys(self, selected=None):
@@ -3817,9 +3824,13 @@ class SettingsWindow(QDialog):
         self.gemini_total_value.setText(str(sum(totals)))
         self.gemini_empty_label.setVisible(not self._gemini_keys)
         stamps = self.conf.rotation_stamps(len(self._gemini_keys))
+        labels = (list(getattr(self, "_gemini_labels", []) or [])
+                  + [""] * len(self._gemini_keys))[:len(self._gemini_keys)]
+        self._gemini_labels = labels
         for index, key in enumerate(self._gemini_keys):
             self.gemini_cards_layout.addWidget(self._gemini_key_card(
-                index, key, stamps[index], daily[index], totals[index]))
+                index, key, labels[index], stamps[index],
+                daily[index], totals[index]))
         self._refresh_gemini_key_buttons()
 
     def _refresh_gemini_key_buttons(self, *_):
@@ -3834,52 +3845,71 @@ class SettingsWindow(QDialog):
             buttons["up"].setEnabled(index > 0)
             buttons["down"].setEnabled(index < last)
 
-    def _key_dialog(self, title, value=""):
-        """The password prompt for one API key, in the interface language."""
-        dialog = QInputDialog(self)
+    def _key_dialog(self, title, value="", label=""):
+        """Key + optional label prompt, in the interface language."""
+        from PyQt6.QtWidgets import QDialogButtonBox
+        dialog = QDialog(self)
         dialog.setWindowTitle(t(title))
-        dialog.setLabelText(t("Gemini API key"))
-        dialog.setTextEchoMode(QLineEdit.EchoMode.Password)
-        dialog.setTextValue(value)
-        dialog.setOkButtonText(t("OK"))
-        dialog.setCancelButtonText(t("Cancel"))
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(t("Gemini API key")))
+        dialog.key_edit = QLineEdit(value)
+        dialog.key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        layout.addWidget(dialog.key_edit)
+        layout.addWidget(QLabel(t("API label (optional)")))
+        dialog.label_edit = QLineEdit(label)
+        layout.addWidget(dialog.label_edit)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(t("OK"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(t("Cancel"))
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
         return dialog
 
-    def _prompt_gemini_key(self, title, value=""):
-        dialog = self._key_dialog(title, value)
+    def _prompt_gemini_key(self, title, value="", label=""):
+        dialog = self._key_dialog(title, value, label)
         if dialog.exec() != QDialog.DialogCode.Accepted:
-            return ""
-        return dialog.textValue().strip()
+            return "", ""
+        return dialog.key_edit.text().strip(), dialog.label_edit.text().strip()
 
     def _add_gemini_key(self):
         if len(self._gemini_keys) >= 5:
             return
-        key = self._prompt_gemini_key("Add API")
+        key, label = self._prompt_gemini_key("Add API")
         if not key:
             return
         if key in self._gemini_keys:
             warn_box(self, t("Error"), t("This API key is already listed."))
             return
         self._gemini_keys.append(key)
+        self._gemini_labels.append(label)
+        self._gemini_test_results = {}
         self._refresh_gemini_keys(len(self._gemini_keys) - 1)
 
     def _edit_gemini_key(self, index=None):
         row = self._gemini_selected if index is None else index
         if not 0 <= row < len(self._gemini_keys):
             return
-        key = self._prompt_gemini_key("Edit API", self._gemini_keys[row])
+        key, label = self._prompt_gemini_key(
+            "Edit API", self._gemini_keys[row], self._gemini_labels[row])
         if not key:
             return
         if key in self._gemini_keys and key != self._gemini_keys[row]:
             warn_box(self, t("Error"), t("This API key is already listed."))
             return
         self._gemini_keys[row] = key
+        self._gemini_labels[row] = label
+        self._gemini_test_results.pop(row, None)
         self._refresh_gemini_keys(row)
 
     def _remove_gemini_key(self, index=None):
         row = self._gemini_selected if index is None else index
         if 0 <= row < len(self._gemini_keys):
             self._gemini_keys.pop(row)
+            self._gemini_labels.pop(row)
+            self._gemini_test_results = {}
             self._refresh_gemini_keys(min(row, len(self._gemini_keys) - 1))
 
     def _move_gemini_key(self, index_or_offset, offset=None):
@@ -3895,6 +3925,10 @@ class SettingsWindow(QDialog):
         self._gemini_keys[row], self._gemini_keys[target] = (
             self._gemini_keys[target], self._gemini_keys[row]
         )
+        self._gemini_labels[row], self._gemini_labels[target] = (
+            self._gemini_labels[target], self._gemini_labels[row]
+        )
+        self._gemini_test_results = {}
         self._refresh_gemini_keys(target)
 
     def _gemini_runtime_keys(self):
@@ -3987,9 +4021,10 @@ class SettingsWindow(QDialog):
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _on_test_done(self, _row, ok, message):
+    def _on_test_done(self, row, ok, message):
         self._gemini_testing = None
-        self._refresh_gemini_key_buttons()
+        self._gemini_test_results[row] = (ok, message)
+        self._refresh_gemini_keys()
         self.gemini_test_label.setText(("✓ " if ok else "✗ ") + message)
 
     # ---- audio file ------------------------------------------------------

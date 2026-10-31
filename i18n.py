@@ -355,6 +355,7 @@ TR = {
     "Move up": "Yukarı taşı",
     "Move down": "Aşağı taşı",
     "Gemini API key": "Gemini API anahtarı",
+    "API label (optional)": "API etiketi (isteğe bağlı)",
     "This API key is already listed.": "Bu API anahtarı zaten listede.",
     "last used: {when}": "son kullanım: {when}",
     "not used yet": "henüz kullanılmadı",
