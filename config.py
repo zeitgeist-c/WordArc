@@ -463,6 +463,7 @@ da senin soracağın soruya verilecek bir yanıt yok.
 DEFAULTS = {
     "config_schema": CONFIG_SCHEMA,
     "ui_language": "en",                # 13 language codes; empty/legacy 'auto' -> 'en'
+    "ui_language_explicit": False,     # True once the user (or an installer run) chose it
     "theme_mode": "dark",               # dark | light
     "settings_size": [],                # remembered settings window [w, h]; [] = auto
     "start_with_windows": True,
@@ -503,7 +504,7 @@ DEFAULTS = {
     "screenshot_format": "PNG",
     # --- reading aloud (EMA Lightning ONNX, local Turkish TTS) --------------
     "tts_format": "opus",            # opus | mp3 | wav
-    "tts_speed": 1.0,                # 1.0 | 1.5 | 2.0
+    "tts_speed": 0.9,                # 0.9 | 1.0 | 1.5 | 2.0
     "tts_autoplay": False,           # play as soon as a file save finishes
     "tts_shortcut": "",                # empty -> tab only; set to grab a key
     "tts_stop_shortcut": "",
@@ -621,6 +622,11 @@ def _keep_unreadable_config():
 class Config:
     def __init__(self):
         self.data = dict(DEFAULTS)
+        # Keys a newer version wrote that this one does not know: carried
+        # verbatim and written back on save, never silently dropped. Without
+        # this, merely opening settings in an older build erases newer
+        # settings (labels, new prompts) on the next save.
+        self._unknown = {}
         # Fresh install: there was no config file before (the first-run language
         # choice and the handing over of the installer language run only here).
         # A broken file does not count as fresh: the user had settings.
@@ -635,6 +641,7 @@ class Config:
             if isinstance(stored, dict):
                 for key, value in stored.items():
                     if key not in DEFAULTS:
+                        self._unknown[key] = value
                         continue
                     if _fits(DEFAULTS[key], value):
                         self.data[key] = value
@@ -665,6 +672,15 @@ class Config:
             self.data[key] = {"none": "minimal", "xhigh": "high", "max": "high"}.get(self.data[key], self.data[key])
         # Legacy 'auto'/unknown language records are pulled to explicit English.
         self.data["ui_language"] = i18n.resolve(self.data.get("ui_language"))
+        if self.fresh:
+            origin = "fresh defaults"
+        elif isinstance(stored, dict) and stored:
+            origin = "loaded file"
+        else:
+            origin = "unreadable file, defaults kept"
+        _log.info("settings: %s (%d stored keys, schema %s)", origin,
+                  len(stored) if isinstance(stored, dict) else 0,
+                  self.data.get("config_schema"))
         i18n.set_language(self.data["ui_language"])
 
     def _migrate(self, stored):
@@ -746,8 +762,10 @@ class Config:
         # — one replace then lost the file to the other (WinError 32).
         with _save_lock:
             tmp = CONFIG_FILE.with_suffix(".json.tmp")
+            merged = dict(self.data)
+            merged.update(self._unknown)
             with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(self.data, fh, ensure_ascii=False, indent=2)
+                json.dump(merged, fh, ensure_ascii=False, indent=2)
             tmp.replace(CONFIG_FILE)
         self.data["ui_language"] = i18n.resolve(self.data.get("ui_language"))
         i18n.set_language(self.data["ui_language"])

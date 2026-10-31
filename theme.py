@@ -320,6 +320,11 @@ def stylesheet(colors: Palette) -> str:
         font-weight: 700;
     }}
     QLabel#saveBannerText {{ color: {colors.text}; font-weight: 600; }}
+    QLabel#keyChip {{
+        color: {colors.violet}; background: {_mix(colors.window, colors.violet, 0.22)};
+        border: 1px solid {_mix(colors.window, colors.violet, 0.55)};
+        border-radius: 9px; padding: 1px 10px; font-weight: 700;
+    }}
     """
 
 def qt_palette(colors: Palette) -> QPalette:

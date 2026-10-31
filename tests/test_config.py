@@ -177,6 +177,21 @@ class TestConfigLoadSave(unittest.TestCase):
         }), encoding="utf-8")
         self.assertEqual(cfg.Config()["gemini_transcribe_model"], "my-private-model")
 
+    def test_unknown_future_keys_survive_load_and_save(self):
+        path = cfg.CONFIG_FILE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"shortcut": "F9",
+                                    "future_setting": {"nested": [1, 2]}}),
+                        encoding="utf-8")
+        conf = cfg.Config()
+        self.assertNotIn("future_setting", conf.data)
+        self.assertEqual(conf.data["shortcut"], "F9")
+        conf.data["shortcut"] = "F10"
+        conf.save()
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(stored["future_setting"], {"nested": [1, 2]})
+        self.assertEqual(stored["shortcut"], "F10")
+
 class TestPromptAssembly(unittest.TestCase):
     def test_cleanup_prompt_default_en(self):
         import i18n; i18n.set_language("en")
@@ -299,6 +314,7 @@ class TestApiRotation(unittest.TestCase):
     def _fresh_conf(self, n_keys, next_slot=0):
         conf = cfg.Config.__new__(cfg.Config)
         conf.data = dict(cfg.DEFAULTS)
+        conf._unknown = {}
         conf.data["gemini_next_slot"] = next_slot
         conf.data["gemini_last_used"] = [""] * n_keys
         return conf

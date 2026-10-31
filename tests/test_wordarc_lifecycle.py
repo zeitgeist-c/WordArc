@@ -521,11 +521,31 @@ def test_first_run_applies_setup_language_once():
     import i18n
     conf = mock.MagicMock()
     conf.fresh = True
+    conf.get.return_value = False
     try:
         wordarc._apply_first_run_language(conf, "de")
     finally:
         i18n.set_language("en")
-    conf.__setitem__.assert_called_once_with("ui_language", "de")
+    assert mock.call("ui_language", "de") in conf.__setitem__.call_args_list
+    assert mock.call("ui_language_explicit", True) in conf.__setitem__.call_args_list
+
+
+def test_reinstall_repairs_implicit_language_but_keeps_a_choice():
+    import i18n
+    repaired = mock.MagicMock()
+    repaired.fresh = False
+    repaired.get.return_value = False
+    try:
+        wordarc._apply_first_run_language(repaired, "tr")
+    finally:
+        i18n.set_language("en")
+    repaired.__setitem__.assert_any_call("ui_language", "tr")
+    chosen = mock.MagicMock()
+    chosen.fresh = False
+    chosen.get.return_value = True
+    wordarc._apply_first_run_language(chosen, "tr")
+    chosen.__setitem__.assert_not_called()
+    chosen.save.assert_not_called()
 
 
 def test_first_run_leaves_existing_install_alone():

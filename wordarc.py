@@ -581,11 +581,11 @@ class WordArc:
         if not text or (stash is not None and raw == stash):
             QTimer.singleShot(0, self._tts_nothing_selected)
             return
-        speed = self.conf.get("tts_speed", 1.0)
+        speed = self.conf.get("tts_speed", 0.9)
         try:
             speed = float(speed)
         except (TypeError, ValueError):
-            speed = 1.0
+            speed = 0.9
         QTimer.singleShot(
             0, lambda: self.tts.speak(text, speed))
 
@@ -637,9 +637,9 @@ class WordArc:
                                       QSystemTrayIcon.MessageIcon.Warning, 4000)
             return
         try:
-            speed = float(self.conf.get("tts_speed", 1.0))
+            speed = float(self.conf.get("tts_speed", 0.9))
         except (TypeError, ValueError):
-            speed = 1.0
+            speed = 0.9
         if self.tray.isVisible():
             self.tray.showMessage(BRAND.name, t("Reading the capture…"),
                                   QSystemTrayIcon.MessageIcon.Information, 4000)
@@ -1654,17 +1654,26 @@ def _ask_first_run_language():
 
 
 def _apply_first_run_language(conf, setup_lang):
-    """Set and save the fresh-install language; the dialog ran when it was needed."""
-    if not conf.fresh:
-        return
-    if setup_lang:
+    """The installer's language wins unless the user already chose one.
+
+    Fresh installs take it (or ask when setup passed none); existing installs
+    take it only while the stored language was never explicitly chosen, so a
+    reinstall repairs the language without overriding a deliberate choice.
+    """
+    if setup_lang and not conf.get("ui_language_explicit"):
         conf["ui_language"] = setup_lang
+        conf["ui_language_explicit"] = True
         i18n.set_language(setup_lang)
-    else:
+    elif conf.fresh and not setup_lang:
         chosen = _ask_first_run_language()
         if chosen:
             conf["ui_language"] = chosen
+            conf["ui_language_explicit"] = True
             i18n.set_language(chosen)
+        else:
+            return
+    else:
+        return
     try:
         conf.save()
     except OSError:

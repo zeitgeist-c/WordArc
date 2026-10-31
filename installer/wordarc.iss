@@ -124,7 +124,7 @@ Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 ; picked in the wizard carries over to the first launch through --setup-language;
 ; it does not run on a managed update, where the saved language is kept.
 [Run]
-Filename: "{app}\WordArc.exe"; Parameters: "--setup-language {language}"; Flags: nowait runasoriginaluser; Check: NotManagedUpdate; BeforeInstall: CleanLaunchEnvironment
+Filename: "{app}\WordArc.exe"; Parameters: "--setup-language {language}"; Description: "{cm:LaunchProgram,WordArc}"; Flags: nowait postinstall unchecked runasoriginaluser; Check: NotManagedUpdate; BeforeInstall: CleanLaunchEnvironment
 
 [Code]
 var

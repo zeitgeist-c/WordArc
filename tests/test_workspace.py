@@ -182,11 +182,19 @@ def test_combo_uses_compact_choices_or_search_according_to_content(window):
     assert len(combos) >= 15
     for combo in combos:
         assert isinstance(combo, settings_ui.FitsOnScreenCombo)
-        searchable = combo.isEditable() or combo.property("searchable") or combo.count() > 8
         with mock.patch.object(combo, "_search_picker") as picker, \
+             mock.patch.object(combo, "_menu_popup") as menu, \
              mock.patch.object(settings_ui.QComboBox, "showPopup") as native:
             combo.showPopup()
-        assert picker.call_count == int(combo.count() > 0)
+        if combo.count() == 0:
+            assert picker.call_count == 0
+            assert menu.call_count == 0
+        elif combo._menu_serves():
+            assert menu.call_count == 1
+            assert picker.call_count == 0
+        else:
+            assert picker.call_count == 1
+            assert menu.call_count == 0
         assert native.call_count == 0
 
 

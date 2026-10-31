@@ -486,7 +486,24 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertEqual(window.save_banner.label.text(), t("Settings saved"))
         applied.assert_called_once_with()
 
-    def test_save_banner_rides_under_the_header_rule(self):
+    def test_changing_language_in_settings_marks_it_explicit(self):
+        import i18n
+        window = self.window
+        previous = i18n.language()
+        self.assertFalse(window.conf.data["ui_language_explicit"])
+        window._select_data(window.ui_language, "de")
+        try:
+            with mock.patch.object(settings_ui.startup, "set_enabled"), \
+                 mock.patch.object(settings_ui, "info_box"):
+                window._save()
+            self.app.processEvents()
+            self.assertEqual(window.conf.data["ui_language"], "de")
+            self.assertTrue(window.conf.data["ui_language_explicit"])
+        finally:
+            i18n.set_language(previous)
+            self.app.processEvents()
+
+    def test_save_banner_floats_left_of_save(self):
         window = self.window
         window.resize(920, 700)
         window.show()
@@ -494,21 +511,30 @@ class TestSettingsSmoke(unittest.TestCase):
         banner = window.save_banner
         banner.show_saved(t("Settings saved"))
         self.app.processEvents()
-        rule = window._header_rule
+        save = window.findChild(settings_ui.QPushButton, "primaryButton")
         self.assertTrue(banner.isVisible())
-        self.assertGreater(banner.y(), rule.mapTo(window, QPoint(0, 0)).y())
-        self.assertEqual(banner.x(), 22)
-        self.assertEqual(banner.width(), window.width() - 44)
+        self.assertLessEqual(banner.width(), 360)
+        self.assertGreaterEqual(banner.width(), 180)
+        # Above the button row, right-aligned with it: near Save on every
+        # style, never covering the button, inside the window.
+        box = save.parentWidget()
+        row_top = box.mapTo(window, settings_ui.QPoint(0, 0)).y()
+        row_right = box.mapTo(window, settings_ui.QPoint(box.width(), 0)).x()
+        self.assertLessEqual(banner.y() + banner.height(), row_top)
+        self.assertLessEqual(banner.x() + banner.width(),
+                             min(row_right, window.width() - 22) + 1)
+        self.assertGreaterEqual(banner.x(), 0)
+        self.assertGreater(banner.y(), 0)
         # Nothing to click, and it leaves on its own.
         self.assertTrue(banner.testAttribute(
             settings_ui.Qt.WidgetAttribute.WA_TransparentForMouseEvents))
         self.assertTrue(banner._hold.isActive())
-        # A resize while it is up keeps it under the rule.
+        # A resize while it is up keeps it above the row.
         window.resize(760, 600)
         self.app.processEvents()
-        self.assertEqual(banner.width(), 760 - 44)
-        self.assertEqual(banner.y(),
-                         rule.mapTo(window, QPoint(0, 0)).y() + 5)
+        box = save.parentWidget()
+        row_top = box.mapTo(window, settings_ui.QPoint(0, 0)).y()
+        self.assertLessEqual(banner.y() + banner.height(), row_top)
         banner.fade_out()
         self.assertEqual(banner._animation.endValue(), 0.0)
 
@@ -606,6 +632,9 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertEqual(len(texts), 1)
         self.assertIn("Ofis", texts[0])
         self.assertNotIn("API 1", texts[0].split("|")[0])
+        chips = [label for label in window.findChildren(settings_ui.QLabel)
+                 if label.objectName() == "keyChip"]
+        self.assertTrue(any("Ofis" in chip.text() for chip in chips))
         window._gemini_keys.append("second-key-bbbb")
         window._gemini_labels.append("")
         window._refresh_gemini_keys()
@@ -1281,14 +1310,26 @@ class TestDropdownsStayOnScreen(unittest.TestCase):
         self.app.processEvents()
         return rect.bottom() - avail_bottom, -rect.top()
 
-    def test_all_lists_use_the_same_picker(self):
-        for count in (2, 4, 7, 44):
+    def test_short_lists_use_the_menu_long_lists_the_picker(self):
+        for count in (2, 4, 7, 8):
             box = settings_ui.FitsOnScreenCombo()
             box.addItems([f"item {index}" for index in range(count)])
             with mock.patch.object(box, "_search_picker") as picker, \
+                 mock.patch.object(box, "_menu_popup") as menu, \
+                 mock.patch.object(QComboBox, "showPopup") as native:
+                box.showPopup()
+            self.assertEqual(menu.call_count, 1)
+            self.assertEqual(picker.call_count, 0)
+            self.assertEqual(native.call_count, 0)
+        for count in (9, 44):
+            box = settings_ui.FitsOnScreenCombo()
+            box.addItems([f"item {index}" for index in range(count)])
+            with mock.patch.object(box, "_search_picker") as picker, \
+                 mock.patch.object(box, "_menu_popup") as menu, \
                  mock.patch.object(QComboBox, "showPopup") as native:
                 box.showPopup()
             self.assertEqual(picker.call_count, 1)
+            self.assertEqual(menu.call_count, 0)
             self.assertEqual(native.call_count, 0)
 
     def test_every_settings_combo_is_protected(self):
