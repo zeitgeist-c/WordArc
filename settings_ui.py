@@ -2001,7 +2001,7 @@ class SettingsWindow(QDialog):
         preference = self.local_stt_device.currentData() or "auto"
         import speech_sources
         if any(speech_sources.selected(kind, name) is not None for kind in ("ct2", "ggml")):
-            if confirm_box(self, t("Disconnect"), t("Disconnect this shared model? Its files stay available to Hermes and other applications.")):
+            if confirm_box(self, t("Disconnect"), t("Disconnect this shared model? Its files stay available to other applications.")):
                 localspeech.remove(name, device_preference=preference)
                 self._refresh_engine_inspection()
             return
