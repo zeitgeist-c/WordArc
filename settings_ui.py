@@ -338,17 +338,28 @@ class SaveBanner(QFrame):
         self._animate(0.0, self.FADE_OUT_MS)
 
     def place(self):
-        """Sit under the header rule, as wide as the window's own margins."""
+        """Float just above Save: a compact pill near the action.
+
+        The button row itself is style-dependent (on some styles Save fills
+        the row), so the pill sits above the row, right-aligned with it —
+        the same spot on every style, never covering the button.
+        """
         window = self.parentWidget()
         if window is None:
             return
-        margin = window.layout().contentsMargins().left()
-        rule = getattr(window, "_header_rule", None)
-        top = 8
-        if rule is not None:
-            top = rule.mapTo(window, QPoint(0, 0)).y() + 5
-        self.setGeometry(margin, top,
-                         max(160, window.width() - 2 * margin), self.HEIGHT)
+        width = min(360, max(180, self.sizeHint().width()))
+        margin = 22
+        save = window.findChild(QPushButton, "primaryButton")
+        if save is not None:
+            box = save.parentWidget()
+            row_top = box.mapTo(window, QPoint(0, 0)).y()
+            row_right = box.mapTo(window, QPoint(box.width(), 0)).x()
+        else:
+            row_top = window.height() - 18 - self.HEIGHT
+            row_right = window.width() - margin
+        left = max(margin, min(row_right, window.width() - margin) - width)
+        self.setGeometry(left, max(0, row_top - 8 - self.HEIGHT),
+                         width, self.HEIGHT)
 
     # ---- internals -----------------------------------------------------
 
@@ -602,7 +613,37 @@ class FitsOnScreenCombo(QComboBox):
 
     def showPopup(self):
         if self.isEnabled() and (self.count() or self.isEditable()):
-            self._search_picker()
+            if self._menu_serves():
+                self._menu_popup()
+            else:
+                self._search_picker()
+
+    def _menu_serves(self):
+        """Short plain lists open as a native menu, like the language menu.
+
+        A menu sizes itself to its items, so the blank band a short picker
+        list can leave behind is impossible. Search, editable values and
+        the device cards stay on the picker, which exists for them.
+        """
+        if self.isEditable():
+            return False
+        if isinstance(self.view().itemDelegate(), DeviceCardDelegate):
+            return False
+        if self.count() > 8 or bool(self.property('searchable')):
+            return False
+        return True
+
+    def _menu_popup(self):
+        menu = QMenu(self)
+        for index in range(self.count()):
+            action = menu.addAction(self.itemText(index))
+            action.setData(index)
+            action.setCheckable(True)
+            if index == self.currentIndex():
+                action.setChecked(True)
+        chosen = menu.exec(self.mapToGlobal(QPoint(0, self.height())))
+        if chosen is not None:
+            self.setCurrentIndex(chosen.data())
 
     def hidePopup(self):
         self._close_picker()
@@ -2045,6 +2086,7 @@ class SettingsWindow(QDialog):
         if code == self.conf["ui_language"]:
             return
         self.conf["ui_language"] = code
+        self.conf["ui_language_explicit"] = True
         self._select_data(self.ui_language, code)
         try:
             self.conf.save()
@@ -2289,7 +2331,7 @@ class SettingsWindow(QDialog):
             self.tts_format.addItem(value, value)
         body.addWidget(self._label_row("Default format", self.tts_format))
         self.tts_speed = FitsOnScreenCombo()
-        for label, value in (("1x", 1.0), ("1.5x", 1.5), ("2x", 2.0)):
+        for label, value in (("0.9x", 0.9), ("1x", 1.0), ("1.5x", 1.5), ("2x", 2.0)):
             self.tts_speed.addItem(label, value)
         body.addWidget(self._label_row("Default speed", self.tts_speed))
         self.tts_autoplay = QCheckBox(t("Play automatically when ready"))
@@ -2892,7 +2934,7 @@ class SettingsWindow(QDialog):
         for value in ("opus", "mp3", "wav"):
             self.speak_format.addItem(value, value)
         self.speak_speed = FitsOnScreenCombo()
-        for label, value in (("1x", 1.0), ("1.5x", 1.5), ("2x", 2.0)):
+        for label, value in (("0.9x", 0.9), ("1x", 1.0), ("1.5x", 1.5), ("2x", 2.0)):
             self.speak_speed.addItem(label, value)
         controls = QHBoxLayout()
         controls.addWidget(self._label_row("Format", self.speak_format))
@@ -2967,8 +3009,8 @@ class SettingsWindow(QDialog):
         self.tts.failed.connect(self._on_speak_failed)
         self._select_data(self.speak_format, self.conf.get("tts_format", "opus"))
         try:
-            speed_index = ("1.0", "1.5", "2.0").index(
-                str(float(self.conf.get("tts_speed", 1.0))))
+            speed_index = ("0.9", "1.0", "1.5", "2.0").index(
+                str(float(self.conf.get("tts_speed", 0.9))))
         except (TypeError, ValueError):
             speed_index = 0
         self.speak_speed.setCurrentIndex(speed_index)
@@ -2984,9 +3026,9 @@ class SettingsWindow(QDialog):
 
     def _speak_speed(self):
         try:
-            return float(self.speak_speed.currentData() or 1.0)
+            return float(self.speak_speed.currentData() or 0.9)
         except (TypeError, ValueError):
-            return 1.0
+            return 0.9
 
     def _run_speak(self):
         text = self.speak_input.toPlainText().strip()
@@ -3335,8 +3377,8 @@ class SettingsWindow(QDialog):
                           conf.get("screenshot_format", "PNG") or "PNG")
         self._select_data(self.tts_format, conf.get("tts_format", "opus"))
         try:
-            speed_index = ("1.0", "1.5", "2.0").index(
-                str(float(conf.get("tts_speed", 1.0))))
+            speed_index = ("0.9", "1.0", "1.5", "2.0").index(
+                str(float(conf.get("tts_speed", 0.9))))
         except (TypeError, ValueError):
             speed_index = 0
         self.tts_speed.setCurrentIndex(speed_index)
@@ -3455,7 +3497,10 @@ class SettingsWindow(QDialog):
         # Save keeps them, it does not read them back from the buttons.
         conf["start_with_windows"] = self.start_with_windows.isChecked()
         conf["close_to_tray"] = self.close_to_tray.isChecked()
-        conf["ui_language"] = self.ui_language.currentData() or "auto"
+        new_ui_language = self.ui_language.currentData() or "auto"
+        if new_ui_language != conf.get("ui_language"):
+            conf["ui_language_explicit"] = True
+        conf["ui_language"] = new_ui_language
         conf["mic_target"] = self.mic.currentData() or ""
         conf["language"] = self.language.currentData() or "auto"
         conf["auto_paste"] = self.auto_paste.isChecked()
@@ -3466,9 +3511,9 @@ class SettingsWindow(QDialog):
         conf["screenshot_shortcut"] = self.screenshot_shortcut.currentText().strip()
         conf["tts_format"] = self.tts_format.currentData() or "opus"
         try:
-            conf["tts_speed"] = float(self.tts_speed.currentData() or 1.0)
+            conf["tts_speed"] = float(self.tts_speed.currentData() or 0.9)
         except (TypeError, ValueError):
-            conf["tts_speed"] = 1.0
+            conf["tts_speed"] = 0.9
         conf["tts_autoplay"] = self.tts_autoplay.isChecked()
         conf["tts_shortcut"] = self.tts_shortcut.currentText().strip()
         conf["tts_stop_shortcut"] = self.tts_stop_shortcut.currentText().strip()
@@ -3750,12 +3795,15 @@ class SettingsWindow(QDialog):
         """One framed card for a key: status, masked value, use, actions."""
         card = QGroupBox()
         body = QVBoxLayout(card)
-        body.setSpacing(4)
+        body.setSpacing(2)
+        body.setContentsMargins(9, 6, 9, 6)
         header = QHBoxLayout()
+        header.setSpacing(8)
         dot = QLabel("●")
         dot.setStyleSheet(
             "color: #22c55e;" if stamp else "color: #6b7280;")
         title = QLabel(label or f"API {index + 1}")
+        title.setObjectName("keyChip")
         masked = QLabel(self._masked_key(key))
         masked.setFont(QFont("Consolas"))
         header.addWidget(dot)
