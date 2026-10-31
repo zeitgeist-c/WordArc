@@ -9,7 +9,6 @@ import shutil
 import threading
 import unicodedata
 
-import api
 from brand import BRAND
 import credential_store
 import i18n
@@ -794,11 +793,6 @@ class Config:
             else:
                 nxt = self.claim_api_slot(total)
             self._store_rotation(stamps, nxt)
-
-    def transcribe_target(self):
-        """Key, endpoint and model for Gemini speech to text."""
-        return api.Target("gemini", "Gemini", self.gemini_key(),
-                          "", self["gemini_transcribe_model"])
 
     def transcribe_name(self):
         """What the history row records as the model that answered.
