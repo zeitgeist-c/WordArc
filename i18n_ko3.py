@@ -110,7 +110,7 @@ KO3 = {
 " s": " 초",
 "Skip silent recordings (don't call the API)": "무음 녹음 건너뛰기(API 호출 안 함)",
 "Silence threshold": "무음 임계값",
-"Keep audio files (%LOCALAPPDATA%\\\\WordArc\\\\recordings)": "오디오 파일 유지(%LOCALAPPDATA%\\\\WordArc\\\\recordings)",
+"Keep audio files (%LOCALAPPDATA%\\WordArc\\recordings)": "오디오 파일 유지(%LOCALAPPDATA%\\WordArc\\recordings)",
 "Keys": "키",
 "Speech to text": "음성을 텍스트로",
 "Transcript cleanup": "받아쓰기 정리",

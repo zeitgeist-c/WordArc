@@ -3,7 +3,6 @@ ES5 = {
 "The shortcut is registered with Windows and takes effect immediately.": "El atajo está registrado en Windows y tiene efecto inmediato.",
 "Shortcut conflict": "Conflicto de atajo",
 "{shortcut} is assigned to both {first} and {second}.": "{shortcut} está asignado tanto a {first} como a {second}.",
-"{shortcut} is also used by:\\n\\n{list}\\n\\nInstall anyway?": "{shortcut} también lo usa:\\n\\n{list}\\n\\n¿Instalar de todos modos?",
 "the built-in listener.": "el escucha integrado.",
 "Could not parse the shortcut: {shortcut}": "No se pudo analizar el atajo: {shortcut}",
 "Could not register the shortcut. Another program may already be using it: {shortcut}": "No se pudo registrar el atajo. Otro programa puede estar usándolo: {shortcut}",
@@ -58,4 +57,8 @@ ES5 = {
 "account.": "cuenta.",
 "How it runs": "Cómo se ejecuta",
 "Runs on": "Se ejecuta en",
+"Works the moment you save — no logout needed. The key does not reach the focused application.": "Funciona en cuanto guarda — no hay que cerrar sesión. La tecla no llega a la aplicación enfocada.",
+"{shortcut} is also used by:\n\n{list}\n\nInstall anyway?": "{shortcut} también lo usa:\n\n{list}\n\n¿Instalar de todos modos?",
+"Shortcut saved: {shortcut}\nKWin only reads this file at startup, so it will not fire until you log out and back in. To use it right away, turn on the built-in listener.": "Atajo guardado: {shortcut}\nKWin solo lee este archivo al arrancar, así que no se activará hasta que cierre sesión y vuelva a entrar. Para usarlo de inmediato, active el escucha integrado.",
+"{binary} not found. Install it, or pick another provider under Settings → Agent.": "{binary} no encontrado. Instálelo o elija otro proveedor en Configuración → Agente.",
 }

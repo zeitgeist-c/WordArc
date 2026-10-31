@@ -91,6 +91,31 @@ class IssMigrationTests(unittest.TestCase):
                     f"installer must not reference user data: {stripped}")
 
 
+class IssLanguageTests(unittest.TestCase):
+    def test_setup_asks_language_with_all_13_codes(self):
+        import i18n
+        body = iss_text()
+        section = body.split("[Languages]", 1)[1].split("[", 1)[0]
+        names = re.findall(r'Name:\s*"([^"]+)"', section)
+        self.assertEqual(names, [code for code, _label in i18n.LANGUAGES])
+
+    def test_task_descriptions_are_translated_per_language(self):
+        import i18n
+        body = iss_text()
+        section = body.split("[CustomMessages]", 1)[1].split("[", 1)[0]
+        for code, _label in i18n.LANGUAGES:
+            self.assertIn(f"{code}.DesktopIcon=", section)
+            self.assertIn(f"{code}.AutoStart=", section)
+        tasks = body.split("[Tasks]", 1)[1].split("[", 1)[0]
+        self.assertIn("{cm:DesktopIcon}", tasks)
+        self.assertIn("{cm:AutoStart}", tasks)
+
+    def test_setup_language_reaches_first_launch(self):
+        body = iss_text()
+        run_section = body.split("[Run]", 1)[1].split("[Code]", 1)[0]
+        self.assertIn("--setup-language {language}", run_section)
+
+
 class UpdateFlowTests(unittest.TestCase):
     def test_setup_flow_replaces_the_swap_flow(self):
         import update

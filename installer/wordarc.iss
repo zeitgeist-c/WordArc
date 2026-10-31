@@ -58,9 +58,54 @@ Source: "{#WordArcTestPayload}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\inner\WordArc.exe"; DestDir: "{app}"; Flags: ignoreversion
 #endif
 
+; 13 arayüz dili: Name uygulama dil kodudur ({language} olduğu gibi
+; --setup-language'e geçer), MessagesFile Inno'nun resmi çevirisidir.
+[Languages]
+Name: "en"; MessagesFile: "compiler:Default.isl"
+Name: "tr"; MessagesFile: "compiler:Languages\Turkish.isl"
+Name: "de"; MessagesFile: "compiler:Languages\German.isl"
+Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
+Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
+Name: "it"; MessagesFile: "compiler:Languages\Italian.isl"
+Name: "pt-BR"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
+Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
+Name: "pl"; MessagesFile: "compiler:Languages\Polish.isl"
+Name: "nl"; MessagesFile: "compiler:Languages\Dutch.isl"
+Name: "zh-CN"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "ja"; MessagesFile: "compiler:Languages\Japanese.isl"
+Name: "ko"; MessagesFile: "compiler:Languages\Korean.isl"
+
+[CustomMessages]
+en.DesktopIcon=Create a desktop shortcut
+en.AutoStart=Start with Windows
+tr.DesktopIcon=Masaüstü kısayolu oluştur
+tr.AutoStart=Windows açılışında başlat
+de.DesktopIcon=Desktopverknüpfung erstellen
+de.AutoStart=Mit Windows starten
+es.DesktopIcon=Crear un acceso directo en el escritorio
+es.AutoStart=Iniciar con Windows
+fr.DesktopIcon=Créer un raccourci sur le bureau
+fr.AutoStart=Démarrer avec Windows
+it.DesktopIcon=Crea un collegamento sul desktop
+it.AutoStart=Avvia con Windows
+pt-BR.DesktopIcon=Criar um atalho na área de trabalho
+pt-BR.AutoStart=Iniciar com o Windows
+ru.DesktopIcon=Создать ярлык на рабочем столе
+ru.AutoStart=Запускать вместе с Windows
+pl.DesktopIcon=Utwórz skrót na pulpicie
+pl.AutoStart=Uruchamiaj razem ze startem systemu Windows
+nl.DesktopIcon=Een bureaubladsnelkoppeling maken
+nl.AutoStart=Starten met Windows
+zh-CN.DesktopIcon=创建桌面快捷方式
+zh-CN.AutoStart=随 Windows 启动
+ja.DesktopIcon=デスクトップにショートカットを作成
+ja.AutoStart=Windows 起動時に開始
+ko.DesktopIcon=바탕 화면 바로 가기 만들기
+ko.AutoStart=Windows 시작 시 실행
+
 [Tasks]
-Name: "desktopicon"; Description: "Masaüstü kısayolu oluştur"; Flags: unchecked
-Name: "autostart"; Description: "Windows açılışında başlat"; Flags: checkedonce
+Name: "desktopicon"; Description: "{cm:DesktopIcon}"; Flags: unchecked
+Name: "autostart"; Description: "{cm:AutoStart}"; Flags: checkedonce
 
 [Icons]
 #ifndef WordArcTest
@@ -74,9 +119,11 @@ Root: HKLM; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 #endif
 
 ; Hem taze kurulumda hem sessiz güncellemede uygulamayı kurulum sonunda
-; kullanıcının kendisi olarak (elevasyonsuz) başlatır.
+; kullanıcının kendisi olarak (elevasyonsuz) başlatır. Taze kurulumda
+; sihirbazda seçilen dil --setup-language ile ilk açılışa taşınır;
+; yönetilen güncellemede çalışmaz, kayıtlı dil korunur.
 [Run]
-Filename: "{app}\WordArc.exe"; Flags: nowait runasoriginaluser; Check: NotManagedUpdate; BeforeInstall: CleanLaunchEnvironment
+Filename: "{app}\WordArc.exe"; Parameters: "--setup-language {language}"; Flags: nowait runasoriginaluser; Check: NotManagedUpdate; BeforeInstall: CleanLaunchEnvironment
 
 [Code]
 var

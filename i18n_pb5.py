@@ -3,7 +3,6 @@ PB5 = {
 "The shortcut is registered with Windows and takes effect immediately.": "O atalho é registrado no Windows e vale de imediato.",
 "Shortcut conflict": "Conflito de atalho",
 "{shortcut} is assigned to both {first} and {second}.": "{shortcut} está atribuído a {first} e a {second}.",
-"{shortcut} is also used by:\\n\\n{list}\\n\\nInstall anyway?": "{shortcut} também é usado por:\\n\\n{list}\\n\\nInstalar mesmo assim?",
 "the built-in listener.": "o ouvinte integrado.",
 "Could not parse the shortcut: {shortcut}": "Não foi possível analisar o atalho: {shortcut}",
 "Could not register the shortcut. Another program may already be using it: {shortcut}": "Não foi possível registrar o atalho. Outro programa pode estar usando-o: {shortcut}",
@@ -58,4 +57,8 @@ PB5 = {
 "account.": "conta.",
 "How it runs": "Como roda",
 "Runs on": "Roda em",
+"Works the moment you save — no logout needed. The key does not reach the focused application.": "Funciona assim que você salva — não precisa sair da conta. A tecla não chega ao aplicativo ativo.",
+"{shortcut} is also used by:\n\n{list}\n\nInstall anyway?": "{shortcut} também é usado por:\n\n{list}\n\nInstalar mesmo assim?",
+"Shortcut saved: {shortcut}\nKWin only reads this file at startup, so it will not fire until you log out and back in. To use it right away, turn on the built-in listener.": "Atalho salvo: {shortcut}\nO KWin só lê este arquivo na inicialização, então ele não dispara até você sair e entrar de novo. Para usar agora, ative o ouvinte integrado.",
+"{binary} not found. Install it, or pick another provider under Settings → Agent.": "{binary} não encontrado. Instale-o ou escolha outro provedor em Configurações → Agente.",
 }
