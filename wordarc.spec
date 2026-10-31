@@ -4,7 +4,7 @@ import sysconfig
 from pathlib import Path
 
 import PyQt6
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_all
 
 # The winrt wheels ship their own msvcp140.dll copy next to their .pyd files.
 # When onnxruntime loads its own copy of the same CRT into the same process,
@@ -80,6 +80,14 @@ hiddenimports = ['unicodedata', 'soundcard', 'faster_whisper', 'ctranslate2',
                   'winrt.windows.graphics.imaging', 'winrt.windows.media.ocr',
                   'winrt.windows.storage.streams', 'winrt.windows.globalization']
 
+# cv2's bootstrap (__init__ imports the compiled cv2.cv2 through importlib),
+# so plain hiddenimports leave it out of a.pure even though analysis sees the
+# package. Merge the wheel's real .py files in explicitly.
+_cv2_datas, _cv2_binaries, _cv2_hidden = collect_all('cv2')
+datas += _cv2_datas
+binaries += _cv2_binaries
+hiddenimports += _cv2_hidden
+
 
 a = Analysis(
     ['wordarc.py'],
@@ -101,6 +109,21 @@ a.binaries = [entry for entry in a.binaries
               if os.path.basename(entry[0]).lower() not in
               {"icuuc.dll", "icuin.dll"}
               and not os.path.basename(entry[0]).lower().startswith("icudt")]
+
+import importlib.util
+from PyInstaller.utils.hooks import collect_submodules as _collect_cv2_submodules
+_have_pure = {entry[0] for entry in a.pure}
+for _mod in _collect_cv2_submodules("cv2"):
+    if _mod in _have_pure:
+        continue
+    try:
+        _found = importlib.util.find_spec(_mod)
+    except (ImportError, ValueError, AttributeError):
+        continue
+    if _found is None or not (_found.origin or "").endswith(".py"):
+        continue
+    a.pure.append((_mod, _found.origin, "PYMODULE"))
+    _have_pure.add(_mod)
 
 pyz = PYZ(a.pure)
 

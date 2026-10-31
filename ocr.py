@@ -16,6 +16,14 @@ import importlib.util
 import logging
 import threading
 
+try:
+    # Static import so frozen builds collect cv2 through normal analysis
+    # (hiddenimports silently drop it). Absence must never break importing
+    # this module: the editor hides the buttons instead.
+    import cv2  # noqa: F401
+except ImportError:
+    cv2 = None  # type: ignore[assignment]
+
 log = logging.getLogger("wordarc.ocr")
 
 
@@ -74,7 +82,8 @@ def _get_rapid_engine():
 
 def _recognize_rapid(png_bytes: bytes) -> str:
     """PNG bytes -> recognised text, via the shared ONNX engine."""
-    import cv2
+    if cv2 is None:
+        raise OcrUnavailable("OpenCV is not installed")
     import numpy as np
     engine = _get_rapid_engine()
     image = cv2.imdecode(np.frombuffer(png_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
