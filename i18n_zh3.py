@@ -110,7 +110,7 @@ ZH3 = {
 " s": " 秒",
 "Skip silent recordings (don't call the API)": "跳过静音录音（不调用 API）",
 "Silence threshold": "静音阈值",
-"Keep audio files (%LOCALAPPDATA%\\\\WordArc\\\\recordings)": "保留音频文件（%LOCALAPPDATA%\\\\WordArc\\\\recordings）",
+"Keep audio files (%LOCALAPPDATA%\\WordArc\\recordings)": "保留音频文件（%LOCALAPPDATA%\\WordArc\\recordings）",
 "Keys": "按键",
 "Speech to text": "语音转文本",
 "Transcript cleanup": "转写清理",

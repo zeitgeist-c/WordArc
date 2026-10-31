@@ -118,4 +118,9 @@ IT4 = {
 "Install as a Windows shortcut": "Installa come scorciatoia Windows",
 "Active shortcut: {shortcut}": "Scorciatoia attiva: {shortcut}",
 "No shortcut set.": "Nessuna scorciatoia.",
+"System instruction given to the cleanup model. This is where you decide how much it may touch your words.": "Istruzione di sistema data al modello di pulizia. Qui decidi quanto può toccare le tue parole.",
+"Used instead when an audio or video file is cleaned up. It is written for subtitles: lines stay where they are, nothing is shortened, and misheard words are repaired from the context.": "Si usa invece quando si pulisce un file audio o video. È scritto per i sottotitoli: le righe tengono il loro posto, nulla è accorciato e le parole sono riparate dal contesto.",
+"Automatic uses the Nvidia GPU when its driver and CUDA runtime answer, otherwise the CPU. Forcing Nvidia GPU fails with a clear message when CUDA is missing instead of silently using the CPU.": "Automatico usa la GPU Nvidia quando driver e runtime CUDA rispondono, altrimenti la CPU. Forzare GPU Nvidia fallisce con un messaggio chiaro quando CUDA manca, invece di usare la CPU in silenzio.",
+"Nvidia GPU was requested, but no usable CUDA device was found. Check the driver and the CUDA runtime, or switch the device back to Automatic.": "È stata richiesta la GPU Nvidia, ma non è stato trovato alcun dispositivo CUDA utilizzabile. Controlla driver e runtime CUDA, oppure rimetti il dispositivo su Automatico.",
+"Not enough disk space for the local model.": "Spazio su disco insufficiente per il modello locale.",
 }

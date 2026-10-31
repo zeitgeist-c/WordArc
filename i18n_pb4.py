@@ -118,4 +118,9 @@ PB4 = {
 "Install as a Windows shortcut": "Instalar como atalho do Windows",
 "Active shortcut: {shortcut}": "Atalho ativo: {shortcut}",
 "No shortcut set.": "Nenhum atalho definido.",
+"System instruction given to the cleanup model. This is where you decide how much it may touch your words.": "Instrução de sistema dada ao modelo de limpeza. É aqui que você decide o quanto ele pode tocar nas suas palavras.",
+"Used instead when an audio or video file is cleaned up. It is written for subtitles: lines stay where they are, nothing is shortened, and misheard words are repaired from the context.": "Usada no lugar desta quando um arquivo de áudio ou vídeo é limpo. Foi escrita para legendas: as linhas ficam onde estão, nada é encurtado e as palavras são reparadas pelo contexto.",
+"Automatic uses the Nvidia GPU when its driver and CUDA runtime answer, otherwise the CPU. Forcing Nvidia GPU fails with a clear message when CUDA is missing instead of silently using the CPU.": "Automático usa a GPU Nvidia quando o driver e o runtime CUDA respondem; caso contrário, a CPU. Forçar GPU Nvidia falha com uma mensagem clara quando o CUDA falta, em vez de usar a CPU em silêncio.",
+"Nvidia GPU was requested, but no usable CUDA device was found. Check the driver and the CUDA runtime, or switch the device back to Automatic.": "A GPU Nvidia foi solicitada, mas nenhum dispositivo CUDA utilizável foi encontrado. Verifique o driver e o runtime CUDA, ou volte o dispositivo para Automático.",
+"Not enough disk space for the local model.": "Espaço em disco insuficiente para o modelo local.",
 }

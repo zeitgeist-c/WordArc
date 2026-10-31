@@ -3,7 +3,6 @@ IT5 = {
 "The shortcut is registered with Windows and takes effect immediately.": "La scorciatoia è registrata in Windows e ha effetto immediato.",
 "Shortcut conflict": "Conflitto scorciatoia",
 "{shortcut} is assigned to both {first} and {second}.": "{shortcut} è assegnata sia a {first} che a {second}.",
-"{shortcut} is also used by:\\n\\n{list}\\n\\nInstall anyway?": "{shortcut} è usata anche da:\\n\\n{list}\\n\\nInstallare comunque?",
 "the built-in listener.": "l'ascoltatore integrato.",
 "Could not parse the shortcut: {shortcut}": "Impossibile analizzare scorciatoia: {shortcut}",
 "Could not register the shortcut. Another program may already be using it: {shortcut}": "Impossibile registrare scorciatoia. Un altro programma potrebbe usarla già: {shortcut}",
@@ -58,4 +57,8 @@ IT5 = {
 "account.": "account.",
 "How it runs": "Come gira",
 "Runs on": "Gira su",
+"Works the moment you save — no logout needed. The key does not reach the focused application.": "Funziona appena salvi — nessun logout necessario. Il tasto non arriva all'applicazione attiva.",
+"{shortcut} is also used by:\n\n{list}\n\nInstall anyway?": "{shortcut} è usata anche da:\n\n{list}\n\nInstallare comunque?",
+"Shortcut saved: {shortcut}\nKWin only reads this file at startup, so it will not fire until you log out and back in. To use it right away, turn on the built-in listener.": "Scorciatoia salvata: {shortcut}\nKWin legge questo file solo all'avvio, quindi non scatterà finché non esci e rientri. Per usarla subito, attiva l'ascoltatore integrato.",
+"{binary} not found. Install it, or pick another provider under Settings → Agent.": "{binary} non trovato. Installalo o scegli un altro provider in Impostazioni → Agente.",
 }

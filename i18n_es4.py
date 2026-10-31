@@ -118,4 +118,9 @@ ES4 = {
 "Install as a Windows shortcut": "Instalar como atajo de Windows",
 "Active shortcut: {shortcut}": "Atajo activo: {shortcut}",
 "No shortcut set.": "Ningún atajo configurado.",
+"System instruction given to the cleanup model. This is where you decide how much it may touch your words.": "Instrucción del sistema que recibe el modelo de limpieza. Aquí decide cuánto puede tocar sus palabras.",
+"Used instead when an audio or video file is cleaned up. It is written for subtitles: lines stay where they are, nothing is shortened, and misheard words are repaired from the context.": "Se usa en su lugar cuando se limpia un archivo de audio o vídeo. Está escrito para subtítulos: las líneas conservan su lugar, nada se acorta y las palabras se reparan desde el contexto.",
+"Automatic uses the Nvidia GPU when its driver and CUDA runtime answer, otherwise the CPU. Forcing Nvidia GPU fails with a clear message when CUDA is missing instead of silently using the CPU.": "Automático usa la GPU Nvidia cuando responden su controlador y el entorno CUDA; si no, la CPU. Forzar GPU Nvidia falla con un mensaje claro cuando falta CUDA, en lugar de usar la CPU en silencio.",
+"Nvidia GPU was requested, but no usable CUDA device was found. Check the driver and the CUDA runtime, or switch the device back to Automatic.": "Se pidió la GPU Nvidia, pero no se encontró ningún dispositivo CUDA utilizable. Compruebe el controlador y el entorno CUDA, o vuelva a poner el dispositivo en Automático.",
+"Not enough disk space for the local model.": "No hay suficiente espacio en disco para el modelo local.",
 }

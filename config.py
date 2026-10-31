@@ -547,6 +547,10 @@ def _keep_unreadable_config():
 class Config:
     def __init__(self):
         self.data = dict(DEFAULTS)
+        # Taze kurulum: config dosyası daha önce yoktu (ilk açılış dil
+        # seçimi ve kurulum dilinin devralınması yalnız burada çalışır).
+        # Bozuk dosya fresh sayılmaz: kullanıcının ayarı vardı.
+        self.fresh = not CONFIG_FILE.exists()
         self.load()
 
     def load(self):

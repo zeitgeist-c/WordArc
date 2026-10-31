@@ -19,6 +19,7 @@ class TestI18n(unittest.TestCase):
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
+        i18n.set_language("en")
 
     def test_resolve_auto_en(self):
         os.environ["LANG"] = "C"
@@ -200,6 +201,23 @@ class TestTranslationCoverage(unittest.TestCase):
         # Ayar dil listesi ortak 13 dil sözleşmesiyle birebir eşleşmeli.
         self.assertEqual([code for _label, code in settings_ui.UI_LANGUAGES],
                          [code for code, _label in i18n.LANGUAGES])
+
+
+class TestAllLanguagesParity(unittest.TestCase):
+    """13 dil işi: her TR anahtarı 11 dilde de olmalı, yoksa arayüzde
+    o metin sessizce İngilizceye düşer."""
+
+    def test_every_turkish_key_exists_in_all_languages(self):
+        missing = []
+        for code, table in i18n.TABLES.items():
+            if code == "tr":
+                continue
+            for key in i18n.TR:
+                if key not in table:
+                    missing.append(f"{code}: {key!r}")
+        self.assertFalse(
+            missing,
+            f"{len(missing)} çeviri eksik (ilk 10):\n" + "\n".join(missing[:10]))
 
 
 if __name__ == "__main__":

@@ -1602,6 +1602,59 @@ def _should_open_settings(command, has_api_keys, tray_available):
             or not tray_available)
 
 
+SETUP_LANGUAGE_FLAG = "--setup-language"
+
+
+def _setup_language_arg(argv):
+    """Installer sihirbazında seçilen dil kodu, geçersizse ''."""
+    if SETUP_LANGUAGE_FLAG in argv:
+        index = argv.index(SETUP_LANGUAGE_FLAG)
+        if index + 1 < len(argv) and argv[index + 1] in i18n.CODES:
+            return argv[index + 1]
+    return ""
+
+
+def _ask_first_run_language():
+    """Taze kurulumda kurulum dili taşınamadıysa sor: kod veya '' (vazgeçti)."""
+    from PyQt6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox,
+                                 QLabel, QVBoxLayout)
+    dialog = QDialog()
+    dialog.setWindowTitle("WordArc")
+    layout = QVBoxLayout(dialog)
+    layout.addWidget(QLabel("Choose your language / Dilinizi seçin"))
+    combo = QComboBox(dialog)
+    for code, label in i18n.LANGUAGES:
+        combo.addItem(label, code)
+    layout.addWidget(combo)
+    buttons = QDialogButtonBox(
+        QDialogButtonBox.StandardButton.Ok)
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    layout.addWidget(buttons)
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return ""
+    return combo.currentData() or ""
+
+
+def _apply_first_run_language(conf, setup_lang):
+    """Taze kurulum dilini belirle, kaydet; diyalog gerekti ve soruldu."""
+    if not conf.fresh:
+        return
+    if setup_lang:
+        conf["ui_language"] = setup_lang
+        i18n.set_language(setup_lang)
+    else:
+        chosen = _ask_first_run_language()
+        if chosen:
+            conf["ui_language"] = chosen
+            i18n.set_language(chosen)
+    try:
+        conf.save()
+    except OSError:
+        logging.getLogger("wordarc.startup").warning(
+            "first-run language could not be persisted")
+
+
 def ensure_startup_registration(conf):
     """Create the Windows Run entry once when the setting says 'on'.
 
@@ -1714,6 +1767,7 @@ def main():
         print("wordarc: no system tray found, running anyway")
 
     conf = cfg.Config()
+    _apply_first_run_language(conf, _setup_language_arg(sys.argv))
     ensure_startup_registration(conf)
     # Device discovery can wait on a GPU driver for tens of seconds. Settings
     # resolves it in a worker; startup must not probe on the GUI thread.

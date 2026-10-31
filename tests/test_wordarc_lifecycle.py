@@ -499,3 +499,35 @@ def test_splash_keeps_all_four_corners_clear_at_display_scale(dpr):
     # away by a second application of the display scale.
     assert image.pixelColor(width - round(4 * dpr), height // 2).alpha() > 200
     assert image.pixelColor(width // 2, height - round(4 * dpr)).alpha() > 200
+
+
+def test_setup_language_arg_accepts_only_known_codes():
+    assert wordarc._setup_language_arg(
+        ["WordArc.exe", "--setup-language", "tr"]) == "tr"
+    assert wordarc._setup_language_arg(
+        ["WordArc.exe", "--setup-language", "pt-BR"]) == "pt-BR"
+    assert wordarc._setup_language_arg(["WordArc.exe"]) == ""
+    assert wordarc._setup_language_arg(
+        ["WordArc.exe", "--setup-language", "xx"]) == ""
+    assert wordarc._setup_language_arg(
+        ["WordArc.exe", "--setup-language"]) == ""
+
+
+def test_first_run_applies_setup_language_once():
+    import i18n
+    conf = mock.MagicMock()
+    conf.fresh = True
+    try:
+        wordarc._apply_first_run_language(conf, "de")
+    finally:
+        i18n.set_language("en")
+    conf.__setitem__.assert_called_once_with("ui_language", "de")
+
+
+def test_first_run_leaves_existing_install_alone():
+    conf = mock.MagicMock()
+    conf.fresh = False
+    with mock.patch.object(wordarc, "_ask_first_run_language") as ask:
+        wordarc._apply_first_run_language(conf, "tr")
+        ask.assert_not_called()
+    conf.__setitem__.assert_not_called()
