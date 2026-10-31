@@ -2,7 +2,7 @@
 import threading
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QListWidget,
+from PyQt6.QtWidgets import (QDialog, QGroupBox, QHBoxLayout, QLabel, QListWidget,
                             QListWidgetItem, QPushButton, QProgressBar,
                             QPlainTextEdit, QVBoxLayout, QFileDialog)
 
@@ -12,6 +12,7 @@ from i18n import t
 
 class EngineScanDialog(QDialog):
     selected = pyqtSignal(object)
+    download_requested = pyqtSignal()
     _progress = pyqtSignal(int, object)
     _finished = pyqtSignal(int, object, str)
     _activated = pyqtSignal(int, object, str)
@@ -58,6 +59,7 @@ class EngineScanDialog(QDialog):
         layout.addWidget(self.location)
         self.backends = QLabel("")
         self.backends.setWordWrap(True)
+        self.backends.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(self.backends)
         self.results = QListWidget()
         self.results.setSpacing(5)
@@ -66,6 +68,29 @@ class EngineScanDialog(QDialog):
         self.results.setAccessibleName(t("Discovered models"))
         self.results.currentRowChanged.connect(self._selection_changed)
         layout.addWidget(self.results, 1)
+        # Empty state (Mockup A): no model files, so nothing is selectable.
+        # The engines stay visible as chips above; this card points forward.
+        self.empty = QGroupBox()
+        empty_body = QVBoxLayout(self.empty)
+        empty_body.setSpacing(8)
+        empty_title = QLabel(t("No model files yet"))
+        empty_title.setStyleSheet("font-size: 16px; font-weight: 600;")
+        empty_title.setWordWrap(True)
+        empty_body.addWidget(empty_title)
+        empty_detail = QLabel(t("The engines are ready, but there is no model to run. Download a model, then choose it here."))
+        empty_detail.setObjectName("muted")
+        empty_detail.setWordWrap(True)
+        empty_body.addWidget(empty_detail)
+        self.download = QPushButton(t("Download model"))
+        self.download.setObjectName("primaryButton")
+        self.download.clicked.connect(self.download_requested.emit)
+        empty_row = QHBoxLayout()
+        empty_row.addStretch(1)
+        empty_row.addWidget(self.download)
+        empty_row.addStretch(1)
+        empty_body.addLayout(empty_row)
+        layout.addWidget(self.empty, 1)
+        self.empty.hide()
         self.coverage = QLabel("")
         self.coverage.setWordWrap(True)
         self.coverage.setObjectName("muted")
@@ -119,6 +144,8 @@ class EngineScanDialog(QDialog):
         self.results.clear()
         self.details.clear()
         self.coverage.hide()
+        self.empty.hide()
+        self.results.show()
         self.backends.clear()
         self.bar.setRange(0, 0)
         self.status.setText(t("Searching for existing engines and models…"))
@@ -179,13 +206,20 @@ class EngineScanDialog(QDialog):
         rows = discovery.choices(inventory)
         self.status.setText(t("{models} models found · {choices} choices available",
                               models=len(inventory.models), choices=len(rows)))
-        notes = []
-        for kind in ("cpu", "cuda"):
-            result = inventory.backends[kind]
-            notes.append(f"{kind.upper()}: {t('Ready') if result['ready'] else t('Unavailable')}")
-        native = sum(row["compatible"] for row in inventory.runtimes)
-        notes.append(t("Native engines: {count}", count=native))
-        self.backends.setText("   ·   ".join(notes))
+        chips = []
+        for name, ready in (
+                ("CPU", inventory.backends.get("cpu", {}).get("ready", False)),
+                ("CUDA", inventory.backends.get("cuda", {}).get("ready", False)),
+                ("Vulkan", any(row.get("compatible")
+                               for row in inventory.runtimes))):
+            color = "#22c55e" if ready else "#6b7280"
+            label = t("Ready") if ready else t("Unavailable")
+            chips.append(
+                f"<span style='color:{color}'>●</span> {name}: {label}")
+        self.backends.setText(" &nbsp;&nbsp; ".join(chips))
+        empty = not inventory.models
+        self.empty.setVisible(empty)
+        self.results.setVisible(not empty)
         for choice in rows:
             model = choice["model"]
             suffix = t("Validate on selection") if choice["unverified"] else t("Files found")

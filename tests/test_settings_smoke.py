@@ -20,6 +20,20 @@ import screenshot_capture
 from i18n import t
 
 
+def _gemini_card_texts(window):
+    """Joined label texts of each key card, in order (empty hint skipped)."""
+    texts = []
+    layout = window.gemini_cards_layout
+    for pos in range(layout.count()):
+        widget = layout.itemAt(pos).widget()
+        if widget is None or widget is window.gemini_empty_label:
+            continue
+        texts.append(" | ".join(
+            label.text()
+            for label in widget.findChildren(settings_ui.QLabel)))
+    return texts
+
+
 class TestSettingsSmoke(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -83,7 +97,8 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertTrue(flags & Qt.WindowType.WindowMinimizeButtonHint)
         self.assertTrue(flags & Qt.WindowType.WindowMaximizeButtonHint)
         self.assertTrue(window.close_to_tray.isChecked())
-        self.assertEqual(window.gemini_keys_list.count(), 0)
+        self.assertEqual(_gemini_card_texts(window), [])
+        self.assertFalse(window.gemini_empty_label.isHidden())
         self.assertEqual(window.transcribe_model.currentText(),
                          "gemini-3.5-flash-lite")
         self.assertIs(window.general_theme, window.header_theme)
@@ -232,12 +247,56 @@ class TestSettingsSmoke(unittest.TestCase):
             self.window.conf.save.assert_called_once_with()
         controller.close()
 
+    def test_cleanup_master_switch_sets_all_three_tabs(self):
+        window = self.window
+        window.cleanup_enabled.setChecked(False)
+        window.meeting_cleanup.setChecked(False)
+        window.file_cleanup.setChecked(False)
+        window._refresh_cleanup_all()
+        self.assertFalse(window.cleanup_all.isChecked())
+        window.cleanup_all.setChecked(True)
+        self.assertTrue(window.cleanup_enabled.isChecked())
+        self.assertTrue(window.meeting_cleanup.isChecked())
+        self.assertTrue(window.file_cleanup.isChecked())
+        window.meeting_cleanup.setChecked(False)
+        window._refresh_cleanup_all()
+        self.assertFalse(window.cleanup_all.isChecked())
+        window.cleanup_all.setChecked(False)
+        self.assertFalse(window.cleanup_enabled.isChecked())
+        self.assertFalse(window.file_cleanup.isChecked())
+
+    def test_cleanup_master_switch_loads_from_saved_tabs(self):
+        window = self.window
+        window.conf.data["cleanup_enabled"] = True
+        window.conf.data["meeting_cleanup"] = True
+        window.conf.data["file_cleanup"] = True
+        window._load()
+        self.assertTrue(window.cleanup_all.isChecked())
+
+    def test_card_test_button_reports_result(self):
+        window = self.window
+        window._gemini_keys = ["key-1-aaaa"]
+        window._refresh_gemini_keys()
+        with mock.patch.object(settings_ui.api, "gemini_models",
+                               return_value=["m1", "m2"]):
+            window._test_gemini(0)
+            deadline = time.monotonic() + 5
+            while window._gemini_testing is not None \
+                    and time.monotonic() < deadline:
+                self.app.processEvents()
+                time.sleep(0.005)
+        self.assertIsNone(window._gemini_testing)
+        self.assertIn("2", window.gemini_test_label.text())
+
     def test_gemini_keys_can_be_reordered_without_showing_secrets(self):
         window = self.window
         window._gemini_keys = ["primary-secret", "backup-secret"]
         window._refresh_gemini_keys(1)
-        self.assertNotIn("primary-secret", window.gemini_keys_list.item(0).text())
-        window._move_gemini_key(-1)
+        texts = _gemini_card_texts(window)
+        self.assertEqual(len(texts), 2)
+        self.assertNotIn("primary-secret", texts[0])
+        self.assertNotIn("backup-secret", texts[1])
+        window._move_gemini_key(1, -1)
         self.assertEqual(window._gemini_keys, ["backup-secret", "primary-secret"])
 
     def test_startup_failure_does_not_report_success_or_apply(self):
@@ -298,13 +357,17 @@ class TestSettingsSmoke(unittest.TestCase):
         window.show()
         self.app.processEvents()
         for control in (window.mic, window.language, window.shortcut,
-                        window.cleanup_enabled, window.auto_paste,
+                        window.cleanup_enabled,
                         window.dictation_output):
-            self.assertTrue(control.isVisibleTo(window))
-        self.assertFalse(window.max_seconds.isVisibleTo(window))
-        window.dictation_details.setCurrentIndex(0)
-        window.dictation_advanced.setCurrentIndex(0)
+            self.assertTrue(control.isVisibleTo(window), control)
+        # Mockup A: no sub-tabs; recording and paste controls share the page.
         self.assertTrue(window.max_seconds.isVisibleTo(window))
+        self.assertTrue(window.auto_paste.isVisibleTo(window), window.auto_paste)
+        cards = window.tabs.widget(0).findChildren(settings_ui.QGroupBox)
+        output_cards = [card for card in cards if card.title() == t("Output")]
+        self.assertEqual(len(output_cards), 1)
+        self.assertIn(window.auto_paste,
+                      output_cards[0].findChildren(settings_ui.QCheckBox))
 
     def test_header_buttons_toggle_and_persist(self):
         # QMenu.exec() stays modal offscreen; the same flow (_apply_lang) is
@@ -482,11 +545,21 @@ class TestSettingsSmoke(unittest.TestCase):
         window = self.window
         self.assertEqual(window.gemini_keys_list.minimumHeight(), 120)
         self.assertEqual(window.gemini_add_button.objectName(), "accentButton")
-        self.assertEqual(window.gemini_remove_button.objectName(), "dangerButton")
-        card = window.gemini_keys_list.parentWidget()
-        self.assertEqual(len(card.findChildren(settings_ui.QPushButton)), 6)
-        names = [b.objectName() for b in window.findChildren(settings_ui.QPushButton)]
-        self.assertGreaterEqual(names.count("dangerButton"), 4)
+        window._gemini_keys = ["key-1-aaaa", "key-2-bbbb"]
+        window._refresh_gemini_keys()
+        cards = [
+            window.gemini_cards_layout.itemAt(pos).widget()
+            for pos in range(window.gemini_cards_layout.count())
+        ]
+        cards = [card for card in cards
+                 if card is not None and card is not window.gemini_empty_label]
+        self.assertEqual(len(cards), 2)
+        for card in cards:
+            danger = [button for button in card.findChildren(settings_ui.QPushButton)
+                      if button.objectName() == "dangerButton"]
+            self.assertEqual(len(danger), 1)
+        self.assertEqual(window.gemini_today_value.text(), "0")
+        self.assertEqual(window.gemini_total_value.text(), "0")
         src = pathlib.Path(settings_ui.__file__).read_text(encoding="utf-8")
         self.assertNotIn("Keys are tried from top to bottom and stored only", src)
 
@@ -495,8 +568,7 @@ class TestSettingsSmoke(unittest.TestCase):
         window._gemini_keys = ["first-key-aaaa", "second-key-bbbb"]
         window.conf.data["gemini_last_used"] = ["2026-09-27T14:32:11+03:00", ""]
         window._refresh_gemini_keys()
-        first = window.gemini_keys_list.item(0).text()
-        second = window.gemini_keys_list.item(1).text()
+        first, second = _gemini_card_texts(window)
         self.assertIn("API 1", first)
         self.assertNotIn("Varsayılan", first)
         self.assertNotIn("Default", first)
@@ -504,15 +576,32 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertIn("API 2", second)
         self.assertIn(t("not used yet"), second)
 
+    def test_key_cards_show_daily_and_total_use(self):
+        import datetime
+        window = self.window
+        window._gemini_keys = ["first-key-aaaa", "second-key-bbbb"]
+        window.conf.data["gemini_usage"] = {
+            "day": datetime.date.today().isoformat(),
+            "daily": [3, 0],
+            "total": [10, 4],
+        }
+        window._refresh_gemini_keys()
+        self.assertEqual(window.gemini_today_value.text(), "3")
+        self.assertEqual(window.gemini_total_value.text(), "14")
+        first, second = _gemini_card_texts(window)
+        self.assertIn(t("Today: {count}", count=3), first)
+        self.assertIn(t("Total: {count}", count=10), first)
+        self.assertIn(t("Total: {count}", count=4), second)
+
     def test_showing_window_refreshes_key_usage(self):
         window = self.window
         window._gemini_keys = ["key-1-aaaa"]
         window._refresh_gemini_keys()
-        before = window.gemini_keys_list.item(0).text()
+        before = _gemini_card_texts(window)[0]
         window.conf.data["gemini_last_used"] = ["2026-09-27T14:32:11+03:00"]
         window.show()
         self.app.processEvents()
-        after = window.gemini_keys_list.item(0).text()
+        after = _gemini_card_texts(window)[0]
         window.hide()
         self.assertNotEqual(before, after)
         self.assertIn("27.09.2026 14:32:11", after)
@@ -522,13 +611,13 @@ class TestSettingsSmoke(unittest.TestCase):
         window = self.window
         window._gemini_keys = ["key-1-aaaa"]
         window._refresh_gemini_keys()
-        before = window.gemini_keys_list.item(0).text()
+        before = _gemini_card_texts(window)[0]
         window.show()
         self.app.processEvents()
         self.assertTrue(window._usage_timer.isActive())
         window.conf.data["gemini_last_used"] = ["2026-09-27T14:32:11+03:00"]
         window._on_usage_tick()
-        after = window.gemini_keys_list.item(0).text()
+        after = _gemini_card_texts(window)[0]
         window.hide()
         self.assertFalse(window._usage_timer.isActive())
         self.assertNotEqual(before, after)

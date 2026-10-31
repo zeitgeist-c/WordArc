@@ -68,11 +68,11 @@ Name: "de"; MessagesFile: "compiler:Languages\German.isl"
 Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
 Name: "it"; MessagesFile: "compiler:Languages\Italian.isl"
-Name: "pt-BR"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
+Name: "ptBR"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "pl"; MessagesFile: "compiler:Languages\Polish.isl"
 Name: "nl"; MessagesFile: "compiler:Languages\Dutch.isl"
-Name: "zh-CN"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "zhCN"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 Name: "ja"; MessagesFile: "compiler:Languages\Japanese.isl"
 Name: "ko"; MessagesFile: "compiler:Languages\Korean.isl"
 
@@ -89,16 +89,16 @@ fr.DesktopIcon=Créer un raccourci sur le bureau
 fr.AutoStart=Démarrer avec Windows
 it.DesktopIcon=Crea un collegamento sul desktop
 it.AutoStart=Avvia con Windows
-pt-BR.DesktopIcon=Criar um atalho na área de trabalho
-pt-BR.AutoStart=Iniciar com o Windows
+ptBR.DesktopIcon=Criar um atalho na área de trabalho
+ptBR.AutoStart=Iniciar com o Windows
 ru.DesktopIcon=Создать ярлык на рабочем столе
 ru.AutoStart=Запускать вместе с Windows
 pl.DesktopIcon=Utwórz skrót na pulpicie
 pl.AutoStart=Uruchamiaj razem ze startem systemu Windows
 nl.DesktopIcon=Een bureaubladsnelkoppeling maken
 nl.AutoStart=Starten met Windows
-zh-CN.DesktopIcon=创建桌面快捷方式
-zh-CN.AutoStart=随 Windows 启动
+zhCN.DesktopIcon=创建桌面快捷方式
+zhCN.AutoStart=随 Windows 启动
 ja.DesktopIcon=デスクトップにショートカットを作成
 ja.AutoStart=Windows 起動時に開始
 ko.DesktopIcon=바탕 화면 바로 가기 만들기

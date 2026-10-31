@@ -1606,11 +1606,18 @@ SETUP_LANGUAGE_FLAG = "--setup-language"
 
 
 def _setup_language_arg(argv):
-    """The language code picked in the installer wizard, or '' when invalid."""
+    """The language code picked in the installer wizard, or '' when invalid.
+
+    Inno language names cannot contain hyphens, so pt-BR/zh-CN arrive as
+    ptBR/zhCN and are mapped back here.
+    """
+    aliases = {"ptBR": "pt-BR", "zhCN": "zh-CN"}
     if SETUP_LANGUAGE_FLAG in argv:
         index = argv.index(SETUP_LANGUAGE_FLAG)
-        if index + 1 < len(argv) and argv[index + 1] in i18n.CODES:
-            return argv[index + 1]
+        if index + 1 < len(argv):
+            code = aliases.get(argv[index + 1], argv[index + 1])
+            if code in i18n.CODES:
+                return code
     return ""
 
 

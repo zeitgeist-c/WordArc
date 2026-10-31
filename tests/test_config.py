@@ -291,6 +291,7 @@ class TestApiRotation(unittest.TestCase):
     def test_rotation_defaults_exist(self):
         self.assertIn("gemini_next_slot", cfg.DEFAULTS)
         self.assertIn("gemini_last_used", cfg.DEFAULTS)
+        self.assertIn("gemini_usage", cfg.DEFAULTS)
         self.assertEqual(cfg.DEFAULTS["gemini_next_slot"], 0)
         self.assertEqual(cfg.DEFAULTS["gemini_last_used"], [])
 
@@ -327,6 +328,27 @@ class TestApiRotation(unittest.TestCase):
             conf.record_api_attempt(0, n_keys=2)
         self.assertEqual(conf["gemini_next_slot"], 1)
         self.assertEqual(conf["gemini_last_used"], ["", ""])
+        self.assertEqual(conf.usage_counts(2), ([0, 0], [0, 0]))
+
+    def test_record_success_counts_daily_and_total(self):
+        import datetime
+        conf = self._fresh_conf(n_keys=2, next_slot=0)
+        with mock.patch.object(cfg.Config, "save"):
+            conf.record_api_success(1, n_keys=2)
+            conf.record_api_success(1, n_keys=2)
+        daily, totals = conf.usage_counts(2)
+        self.assertEqual((daily, totals), ([0, 2], [0, 2]))
+        self.assertEqual(conf.data["gemini_usage"]["day"],
+                         datetime.date.today().isoformat())
+
+    def test_daily_counts_reset_next_day_totals_keep(self):
+        import datetime
+        conf = self._fresh_conf(n_keys=2, next_slot=0)
+        yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+        conf.data["gemini_usage"] = {"day": yesterday,
+                                     "daily": [5, 1], "total": [9, 4]}
+        daily, totals = conf.usage_counts(2)
+        self.assertEqual((daily, totals), ([0, 0], [9, 4]))
 
     def test_record_normalises_shorter_stamp_list(self):
         conf = self._fresh_conf(n_keys=1, next_slot=0)

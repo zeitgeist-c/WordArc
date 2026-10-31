@@ -322,8 +322,8 @@ def default_model():
 # The two ways a take can be read. The label is the user's own phrasing: where
 # the work happens, not which library does it.
 ENGINES = (
-    ("Cloud (Gemini)", "cloud"),
-    ("Live (Gemini)", "live"),
+    ("Batch Transcription (Gemini)", "cloud"),
+    ("Instant Transcription (Gemini)", "live"),
     ("Local (this computer)", "local"),
 )
 

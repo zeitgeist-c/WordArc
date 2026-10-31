@@ -97,15 +97,21 @@ class IssLanguageTests(unittest.TestCase):
         body = iss_text()
         section = body.split("[Languages]", 1)[1].split("[", 1)[0]
         names = re.findall(r'Name:\s*"([^"]+)"', section)
-        self.assertEqual(names, [code for code, _label in i18n.LANGUAGES])
+        # Inno names cannot contain hyphens, so pt-BR/zh-CN ship as ptBR/zhCN
+        # and the app maps them back (see _setup_language_arg).
+        safe = [code.replace("-", "") for code, _label in i18n.LANGUAGES]
+        self.assertEqual(names, safe)
+        for name in names:
+            self.assertRegex(name, r"^[A-Za-z_][A-Za-z0-9_]*$")
 
     def test_task_descriptions_are_translated_per_language(self):
         import i18n
         body = iss_text()
         section = body.split("[CustomMessages]", 1)[1].split("[", 1)[0]
         for code, _label in i18n.LANGUAGES:
-            self.assertIn(f"{code}.DesktopIcon=", section)
-            self.assertIn(f"{code}.AutoStart=", section)
+            safe = code.replace("-", "")
+            self.assertIn(f"{safe}.DesktopIcon=", section)
+            self.assertIn(f"{safe}.AutoStart=", section)
         tasks = body.split("[Tasks]", 1)[1].split("[", 1)[0]
         self.assertIn("{cm:DesktopIcon}", tasks)
         self.assertIn("{cm:AutoStart}", tasks)
