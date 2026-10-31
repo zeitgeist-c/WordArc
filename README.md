@@ -158,6 +158,8 @@ Four categories down the left, each with its own panel.
 
 **API keys** — stored in Windows Credential Manager under `WordArc/GeminiApiKey`, never in `config.json`.
 
+![API keys](./docs/screenshots/10-api-keys.png)
+
 **Application** — theme, language, startup behaviour, tray behaviour.
 
 `Save` writes the settings. Changes that affect a running recording take effect on the next one, never mid-recording.

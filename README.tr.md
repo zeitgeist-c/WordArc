@@ -158,6 +158,8 @@ Solda dört kategori, her birinin kendi paneli.
 
 **API anahtarları** — Windows Credential Manager'da `WordArc/GeminiApiKey` olarak tutulur, `config.json` içine asla yazılmaz.
 
+![API anahtarları](./docs/screenshots/10-api-keys.png)
+
 **Uygulama** — tema, dil, başlangıç davranışı, tepsi davranışı.
 
 `Kaydet` ayarları yazar. Çalışan bir kaydı etkileyen değişiklikler bir sonraki kayıtta geçerli olur, kaydın ortasında asla.
