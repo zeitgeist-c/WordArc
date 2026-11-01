@@ -1613,21 +1613,42 @@ def _should_open_settings(command, has_api_keys, tray_available):
 
 SETUP_LANGUAGE_FLAG = "--setup-language"
 
+# What the installer wizard calls its languages; only the hyphen-less pair
+# was mapped before, so "turkish" fell through and the choice was dropped.
+SETUP_LANGUAGE_ALIASES = {
+    "ptBR": "pt-BR", "zhCN": "zh-CN",
+    "english": "en", "turkish": "tr", "german": "de", "french": "fr",
+    "spanish": "es", "italian": "it", "portuguese": "pt-BR",
+    "russian": "ru", "polish": "pl", "dutch": "nl",
+    "chinesesimplified": "zh-CN", "japanese": "ja", "korean": "ko",
+}
+
 
 def _setup_language_arg(argv):
     """The language code picked in the installer wizard, or '' when invalid.
-
-    Inno language names cannot contain hyphens, so pt-BR/zh-CN arrive as
-    ptBR/zhCN and are mapped back here.
     """
-    aliases = {"ptBR": "pt-BR", "zhCN": "zh-CN"}
     if SETUP_LANGUAGE_FLAG in argv:
         index = argv.index(SETUP_LANGUAGE_FLAG)
         if index + 1 < len(argv):
-            code = aliases.get(argv[index + 1], argv[index + 1])
+            code = SETUP_LANGUAGE_ALIASES.get(argv[index + 1], argv[index + 1])
             if code in i18n.CODES:
                 return code
     return ""
+
+
+def _launch_command(argv):
+    """The user's launch command: the setup-language pair is not one.
+
+    The installer starts the app as `--setup-language turkish`; the bare
+    value used to be read as a command, rejected as unknown, and the fresh
+    install silently exited at the Finish page.
+    """
+    rest = list(argv)
+    if SETUP_LANGUAGE_FLAG in rest:
+        index = rest.index(SETUP_LANGUAGE_FLAG)
+        del rest[index:index + 2]
+    args = [a for a in rest if not a.startswith("-")]
+    return args[0] if args else ""
 
 
 def _ask_first_run_language():
@@ -1747,8 +1768,7 @@ def main():
     if "--version" in sys.argv:
         print(f"WordArc version {BRAND.version}")
         return 0
-    args = [a for a in sys.argv[1:] if not a.startswith("-")]
-    command = args[0] if args else ""
+    command = _launch_command(sys.argv[1:])
     restarted = RESTART_FLAG in sys.argv
     if restarted:
         # A replacement booting while the old instance quits: never hand a
