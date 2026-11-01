@@ -35,12 +35,17 @@ foreach ($marker in @('PrivilegesRequired=admin', 'UsePreviousAppDir=no', 'Archi
 Write-Host "Installer markers ok." -ForegroundColor Green
 
 if ($Audit) {
-    # requirements-lock.txt contains the complete, exactly pinned runtime set;
-    # avoid re-resolving large GUI wheels during every release build.
-    Invoke-Gate { & $Python -m pip_audit -r requirements-lock.txt --no-deps --disable-pip `
+    # requirements-lock.txt + requirements-cuda.txt contain the complete,
+    # exactly pinned runtime set (CUDA DLL'leri dahil); avoid re-resolving
+    # large GUI wheels during every release build.
+    Invoke-Gate { & $Python -m pip_audit -r requirements-lock.txt -r requirements-cuda.txt --no-deps --disable-pip `
         --vulnerability-service osv --timeout 15 --progress-spinner off }
-    Invoke-Gate { & $Python -m cyclonedx_py requirements requirements-lock.txt `
+    # SBOM her iki çalışma zamanı dosyasını kapsar (yalnız lock değil).
+    $SbomReq = Join-Path ([IO.Path]::GetTempPath()) "wordarc-sbom-requirements.txt"
+    Get-Content requirements-lock.txt, requirements-cuda.txt | Set-Content $SbomReq
+    Invoke-Gate { & $Python -m cyclonedx_py requirements $SbomReq `
         --output-reproducible --output-file sbom.json }
+    Remove-Item $SbomReq -ErrorAction SilentlyContinue
 }
 
 Write-Host "Checks passed." -ForegroundColor Green
