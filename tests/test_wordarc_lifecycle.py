@@ -568,3 +568,16 @@ def test_session_end_quits_instead_of_hiding_to_tray():
     controller.settings_window.close.assert_called_once_with()
     controller.shutdown.assert_called_once_with()
     controller.app.quit.assert_called_once_with()
+
+
+def test_setup_language_pair_is_not_a_launch_command():
+    assert wordarc._launch_command(["--setup-language", "turkish"]) == ""
+    assert wordarc._launch_command(["settings", "--setup-language", "turkish"]) == "settings"
+    assert wordarc._launch_command(["toggle"]) == "toggle"
+    assert wordarc._launch_command([]) == ""
+
+
+def test_setup_language_names_map_to_codes():
+    assert wordarc._setup_language_arg(["--setup-language", "turkish"]) == "tr"
+    assert wordarc._setup_language_arg(["--setup-language", "english"]) == "en"
+    assert wordarc._setup_language_arg(["--setup-language", "gibberish"]) == ""
