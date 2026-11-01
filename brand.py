@@ -57,9 +57,10 @@ def brand_asset(filename: str) -> Path:
 def brand_icon():
     """Eagerly load pixels: Qt's file-backed icons break after temp cleanup."""
     from PyQt6.QtGui import QIcon
+    import asset_cache
     import trayicon
     for name in ("wordarc.ico", "wordarc-app.svg"):
-        source = QIcon(str(brand_asset(name)))
+        source = QIcon(str(asset_cache.cached_asset("assets", "brand", name)))
         result = QIcon()
         for size in (16, 20, 24, 32, 48, 64, 128, 256):
             pixmap = source.pixmap(size, size)

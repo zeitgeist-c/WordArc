@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 import api
+import asset_cache
 import audio
 import config as cfg
 import cuda_libs
@@ -132,10 +133,15 @@ def install_qt_translator(app, code):
     if code != "tr":
         return False
     translator = QTranslator(app)
-    for folder in (
+    cached = asset_cache.cached_asset(
+        "PyQt6", "Qt6", "translations", "qtbase_tr.qm")
+    folders = [
         os.path.join(getattr(sys, "_MEIPASS", ""), "PyQt6", "Qt6", "translations"),
         QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath),
-    ):
+    ]
+    if cached.is_file():
+        folders.insert(0, str(cached.parent))
+    for folder in folders:
         if folder and translator.load("qtbase_tr", folder):
             app.installTranslator(translator)
             _qt_translator = translator
