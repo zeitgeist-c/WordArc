@@ -175,6 +175,37 @@ def setup_temp_path(version: str) -> Path:
     return config.DATA_DIR / "updates" / "downloads" / f"{BRAND.name}-{version}.exe"
 
 
+def _helper_dir():
+    """Where the update supervisor lives: bundle first, persistent cache next.
+
+    The frozen bundle extracts into %TEMP%/_MEI*, and temp cleaners delete
+    from there while the app runs — the next update check then finds no
+    supervisor. A verified copy under %LOCALAPPDATA% survives that.
+    """
+    import config
+    import shutil
+    import update_protocol as protocol
+    from brand import resource_path
+    bundled = resource_path("helpers")
+    cache = config.DATA_DIR / "update-helper"
+    for candidate in (bundled, cache):
+        try:
+            manifest = json.loads((candidate / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if protocol.digest(candidate / "WordArcUpdate.exe") != manifest.get("sha256"):
+            continue
+        if candidate is bundled:
+            try:
+                cache.mkdir(parents=True, exist_ok=True)
+                for name in ("WordArcUpdate.exe", "manifest.json"):
+                    shutil.copy2(bundled / name, cache / name)
+            except OSError:
+                pass
+        return candidate
+    raise UpdateError("The update supervisor is damaged. Reinstall WordArc.")
+
+
 def spawn_setup(setup_exe: Path, *, version: str, sha256: str, timeout=110,
                 old_exe=None, old_pid=None, helper_dir=None) -> Path:
     """Wait off the GUI thread for installer readiness, never just ShellExecute success."""
@@ -197,7 +228,7 @@ def spawn_setup(setup_exe: Path, *, version: str, sha256: str, timeout=110,
     previous = folder / "previous" / "WordArc.exe"
     previous.parent.mkdir()
     shutil.copy2(current, previous)
-    helpers = Path(helper_dir) if helper_dir is not None else resource_path("helpers")
+    helpers = Path(helper_dir) if helper_dir is not None else _helper_dir()
     source = helpers / "WordArcUpdate.exe"
     manifest = json.loads((helpers / "manifest.json").read_text(encoding="utf-8"))
     if protocol.digest(source) != manifest["sha256"]:

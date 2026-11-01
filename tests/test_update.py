@@ -156,6 +156,56 @@ class SetupTests(unittest.TestCase):
                 update.spawn_setup(path, version="9.9.9", sha256="a" * 64)
 
 
+class HelperDirTests(unittest.TestCase):
+    def _helper_tree(self, root, payload=b"supervisor-bytes"):
+        import hashlib
+        (root / "WordArcUpdate.exe").write_bytes(payload)
+        (root / "manifest.json").write_text(
+            __import__("json").dumps({"sha256": hashlib.sha256(payload).hexdigest()}),
+            encoding="utf-8")
+
+    def test_bundle_is_used_and_cache_refreshed(self):
+        import config
+        with tempfile.TemporaryDirectory() as tmp:
+            bundled = Path(tmp) / "bundle"
+            bundled.mkdir()
+            self._helper_tree(bundled)
+            data = Path(tmp) / "data"
+            with mock.patch("brand.resource_path", return_value=bundled), \
+                 mock.patch.object(config, "DATA_DIR", data):
+                self.assertEqual(update._helper_dir(), bundled)
+                cached = data / "update-helper" / "WordArcUpdate.exe"
+                self.assertTrue(cached.is_file())
+                self.assertEqual(cached.read_bytes(), b"supervisor-bytes")
+
+    def test_wiped_bundle_falls_back_to_verified_cache(self):
+        import config
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            cached = data / "update-helper"
+            cached.mkdir(parents=True)
+            self._helper_tree(cached)
+            with mock.patch("brand.resource_path",
+                                   return_value=Path(tmp) / "wiped-empty"), \
+                 mock.patch.object(config, "DATA_DIR", data):
+                self.assertEqual(update._helper_dir(), cached)
+
+    def test_tampered_cache_is_rejected(self):
+        import config
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "data"
+            cached = data / "update-helper"
+            cached.mkdir(parents=True)
+            (cached / "WordArcUpdate.exe").write_bytes(b"evil")
+            (cached / "manifest.json").write_text('{"sha256": "' + "0" * 64 + '"}',
+                                                  encoding="utf-8")
+            with mock.patch("brand.resource_path",
+                                   return_value=Path(tmp) / "wiped-empty"), \
+                 mock.patch.object(config, "DATA_DIR", data):
+                with self.assertRaises(update.UpdateError):
+                    update._helper_dir()
+
+
 class LifecycleTests(unittest.TestCase):
     """WordArc's tray/signal wiring, without Qt threads or the network."""
 
