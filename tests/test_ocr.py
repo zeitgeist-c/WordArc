@@ -166,6 +166,24 @@ class TestUnavailableGracefully(unittest.TestCase):
             with self.assertRaises(ocr.OcrUnavailable):
                 ocr.extract_text(image, "tr")
 
+    def test_wiped_bundle_points_at_restart_instead_of_a_missing_engine(self):
+        import asset_cache
+        broken = mock.Mock()
+
+        async def gone(*_args, **_kwargs):
+            raise ocr.OcrUnavailable("Windows OCR is not available on this system")
+        broken.side_effect = lambda *a: gone()
+        with mock.patch.object(ocr, "_recognize_rapid",
+                               side_effect=ocr.OcrUnavailable("RapidOCR stack is gone")), \
+             mock.patch.object(ocr, "_recognize", broken), \
+             mock.patch.object(asset_cache, "_canary", [True, True, True]), \
+             mock.patch("brand.resource_path",
+                        return_value=__import__("pathlib").Path("no-such-file")):
+            image = QImage(4, 4, QImage.Format.Format_RGB32)
+            image.fill(__import__("PyQt6.QtGui", fromlist=["QColor"]).QColor("white"))
+            with self.assertRaisesRegex(ocr.OcrUnavailable, "restart WordArc"):
+                ocr.extract_text(image, "tr")
+
 
 if __name__ == "__main__":
     unittest.main()
