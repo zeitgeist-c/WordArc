@@ -333,6 +333,14 @@ class SaveBanner(QFrame):
         self._hold.stop()
         self._animate(1.0, self.FADE_IN_MS)
         self._hold.start(self.FADE_IN_MS + self.HOLD_MS)
+        # A save straight after opening can land before the first layout:
+        # the button row has no final geometry yet and the pill parks in
+        # the wrong place until the next save. Re-place once settled.
+        QTimer.singleShot(0, self._replace_when_settled)
+
+    def _replace_when_settled(self):
+        if self.isVisible():
+            self.place()
 
     def fade_out(self):
         self._animate(0.0, self.FADE_OUT_MS)
