@@ -10,10 +10,8 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
-import shutil
 
-from brand import BRAND, resource_path
+from asset_cache import cached_asset
 
 _log = logging.getLogger("wordarc.sounds")
 
@@ -21,31 +19,8 @@ _log = logging.getLogger("wordarc.sounds")
 SAVED = "settings-saved.wav"
 
 
-def _cache_dir() -> Path:
-    base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-    return Path(base) / BRAND.data_directory / "sounds"
-
-
 def sound_path(name: str):
-    """The playable path: a persistent copy, not the temp extraction.
-
-    The frozen bundle extracts into %TEMP%/_MEI*, and temp cleaners delete
-    from there while the app runs — the next chime then finds no file. A
-    copy under %LOCALAPPDATA% survives that; it is refreshed from the
-    bundle whenever the sizes disagree.
-    """
-    cached = _cache_dir() / name
-    bundled = resource_path("assets", "sounds", name)
-    try:
-        if bundled.is_file() and (
-                not cached.is_file()
-                or cached.stat().st_size != bundled.stat().st_size):
-            _cache_dir().mkdir(parents=True, exist_ok=True)
-            shutil.copy2(bundled, cached)
-            return cached
-    except OSError as exc:
-        _log.warning("sound cache refresh failed (%s)", exc)
-    return cached if cached.is_file() else bundled
+    return cached_asset("assets", "sounds", name)
 
 
 def play(name: str = SAVED) -> bool:
