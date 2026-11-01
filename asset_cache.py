@@ -38,3 +38,29 @@ def cached_asset(*parts: str) -> Path:
     except OSError as exc:
         _log.warning("asset cache refresh failed (%s)", exc)
     return cached if cached.is_file() else bundled
+
+
+# Files every bundle ships: present at boot, gone later means a temp
+# cleaner deleted the live extraction out from under the running app.
+CANARY_PARTS = (
+    ("assets", "brand", "wordarc.ico"),
+    ("assets", "sounds", "settings-saved.wav"),
+    ("helpers", "manifest.json"),
+)
+_canary = None
+
+
+def bundle_intact() -> bool:
+    """False when files present at boot vanished mid-run (temp wipe).
+
+    Embedding more cannot fix that class: the wiped extraction kills every
+    bundled module eventually. The honest answer is telling the user to
+    restart so the bundle extracts fresh.
+    """
+    global _canary
+    from brand import resource_path
+    now = [resource_path(*parts).is_file() for parts in CANARY_PARTS]
+    if _canary is None:
+        _canary = now
+        return True
+    return all(is_now for was, is_now in zip(_canary, now) if was)

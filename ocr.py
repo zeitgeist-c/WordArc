@@ -192,6 +192,11 @@ def extract_text(image, ui_language: str = "") -> str:
     try:
         return asyncio.run(_recognize(png_bytes, ui_language))
     except OcrUnavailable:
+        import asset_cache
+        if not asset_cache.bundle_intact():
+            raise OcrUnavailable(
+                "WordArc's own files were deleted while it was running "
+                "(temp cleaner); restart WordArc and try again") from None
         raise
     except Exception as exc:
         log.warning("Windows OCR failed: %s", exc)
