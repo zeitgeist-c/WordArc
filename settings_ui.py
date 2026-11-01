@@ -14,7 +14,7 @@ from PyQt6 import sip
 from PyQt6.QtWidgets import (
     QAbstractItemView, QAbstractScrollArea, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QFormLayout, QFrame, QGraphicsOpacityEffect, QGroupBox,
-    QHBoxLayout, QInputDialog, QLabel, QLineEdit,
+    QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
     QPushButton, QScrollArea, QSizePolicy, QSpinBox, QStyle, QProgressBar,
     QStyledItemDelegate, QStyleOptionViewItem, QTabWidget, QTabBar, QVBoxLayout, QWidget, QBoxLayout,
@@ -1092,7 +1092,7 @@ class SettingsWindow(QDialog):
     _vulkan_selected = pyqtSignal(str)
 
     def __init__(self, conf, launch_command, meeting_command=None,
-                 meetings=None, ask_command=None, parent=None):
+                 meetings=None, parent=None):
         super().__init__(parent)
         self.conf = conf
         if not hasattr(conf, '_cuda_recovery'):
