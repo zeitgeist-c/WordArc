@@ -108,3 +108,11 @@ def test_existing_engine_avoids_network(monkeypatch, tmp_path):
     with mock.patch.object(update, "download") as download:
         assert runtime.ensure() == path
     download.assert_not_called()
+
+
+def test_candidates_include_the_application_directory():
+    import sys
+    from pathlib import Path
+    expected = (Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
+                else Path(runtime.__file__).resolve().parent)
+    assert expected in list(runtime.candidates())

@@ -207,3 +207,18 @@ def test_native_cpu_selection_survives_cache_reset(tmp_path, monkeypatch):
     monkeypatch.setattr(vulkan_runtime, "_cached", None)
     vulkan_runtime.select(cli / "whisper-cli.exe", cpu=True)
     assert vulkan_runtime.resolve(refresh=True) == cli
+
+
+def test_search_roots_start_with_app_local_stores(tmp_path, monkeypatch):
+    import config
+    repo = Path(discovery.__file__).resolve().parent
+    roots = discovery.search_roots()
+    assert roots.index(config.DATA_DIR / "whisper") < roots.index(config.DATA_DIR)
+    for expected in (config.DATA_DIR, config.DATA_DIR / "cuda", repo):
+        assert expected in roots
+
+
+def test_model_next_to_the_app_is_found_without_extra_folders(tmp_path):
+    ggml(tmp_path / "ggml-small.bin")
+    found = discovery.scan(roots=[tmp_path])
+    assert {(model.name, model.kind) for model in found.models} == {("small", "ggml")}

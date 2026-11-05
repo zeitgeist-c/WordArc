@@ -134,3 +134,15 @@ class EnsureTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SearchDirsTests(unittest.TestCase):
+    def test_app_data_and_hermes_runtimes_are_searched(self):
+        import config
+        import cuda_runtime
+        import os
+        dirs = [str(path) for path in cuda_runtime.search_directories()]
+        self.assertIn(str(config.DATA_DIR), dirs)
+        hermes = Path(os.environ.get("HERMES_HOME",
+                                     Path.home() / "AppData/Local/hermes"))
+        self.assertTrue(any(str(hermes) in entry for entry in dirs))

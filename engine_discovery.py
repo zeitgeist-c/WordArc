@@ -139,12 +139,32 @@ def probe_backend(kind, stop=None):
             return dict(ready=False, status="error", detail=str(exc))
 
 
+def _app_roots():
+    """App-local stores, before caches and user folders.
+
+    A model copied next to the installed program (or the repo checkout in
+    source mode) must be found on the first scan, not after a full sweep
+    of the profile and every local drive.
+    """
+    import config
+    yield config.DATA_DIR
+    yield config.DATA_DIR / "cuda"
+    try:
+        if getattr(sys, "frozen", False):
+            yield Path(sys.executable).resolve().parent
+        else:
+            yield Path(__file__).resolve().parent
+    except OSError:
+        pass
+
+
 def search_roots(extra=()):
     import config
     home = Path.home()
     hermes = Path(os.environ.get("HERMES_HOME", home / "AppData/Local/hermes"))
     hf = Path(os.environ.get("HF_HOME", home / ".cache/huggingface"))
     roots = [config.DATA_DIR / "whisper", config.DATA_DIR / "engines",
+             *_app_roots(),
              Path(os.environ.get("HF_HUB_CACHE", os.environ.get("HUGGINGFACE_HUB_CACHE", hf / "hub"))),
              *map(Path, extra), hermes / "cache", hermes / "tools", hermes / "runtime", hermes / "models", hermes / "installs",
              home / ".hermes", home / "AppData/Local/WordArc/whisper", home / "Downloads", home / "Documents", home,

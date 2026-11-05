@@ -1245,6 +1245,9 @@ class SettingsWindow(QDialog):
         self.transcribe_model.currentTextChanged.connect(self._refresh_shared_ai_summaries)
         self.cleanup_model.currentTextChanged.connect(self._refresh_shared_ai_summaries)
         self.cleanup_enabled.toggled.connect(self._refresh_local_controls)
+        for box in (self.cleanup_enabled, self.meeting_cleanup,
+                    self.file_cleanup):
+            box.toggled.connect(self._refresh_cleanup_all)
         self.navigate_to("dictation")
 
     def _build_navigation(self):
@@ -1933,13 +1936,23 @@ class SettingsWindow(QDialog):
         """Master switch: set dictation, meeting and file cleanup together."""
         for box in (self.cleanup_enabled, self.meeting_cleanup,
                     self.file_cleanup):
-            box.setChecked(checked)
+            with QSignalBlocker(box):
+                box.setChecked(checked)
+        self._refresh_cleanup_all()
 
     def _refresh_cleanup_all(self):
-        self.cleanup_all.setChecked(
-            self.cleanup_enabled.isChecked()
-            and self.meeting_cleanup.isChecked()
-            and self.file_cleanup.isChecked())
+        states = (self.cleanup_enabled.isChecked(),
+                  self.meeting_cleanup.isChecked(),
+                  self.file_cleanup.isChecked())
+        with QSignalBlocker(self.cleanup_all):
+            self.cleanup_all.setChecked(all(states))
+        names = (t("Dictation"), t("Meeting"), t("Audio file"))
+        chips = []
+        for name, on in zip(names, states):
+            color = "#22c55e" if on else "#6b7280"
+            label = name if on else f"<s>{name}</s>"
+            chips.append(f"<span style='color:{color}'>●</span> {label}")
+        self.cleanup_scope.setText(" &nbsp;&nbsp; ".join(chips))
 
     def _on_engine_source_selected(self, choice):
         model = choice["model"]
@@ -1965,6 +1978,9 @@ class SettingsWindow(QDialog):
         self._local_generation += 1
         self._local_pending.clear()
         self._local_snapshots.clear()
+        # A new engine setup voids old failure verdicts; the next recording
+        # probes again instead of replaying them.
+        localspeech.reset_cuda_state(self.conf)
         # Resolving/probing stays on the inspection worker, never the Qt thread.
         vulkan_runtime._cached = None
         vulkan_runtime._checked.clear()
@@ -2044,6 +2060,8 @@ class SettingsWindow(QDialog):
         else:
             self.download_bar.setRange(0, 1000)
             self.download_bar.setValue(1000)
+            # A new runtime/model/packages void old failure verdicts.
+            localspeech.reset_cuda_state(self.conf)
             ready = t("GPU support ready.") if cuda_only else t("Model ready: {name}", name=name)
             self.download_title.setText(ready)
             self.download_file.setText("")
@@ -2565,6 +2583,11 @@ class SettingsWindow(QDialog):
             "Each tab can still be changed on its own afterwards."))
         self.cleanup_all.toggled.connect(self._toggle_all_cleanup)
         orr_body.addWidget(self.cleanup_all)
+        self.cleanup_scope = QLabel()
+        self.cleanup_scope.setWordWrap(True)
+        self.cleanup_scope.setTextFormat(Qt.TextFormat.RichText)
+        self.cleanup_scope.setObjectName("muted")
+        orr_body.addWidget(self.cleanup_scope)
         self.cleanup_model = FitsOnScreenCombo()
         self.cleanup_model.setEditable(True)
         self.cleanup_model.addItems(CLEANUP_MODELS)
@@ -3541,6 +3564,8 @@ class SettingsWindow(QDialog):
         conf["keep_audio"] = self.keep_audio.isChecked()
 
         conf["gemini_api_key"] = ""
+        engine_before = (conf.get("transcribe_engine"), conf.get("local_stt_model"),
+                         conf.get("local_stt_device"))
         conf["transcribe_engine"] = self.transcribe_engine.currentData() or "cloud"
         conf["live_transcription_mode"] = (
             self.live_transcription_mode.currentData() or "smart")
@@ -3548,6 +3573,10 @@ class SettingsWindow(QDialog):
                                    or localspeech.default_model())
         conf["local_stt_device"] = (self.local_stt_device.currentData()
                                     or "auto")
+        if (conf.get("transcribe_engine"), conf.get("local_stt_model"),
+                conf.get("local_stt_device")) != engine_before:
+            # A new engine selection voids old failure verdicts.
+            localspeech.reset_cuda_state(conf)
         conf["gemini_transcribe_model"] = (self.transcribe_model.currentText().strip()
                                            or cfg.DEFAULTS["gemini_transcribe_model"])
 

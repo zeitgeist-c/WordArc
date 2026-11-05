@@ -236,6 +236,25 @@ _last_fallback_note = ""
 _cuda_failed = False
 
 
+def reset_cuda_state(conf=None):
+    """Void cached CUDA/Vulkan failure verdicts after the setup changed.
+
+    A failed probe is remembered for the session (no repeated dialogs, no
+    repeated doomed loads). Downloading the GPU runtime, picking another
+    engine or changing the device resolves whatever the verdict described,
+    so the next recording probes again instead of replaying it.
+    """
+    global _last_fallback_note, _cuda_failed
+    _cuda_failed = False
+    _last_fallback_note = ""
+    if conf is not None:
+        for attr in ("_cuda_failure", "_cuda_failure_device"):
+            try:
+                delattr(conf, attr)
+            except AttributeError:
+                pass
+
+
 def last_fallback_note():
     return vulkan_speech._failure_note or _last_fallback_note
 
@@ -484,8 +503,14 @@ def _download_open(url, offset=0):
     if offset:
         headers["Range"] = f"bytes={offset}-"
     request = urllib.request.Request(url, headers=headers)
-    return urllib.request.urlopen(request, timeout=30,
-                                  context=ssl.create_default_context(cafile=certifi.where()))
+    context = ssl.create_default_context(cafile=certifi.where())
+    try:
+        # Company proxies that inspect TLS carry their own CA in the
+        # Windows store; without it every model download fails verification.
+        context.load_default_certs()
+    except Exception:
+        pass
+    return urllib.request.urlopen(request, timeout=30, context=context)
 
 
 def _valid_download(path, row):

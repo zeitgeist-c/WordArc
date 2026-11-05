@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import zipfile
@@ -81,6 +82,15 @@ def candidates():
         pass
     yield managed_dir()
     yield resource_path("native", "whisper-vulkan")
+    # An engine copied next to the installed program (or the repo checkout
+    # in source mode) is found without a full-disk sweep.
+    try:
+        if getattr(sys, "frozen", False):
+            yield Path(sys.executable).resolve().parent
+        else:
+            yield Path(__file__).resolve().parent
+    except OSError:
+        pass
     for item in os.environ.get("PATH", "").split(os.pathsep):
         if item:
             yield Path(item)

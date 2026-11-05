@@ -124,3 +124,62 @@ def test_failure_message_is_preserved_and_progress_is_displayed():
         assert window._download_name is None
     finally:
         fixture.tearDown()
+
+
+def test_successful_download_clears_stale_cuda_verdict():
+    smoke.TestSettingsSmoke.setUpClass()
+    fixture = smoke.TestSettingsSmoke()
+    fixture.setUp()
+    window = fixture.window
+    try:
+        window.transcribe_engine.setCurrentIndex(
+            window.transcribe_engine.findData("local"))
+        window.conf._cuda_failure = localspeech.CudaUnavailable("old")
+        window.conf._cuda_failure_device = "cuda"
+        localspeech._cuda_failed = True
+        window._download_name = "base"
+        window._on_local_download_done("base", "")
+        assert not hasattr(window.conf, "_cuda_failure")
+        assert not hasattr(window.conf, "_cuda_failure_device")
+        assert localspeech._cuda_failed is False
+    finally:
+        fixture.tearDown()
+
+
+def test_engine_refresh_clears_stale_cuda_verdict():
+    smoke.TestSettingsSmoke.setUpClass()
+    fixture = smoke.TestSettingsSmoke()
+    fixture.setUp()
+    window = fixture.window
+    try:
+        window.conf._cuda_failure = localspeech.CudaUnavailable("old")
+        window.conf._cuda_failure_device = "vulkan"
+        localspeech._cuda_failed = True
+        window._refresh_engine_inspection()
+        fixture.wait_local_inspection()
+        assert not hasattr(window.conf, "_cuda_failure")
+        assert not hasattr(window.conf, "_cuda_failure_device")
+        assert localspeech._cuda_failed is False
+    finally:
+        fixture.tearDown()
+
+
+def test_save_clears_stale_verdict_only_when_engine_selection_changed():
+    smoke.TestSettingsSmoke.setUpClass()
+    fixture = smoke.TestSettingsSmoke()
+    fixture.setUp()
+    window = fixture.window
+    try:
+        assert window._save()
+        window.conf._cuda_failure = localspeech.CudaUnavailable("old")
+        window.conf._cuda_failure_device = window.conf["local_stt_device"]
+        assert window._save()
+        assert hasattr(window.conf, "_cuda_failure")
+        window.local_stt_device.setCurrentIndex(
+            (window.local_stt_device.currentIndex() + 1)
+            % window.local_stt_device.count())
+        assert window._save()
+        assert not hasattr(window.conf, "_cuda_failure")
+        assert not hasattr(window.conf, "_cuda_failure_device")
+    finally:
+        fixture.tearDown()
