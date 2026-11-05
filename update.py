@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import ssl
+import sys
 import urllib.error
 import urllib.request
 from functools import lru_cache
@@ -197,6 +198,81 @@ def setup_temp_path(version: str) -> Path:
     return config.DATA_DIR / "updates" / "downloads" / f"{BRAND.name}-{version}.exe"
 
 
+def other_copies_running() -> list:
+    """PIDs of other installed WordArc copies still running, if any.
+
+    The updater closes its own copy through the installer handshake; a
+    second copy holding the program files makes RestartManager fail with
+    a suppressed dialog and a rolled-back update. Refuse upfront instead.
+    Windows-only and frozen-only: anywhere else there is no installed
+    copy to collide with.
+    """
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        return []
+    import ctypes
+    from ctypes import wintypes as w
+    kernel = ctypes.windll.kernel32
+    kernel.CreateToolhelp32Snapshot.argtypes = [w.DWORD, w.DWORD]
+    kernel.CreateToolhelp32Snapshot.restype = w.HANDLE
+    kernel.Process32FirstW.argtypes = [w.HANDLE, w.LPVOID]
+    kernel.Process32FirstW.restype = w.BOOL
+    kernel.Process32NextW.argtypes = [w.HANDLE, w.LPVOID]
+    kernel.Process32NextW.restype = w.BOOL
+    kernel.GetCurrentProcessId.argtypes = []
+    kernel.GetCurrentProcessId.restype = w.DWORD
+    kernel.OpenProcess.argtypes = [w.DWORD, w.BOOL, w.DWORD]
+    kernel.OpenProcess.restype = w.HANDLE
+    kernel.QueryFullProcessImageNameW.argtypes = [w.HANDLE, w.DWORD, w.LPWSTR,
+                                                  ctypes.POINTER(w.DWORD)]
+    kernel.QueryFullProcessImageNameW.restype = w.BOOL
+    kernel.CloseHandle.argtypes = [w.HANDLE]
+    kernel.CloseHandle.restype = w.BOOL
+
+    class Entry(ctypes.Structure):
+        _fields_ = [("dwSize", w.DWORD), ("cntUsage", w.DWORD),
+                    ("th32ProcessID", w.DWORD),
+                    ("th32DefaultHeapID", ctypes.c_size_t),
+                    ("th32ModuleID", w.DWORD), ("cntThreads", w.DWORD),
+                    ("th32ParentProcessID", w.DWORD),
+                    ("pcPriClassBase", w.LONG), ("dwFlags", w.DWORD),
+                    ("szExeFile", w.WCHAR * 260)]
+
+    def image_of(pid):
+        handle = kernel.OpenProcess(0x1000, False, pid)
+        if not handle:
+            return ""
+        try:
+            length = w.DWORD(32767)
+            buf = ctypes.create_unicode_buffer(length.value)
+            if not kernel.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(length)):
+                return ""
+            return buf.value or ""
+        finally:
+            kernel.CloseHandle(handle)
+
+    from update_protocol import install_directory
+    target = os.path.normcase(str(install_directory()))
+    snapshot = kernel.CreateToolhelp32Snapshot(2, 0)
+    if snapshot == w.HANDLE(-1).value:
+        return []
+    try:
+        found = []
+        entry = Entry()
+        entry.dwSize = ctypes.sizeof(entry)
+        me = kernel.GetCurrentProcessId()
+        ok = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
+        while ok:
+            if (entry.th32ProcessID != me
+                    and entry.szExeFile.lower() == "wordarc.exe"):
+                image = image_of(entry.th32ProcessID)
+                if image and os.path.normcase(image).startswith(target + os.sep):
+                    found.append(entry.th32ProcessID)
+            ok = kernel.Process32NextW(snapshot, ctypes.byref(entry))
+        return found
+    finally:
+        kernel.CloseHandle(snapshot)
+
+
 def _helper_dir():
     """Where the update supervisor lives: bundle first, persistent cache next.
 
@@ -242,6 +318,11 @@ def spawn_setup(setup_exe: Path, *, version: str, sha256: str, timeout=110,
     import update_protocol as protocol
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         raise UpdateError("Invalid update version")
+    if other_copies_running():
+        raise UpdateError(
+            "Another copy of WordArc is still running and holding the "
+            "program files. Close every WordArc icon (check the system "
+            "tray notification area), then run the update again.")
     if not sha256 or protocol.digest(setup_exe) != sha256:
         raise UpdateError("The checksum of the downloaded file does not match.")
     folder = config.DATA_DIR / "updates" / "sessions" / uuid.uuid4().hex
