@@ -78,6 +78,41 @@ def test_windows_load_checks_find_dependency_failures():
         assert 'cublas64_12.dll' in cuda_runtime.missing_libraries()
 
 
+def test_reset_cuda_state_clears_stale_verdicts():
+    import types
+    conf = types.SimpleNamespace(_cuda_failure=stt.CudaUnavailable('old'),
+                                 _cuda_failure_device='cuda')
+    stt._cuda_failed = True
+    stt._last_fallback_note = 'old note'
+    stt.reset_cuda_state(conf)
+    assert stt._cuda_failed is False
+    assert stt._last_fallback_note == ''
+    assert stt.last_fallback_note() == ''
+    assert not hasattr(conf, '_cuda_failure')
+    assert not hasattr(conf, '_cuda_failure_device')
+    stt.reset_cuda_state(None)
+
+
+def test_cached_cuda_failure_blocks_retry_until_reset():
+    import types
+    conf = types.SimpleNamespace(
+        get=lambda key, default=None: {'transcribe_engine': 'local',
+                                       'local_stt_model': 'base',
+                                       'local_stt_device': 'cuda'}.get(key, default),
+        _cuda_recovery=lambda reason, should_stop: False,
+        _cuda_failure=stt.CudaUnavailable('GPU support is not downloaded yet.'),
+        _cuda_failure_device='cuda')
+    with mock.patch.object(stt, 'transcribe') as transcribe:
+        with pytest.raises(stt.CudaUnavailable):
+            stt.transcribe_for(conf, 'recording.wav')
+        assert transcribe.call_count == 0
+        # The user installs GPU support in Settings; the old verdict is void.
+        stt.reset_cuda_state(conf)
+        transcribe.return_value = 'healed transcript'
+        assert stt.transcribe_for(conf, 'recording.wav') == 'healed transcript'
+        assert transcribe.call_count == 1
+
+
 def test_inaccessible_search_path_does_not_break_detection():
     with mock.patch.object(cuda_runtime.Path, 'is_dir', side_effect=PermissionError):
         assert cuda_runtime.search_directories() == []

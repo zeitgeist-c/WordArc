@@ -40,9 +40,18 @@ def _https_context():
     Loading Windows' default certificate stores can itself fail with X509/BIO
     in the frozen app, before urlopen has made any network request.
     Explicit CA data avoids that path while retaining hostname/cert checks.
+
+    Company networks that inspect TLS carry their own CA in the Windows
+    store, so it is loaded too on a best-effort basis: when that fails the
+    shipped roots still apply and the download keeps working elsewhere.
     """
     import certifi
-    return ssl.create_default_context(cadata=certifi.contents())
+    context = ssl.create_default_context(cadata=certifi.contents())
+    try:
+        context.load_default_certs()
+    except Exception:
+        log.debug("system certificate store unavailable; using shipped roots")
+    return context
 
 
 class UpdateError(Exception):
@@ -135,29 +144,42 @@ def download(info: UpdateInfo, dest: Path, progress=None, cancel=None) -> Path:
                                      headers={"User-Agent": USER_AGENT})
     dest.parent.mkdir(parents=True, exist_ok=True)
     written = 0
-    try:
-        with urllib.request.urlopen(request, timeout=60, context=_https_context()) as response:
-            total = int(response.headers.get("Content-Length") or info.size)
-            with dest.open("wb") as out:
-                try:
-                    while True:
-                        chunk = response.read(1024 * 256)
-                        if not chunk:
-                            break
-                        out.write(chunk)
-                        written += len(chunk)
-                        if progress:
-                            progress(written, total)
-                        if cancel is not None and cancel.is_set():
-                            raise Cancelled()
-                except Cancelled:
-                    pass
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        dest.unlink(missing_ok=True)
-        raise UpdateError("The update download was interrupted.") from exc
-    if cancel is not None and cancel.is_set():
-        dest.unlink(missing_ok=True)
-        raise UpdateError("cancelled")
+    attempts = 3
+    for attempt in range(attempts):
+        written = 0
+        try:
+            with urllib.request.urlopen(request, timeout=60, context=_https_context()) as response:
+                total = int(response.headers.get("Content-Length") or info.size)
+                with dest.open("wb") as out:
+                    try:
+                        while True:
+                            chunk = response.read(1024 * 256)
+                            if not chunk:
+                                break
+                            out.write(chunk)
+                            written += len(chunk)
+                            if progress:
+                                progress(written, total)
+                            if cancel is not None and cancel.is_set():
+                                raise Cancelled()
+                    except Cancelled:
+                        pass
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            # A gigabyte runtime over a company network rarely survives the
+            # first attempt untouched; resume is the server's choice, so a
+            # clean retry starts over instead of keeping a half file.
+            dest.unlink(missing_ok=True)
+            log.warning("download attempt %d/%d failed: %r",
+                        attempt + 1, attempts, exc)
+            if cancel is not None and cancel.is_set():
+                raise UpdateError("cancelled")
+            if attempt + 1 >= attempts:
+                raise UpdateError("The update download was interrupted.") from exc
+            continue
+        if cancel is not None and cancel.is_set():
+            dest.unlink(missing_ok=True)
+            raise UpdateError("cancelled")
+        break
     if info.size and written != info.size:
         dest.unlink(missing_ok=True)
         raise UpdateError("The download ended before the file was complete.")

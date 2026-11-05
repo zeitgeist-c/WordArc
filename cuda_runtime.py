@@ -20,7 +20,7 @@ def search_directories():
     roots = [Path(sys.prefix) / "Lib" / "site-packages",
              Path(getattr(sys, "_MEIPASS", Path(__file__).parent)),
              Path(sys.executable).parent,
-             *_data_cuda_roots()]
+             *_data_cuda_roots(), *_app_cuda_roots()]
     paths = []
     for root in roots:
         paths.extend((root, root / "ctranslate2", root / "cuda"))
@@ -75,6 +75,28 @@ def _data_cuda_roots():
                 if entry.is_dir()]
     except OSError:
         return []
+
+
+def _app_cuda_roots():
+    """App data itself, plus Hermes runtimes that already ship NVIDIA DLLs.
+
+    A second agent on the same machine may already carry a working CUDA
+    runtime; reusing its libraries beats a second gigabyte download.
+    Directories are only listed here — missing ones are skipped later.
+    """
+    try:
+        import config
+        yield config.DATA_DIR
+    except Exception:
+        pass
+    try:
+        home = Path.home()
+        hermes = Path(os.environ.get("HERMES_HOME", home / "AppData/Local/hermes"))
+        for base in (hermes, home / ".hermes"):
+            for name in ("cache", "tools", "runtime", "models", "installs"):
+                yield base / name
+    except OSError:
+        pass
 
 
 def missing_libraries():

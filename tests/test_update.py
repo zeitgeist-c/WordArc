@@ -41,6 +41,19 @@ class TestUpdateFailureRecovery(unittest.TestCase):
             with self.assertRaises(update.UpdateError):
                 update.fetch_latest()
 
+    def test_system_store_failure_keeps_shipped_roots(self):
+        import ssl as ssl_module
+        update._https_context.cache_clear()
+        try:
+            with mock.patch.object(ssl_module.SSLContext, "load_default_certs",
+                                   side_effect=OSError("store unavailable")):
+                context = update._https_context()
+            self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+            self.assertTrue(context.check_hostname)
+            self.assertGreater(context.cert_store_stats()["x509_ca"], 0)
+        finally:
+            update._https_context.cache_clear()
+
     def test_unexpected_worker_failure_always_emits_a_terminal_result(self):
         from PyQt6.QtWidgets import QApplication
         import wordarc
@@ -131,6 +144,37 @@ class DownloadTests(unittest.TestCase):
             with self.assertRaises(update.UpdateError):
                 update.download(info, dest, cancel=cancel)
             self.assertFalse(dest.exists())
+
+    def test_transient_network_failure_is_retried(self):
+        import urllib.error
+        with tempfile.TemporaryDirectory() as tmp:
+            info = self._serve(tmp, b"installer-bytes", 15)
+            dest = Path(tmp) / "next" / "WordArc-9.9.9.exe"
+            real_urlopen = update.urllib.request.urlopen
+
+            def flaky(request, timeout=None, context=None):
+                if not getattr(flaky, "failed", False):
+                    flaky.failed = True
+                    raise urllib.error.URLError("connection reset")
+                return real_urlopen(request, timeout=timeout, context=context)
+
+            with mock.patch.object(update.urllib.request, "urlopen",
+                                   side_effect=flaky) as urlopen:
+                update.download(info, dest)
+            self.assertEqual(dest.read_bytes(), b"installer-bytes")
+            self.assertEqual(urlopen.call_count, 2)
+
+    def test_repeated_failure_still_reports_and_cleans_up(self):
+        import urllib.error
+        with tempfile.TemporaryDirectory() as tmp:
+            info = self._serve(tmp, b"installer-bytes", 15)
+            dest = Path(tmp) / "bad.exe"
+            with mock.patch.object(update.urllib.request, "urlopen",
+                                   side_effect=urllib.error.URLError("down")) as urlopen:
+                with self.assertRaises(update.UpdateError):
+                    update.download(info, dest)
+            self.assertFalse(dest.exists())
+            self.assertEqual(urlopen.call_count, 3)
 
 
 class StampTests(unittest.TestCase):

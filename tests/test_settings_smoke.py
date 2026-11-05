@@ -261,6 +261,7 @@ class TestSettingsSmoke(unittest.TestCase):
         window.meeting_cleanup.setChecked(False)
         window._refresh_cleanup_all()
         self.assertFalse(window.cleanup_all.isChecked())
+        window.cleanup_all.setChecked(True)
         window.cleanup_all.setChecked(False)
         self.assertFalse(window.cleanup_enabled.isChecked())
         self.assertFalse(window.file_cleanup.isChecked())
@@ -271,6 +272,22 @@ class TestSettingsSmoke(unittest.TestCase):
         window.conf.data["meeting_cleanup"] = True
         window.conf.data["file_cleanup"] = True
         window._load()
+        self.assertTrue(window.cleanup_all.isChecked())
+
+    def test_cleanup_master_follows_single_tab_without_manual_refresh(self):
+        window = self.window
+        window.cleanup_all.setChecked(True)
+        # The user unchecks one tab: no manual refresh call, and the other
+        # tabs must stay on (no cascade through the master switch).
+        window.cleanup_enabled.setChecked(False)
+        self.assertFalse(window.cleanup_all.isChecked())
+        self.assertTrue(window.meeting_cleanup.isChecked())
+        self.assertTrue(window.file_cleanup.isChecked())
+        scope = window.cleanup_scope.text()
+        self.assertIn(t("Meeting"), scope)
+        self.assertNotIn(f"<s>{t('Meeting')}</s>", scope)
+        self.assertIn(f"<s>{t('Dictation')}</s>", scope)
+        window.cleanup_enabled.setChecked(True)
         self.assertTrue(window.cleanup_all.isChecked())
 
     def test_card_test_button_reports_result(self):
