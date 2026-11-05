@@ -176,6 +176,19 @@ class DownloadTests(unittest.TestCase):
             self.assertFalse(dest.exists())
             self.assertEqual(urlopen.call_count, 3)
 
+    def test_stray_copy_blocks_setup_before_any_quit(self):
+        with mock.patch.object(update, "other_copies_running",
+                               return_value=[4321]):
+            with self.assertRaises(update.UpdateError) as ctx:
+                update.spawn_setup(Path("WordArc-9.9.9.exe"),
+                                   version="9.9.9", sha256="0" * 64)
+        self.assertIn("Another copy of WordArc", str(ctx.exception))
+
+    def test_no_stray_copy_reported_from_source_checkout(self):
+        # The test suite runs unfrozen: there is no installed copy to
+        # collide with, even while the user's own app is running.
+        self.assertEqual(update.other_copies_running(), [])
+
 
 class StampTests(unittest.TestCase):
     def test_missing_and_old_stamps_need_a_check(self):

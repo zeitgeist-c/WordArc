@@ -132,6 +132,14 @@ class UpdateFlowTests(unittest.TestCase):
         self.assertFalse(hasattr(update, "install_path"),
                         "versioned side-by-side layout is retired")
 
+    def test_managed_update_aborts_on_stray_copy_without_killing(self):
+        body = iss_text()
+        self.assertIn("AbortOnManagedStrayCopies", body)
+        managed = body.split("AbortOnManagedStrayCopies", 1)[1]
+        self.assertNotIn("Terminate", managed.split("end;")[0],
+                         "managed updates never kill, even a stray copy")
+        self.assertIn("NotManagedUpdate()", body)
+
 
 if __name__ == "__main__":
     unittest.main()

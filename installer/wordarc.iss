@@ -214,6 +214,55 @@ begin
   end;
 end;
 
+{ Backstop for managed (in-app) updates: the supervisor owns the lifecycle
+  and a stray copy might be recording, so managed updates never kill.
+  But a stray copy holding the target files makes RestartManager fail with
+  a suppressed dialog and a rolled-back update, so abort here with the same
+  plain message instead. The managed old PID has already exited above, so
+  any remaining match is a stray copy. }
+function AbortOnManagedStrayCopies(const Dir: String): String;
+var
+  WMI, Service, Procs, Proc: Variant;
+  ExePath: String;
+  i, n: Integer;
+  Turkish: Boolean;
+begin
+  Result := '';
+  if (Dir = '') or NotManagedUpdate() then
+    Exit;
+  try
+    WMI := CreateOleObject('WbemScripting.SWbemLocator');
+    Service := WMI.ConnectServer('.', 'root\\CIMV2');
+    Procs := Service.ExecQuery(
+      'SELECT ExecutablePath FROM Win32_Process WHERE Name="WordArc.exe"');
+  except
+    Exit; { No WMI: leave it to RestartManager's own dialog. }
+  end;
+  Turkish := CompareText(ActiveLanguage(), 'turkish') = 0;
+  n := Procs.Count;
+  for i := 0 to n - 1 do
+  begin
+    Proc := Procs.ItemIndex(i);
+    try
+      ExePath := Lowercase(String(Proc.ExecutablePath));
+    except
+      ExePath := '';
+    end;
+    if (ExePath = '') or (Pos(Lowercase(RemoveBackslash(Dir)), ExePath) <> 1) then
+      Continue;
+    if Turkish then
+      Result := 'Başka bir WordArc kopyası çalışıyor ve kurulumun değiştirmesi ' +
+        'gereken dosyaları tutuyor. Bütün WordArc simgelerini kapatın ' +
+        '(sistem tepsisi bildirim alanına bakın), sonra güncellemeyi tekrar ' +
+        'çalıştırın.'
+    else
+      Result := 'Another copy of WordArc is still running and holding the ' +
+        'program files. Close every WordArc icon (check the system tray ' +
+        'notification area), then run the update again.';
+    Exit;
+  end;
+end;
+
 function KeepDesktopLink(): Boolean;
 begin
   Result := WizardIsTaskSelected('desktopicon') or
@@ -296,9 +345,16 @@ begin
     Sleep(1000); { Allow the one-file bootloader to release the executable. }
   end;
   { Manual runs have no old-PID wait above; stray copies are asked about here.
+    Managed runs never kill, but still abort on a stray copy instead of
+    failing later inside RestartManager with a suppressed dialog.
     A non-empty answer aborts with that message. }
   if Result = '' then
-    Result := CloseLingeringCopies(ExpandConstant('{app}'));
+  begin
+    if NotManagedUpdate() then
+      Result := CloseLingeringCopies(ExpandConstant('{app}'))
+    else
+      Result := AbortOnManagedStrayCopies(ExpandConstant('{app}'));
+  end;
 end;
 
 procedure CleanPreviousInstall();
