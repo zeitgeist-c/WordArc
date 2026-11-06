@@ -935,6 +935,8 @@ class ScreenshotController(QWidget):
 
         self._hidden_owner = None
         self._capture_owner = None
+        self._capture_helpers = []
+        self._helper_states = []
         self._capture_timer = QTimer(self)
         self._capture_timer.setSingleShot(True)
         self._capture_timer.setInterval(160)
@@ -946,6 +948,16 @@ class ScreenshotController(QWidget):
         self._ocr_thread = None
         self.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
         QGuiApplication.instance().screenRemoved.connect(self._screen_removed)
+
+    def add_capture_helper(self, helper):
+        """A helper parked while the screen is grabbed.
+
+        The helper offers ``hide_for_capture() -> bool`` and
+        ``restore_after_capture(was_visible)``; every exit path
+        (copy/save/OCR/cancel/error) restores through ``_restore_owner``.
+        """
+        if helper not in self._capture_helpers:
+            self._capture_helpers.append(helper)
 
     def start(self, mode="region", parent=None, speak=False):
         self._capture_timer.stop()
@@ -966,6 +978,13 @@ class ScreenshotController(QWidget):
             owner.hide()
         else:
             self._hidden_owner = None
+        self._helper_states = []
+        for helper in list(self._capture_helpers):
+            try:
+                self._helper_states.append((helper, helper.hide_for_capture()))
+            except Exception:
+                logging.getLogger("wordarc.screenshot").exception(
+                    "capture helper could not hide")
         self._capture_timer.start()
 
     def _active_window_rect(self):
@@ -1137,6 +1156,13 @@ class ScreenshotController(QWidget):
             owner.show()
             owner.raise_()
             owner.activateWindow()
+        states, self._helper_states = self._helper_states, []
+        for helper, was_visible in states:
+            try:
+                helper.restore_after_capture(was_visible)
+            except Exception:
+                logging.getLogger("wordarc.screenshot").exception(
+                    "capture helper could not restore")
 
     def _queue_save_preferences(self, directory, image_format):
         self._pending_save_preferences = (directory, image_format)
@@ -1164,6 +1190,7 @@ class ScreenshotController(QWidget):
         self._save_timer.stop()
         self._close_overlay()
         self._hidden_owner = None
+        self._helper_states = []
 
     def closeEvent(self, event):
         self.shutdown()

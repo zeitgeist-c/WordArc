@@ -181,7 +181,7 @@ class TestTranslationCoverage(unittest.TestCase):
                             for target in node.targets)):
                 specs = node.value
         self.assertIsNotNone(specs, "specs list not found")
-        self.assertEqual(len(specs.elts), 6)
+        self.assertEqual(len(specs.elts), 7)
         for element in specs.elts:
             for index in (2, 3):
                 text = element.elts[index]
