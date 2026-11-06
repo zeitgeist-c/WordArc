@@ -80,7 +80,7 @@ class TestEngine(unittest.TestCase):
         clock.advance(br.BREAK_DONE_S)
         self.assertEqual(engine.refresh(clock()), ["work_started"])
         self.assertEqual(engine.phase, br.BreakPhase.WORKING)
-        self.assertEqual(engine.remaining(clock()), 25 * 60)
+        self.assertEqual(engine.remaining(clock()), 25 * 60 - br.BREAK_DONE_S)
 
     def test_break_lifecycle(self):
         engine, clock = make_engine()
@@ -98,7 +98,7 @@ class TestEngine(unittest.TestCase):
         self.assertEqual(engine.phase, br.BreakPhase.BREAK_DONE)
 
     def test_break_done_holds_zero_then_starts_fresh_work(self):
-        """00:00 shows for 2 s; those 2 s never count as work."""
+        """00:00 shows for 2 s; the new period starts at the break end."""
         engine, clock = make_engine()
         engine.set_enabled(True, clock())
         clock.advance(25 * 60)
@@ -109,14 +109,30 @@ class TestEngine(unittest.TestCase):
         done_at = clock()
         self.assertEqual(engine.phase, br.BreakPhase.BREAK_DONE)
         self.assertEqual(engine.remaining(clock()), 0)
+        # The fresh deadline is already armed at the break end, not later.
+        self.assertEqual(engine._deadline, done_at + 25 * 60)
         clock.advance(1)
         self.assertEqual(engine.refresh(clock()), [])
         self.assertEqual(engine.phase, br.BreakPhase.BREAK_DONE)
         clock.advance(1)
         self.assertEqual(engine.refresh(clock()), ["work_started"])
         self.assertEqual(engine.phase, br.BreakPhase.WORKING)
-        # Fresh deadline starts at the hide moment, not at the break end.
-        self.assertEqual(engine._deadline, done_at + br.BREAK_DONE_S + 25 * 60)
+        self.assertEqual(engine.remaining(clock()), 25 * 60 - br.BREAK_DONE_S)
+
+    def test_late_tick_after_break_end_adds_no_extra_wait(self):
+        """A delayed tick shifts by its lateness only, never by the 2 s."""
+        engine, clock = make_engine()
+        engine.set_enabled(True, clock())
+        clock.advance(25 * 60)
+        engine.refresh(clock())
+        engine.start_break(clock())
+        clock.advance(5 * 60 + 10)  # tick arrives 10 s late
+        late = clock()
+        self.assertEqual(engine.refresh(clock()), ["break_finished"])
+        self.assertEqual(engine._deadline, late + 25 * 60)
+        clock.advance(br.BREAK_DONE_S)
+        self.assertEqual(engine.refresh(clock()), ["work_started"])
+        self.assertEqual(engine.remaining(clock()), 25 * 60 - br.BREAK_DONE_S)
 
     def test_snooze_choices_each_reopen_the_reminder(self):
         for minutes in br.SNOOZE_CHOICES:
