@@ -84,11 +84,10 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertTrue(window.windowTitle().startswith("WordArc"))
         self.assertGreaterEqual(window.width(), 920)
         self.assertGreaterEqual(window.height(), 700)
-        self.assertEqual(window.tabs.count(), 7)
+        self.assertEqual(window.tabs.count(), 6)
         self.assertEqual(tuple(window._tab_index), (
             "dictation", "history", "meeting", "minutes",
             "audio_file", "speak", "screenshot", "settings", "shared_ai", "application",
-            "break_reminder",
         ))
 
         self.assertEqual(window.tabs.currentIndex(), 0)
@@ -151,7 +150,7 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertEqual(
             [window.tabs.tabText(index) for index in range(window.tabs.count())],
             [t("Dictation"), t("Meeting"), t("Audio file"), t("Speak"),
-             t("Screenshot"), t("Settings"), t("Break reminder")],
+             t("Screenshot"), t("Settings")],
         )
         self.assertTrue(window.navigate_to("screenshot"))
         self.assertEqual(window.tabs.currentIndex(), 4)
@@ -564,7 +563,7 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertFalse([text for text in texts if "tek akışta" in text])
         self.assertEqual([l for l in labels if l.objectName() == "pageTitle"], [])
         self.assertEqual(
-            len([l for l in labels if l.objectName() == "pageDescription"]), 7)
+            len([l for l in labels if l.objectName() == "pageDescription"]), 6)
         self.assertIsNotNone(window.findChild(settings_ui.QFrame, "headerRule"))
 
     def test_settings_tab_shows_every_section(self):
@@ -1089,7 +1088,7 @@ class TestTheWindowSurvivesABadAudioLibrary(unittest.TestCase):
              mock.patch.object(settings_ui.startup, "is_enabled", return_value=True):
             window = settings_ui.SettingsWindow(cfg.Config(), "wordarc toggle")
         try:
-            self.assertEqual(window.tabs.count(), 7)
+            self.assertEqual(window.tabs.count(), 6)
             self.assertEqual(window.mic.count(), 1)
             self.assertEqual(window.mic.currentData(), "")
             self.assertTrue(window.dictation_output.isReadOnly())

@@ -98,7 +98,16 @@ class BreakEngine:
     def apply_durations(self, work_s, break_s, snooze_s, now=None):
         """New totals; an active countdown keeps its elapsed progress."""
         now = self._clock() if now is None else now
-        if self.phase in (BreakPhase.WORKING, BreakPhase.REMINDER):
+        if self.phase == BreakPhase.PAUSED:
+            # A paused countdown keeps its remainder frozen; shift that
+            # remainder by the same delta a running one would get.
+            if self._paused_from in (BreakPhase.WORKING, BreakPhase.REMINDER):
+                self._paused_remaining = max(
+                    0.0, self._paused_remaining + (work_s - self.work_s))
+            elif self._paused_from == BreakPhase.BREAK:
+                self._paused_remaining = max(
+                    0.0, self._paused_remaining + (break_s - self.break_s))
+        elif self.phase in (BreakPhase.WORKING, BreakPhase.REMINDER):
             self._deadline += work_s - self.work_s
         elif self.phase == BreakPhase.BREAK:
             self._deadline += break_s - self.break_s
@@ -236,14 +245,22 @@ class _PowerFilter(QAbstractNativeEventFilter):
     WTS_SESSION_LOCK = 0x7
     WTS_SESSION_UNLOCK = 0x8
 
-    def __init__(self, on_suspend, on_resume):
+    def __init__(self, hold, release):
         super().__init__()
-        self._on_suspend = on_suspend
-        self._on_resume = on_resume
+        self._hold = hold
+        self._release = release
 
     def nativeEventFilter(self, event_type, message):  # noqa: N802 (Qt override)
         try:
-            if event_type != "windows_generic_MSG":
+            # PyQt6 hands the type over as a QByteArray, not a str.
+            if isinstance(event_type, str):
+                name = event_type
+            else:
+                try:
+                    name = bytes(event_type).decode("ascii", "ignore")
+                except Exception:
+                    return False, 0
+            if name != "windows_generic_MSG":
                 return False, 0
             import ctypes
             from ctypes import wintypes
@@ -259,15 +276,15 @@ class _PowerFilter(QAbstractNativeEventFilter):
             msg = ctypes.cast(int(message), ctypes.POINTER(_MSG)).contents
             if msg.message == self.WM_POWERBROADCAST:
                 if msg.wParam == self.PBT_APMSUSPEND:
-                    self._on_suspend()
+                    self._hold("sleep")
                 elif msg.wParam in (self.PBT_APMRESUMESUSPEND,
                                     self.PBT_APMRESUMEAUTOMATIC):
-                    self._on_resume()
+                    self._release("sleep")
             elif msg.message == self.WM_WTSSESSION_CHANGE:
                 if msg.wParam == self.WTS_SESSION_LOCK:
-                    self._on_suspend()
+                    self._hold("lock")
                 elif msg.wParam == self.WTS_SESSION_UNLOCK:
-                    self._on_resume()
+                    self._release("lock")
         except Exception:
             _log.exception("break power filter failed")
         return False, 0
@@ -283,7 +300,7 @@ class BreakWindow(QWidget):
     end_break_requested = pyqtSignal()
     dragged = pyqtSignal()
 
-    TIMER_W, TIMER_H = 150, 64
+    TIMER_W, TIMER_H = 170, 112
     REMINDER_W, REMINDER_H = 300, 300
 
     def __init__(self, conf=None, record_overlay=None, parent=None):
@@ -331,6 +348,13 @@ class BreakWindow(QWidget):
         self._state_label.setObjectName("muted")
         self._state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         timer_layout.addWidget(self._state_label)
+        # Pausing must stay reachable while working: a small mouse-only
+        # button on the timer face itself (never keyboard focus).
+        self._face_button = QPushButton()
+        self._face_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._face_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._face_button.clicked.connect(self.pause_requested.emit)
+        timer_layout.addWidget(self._face_button)
         self._stack.addWidget(timer_page)
 
         # -- reminder face --
@@ -417,6 +441,9 @@ class BreakWindow(QWidget):
             self.REMINDER_W if phase == BreakPhase.REMINDER else self.TIMER_W,
             self.REMINDER_H if phase == BreakPhase.REMINDER else self.TIMER_H,
         )
+        # Every resize re-clamps first: growing near a screen edge must stay
+        # on the monitor it is on, never spill over or jump to the primary.
+        self._reclamp()
         if not self.isVisible():
             self.place()
             self.show()
@@ -428,12 +455,15 @@ class BreakWindow(QWidget):
         if self._phase == BreakPhase.WORKING:
             self._time_label.setText(_fmt(self._remaining))
             self._state_label.setText(t("until the break"))
+            self._face_button.setText(t("Pause"))
         elif self._phase == BreakPhase.BREAK:
             self._time_label.setText(_fmt(self._remaining))
             self._state_label.setText(t("break — walk a little"))
+            self._face_button.setText(t("Pause"))
         elif self._phase == BreakPhase.PAUSED:
             self._time_label.setText(_fmt(self._remaining))
             self._state_label.setText(t("paused"))
+            self._face_button.setText(t("Resume"))
         elif self._phase == BreakPhase.REMINDER:
             self._snooze_button.setText(
                 t("Snooze {minutes} min", minutes=self._snooze_minutes))
@@ -486,26 +516,38 @@ class BreakWindow(QWidget):
         self._reclamp()
 
     def _reclamp(self):
-        """Keep the whole surface inside some accessible area."""
+        """Keep the whole surface inside some accessible area.
+
+        The monitor holding the window's top-left wins: growing near an
+        edge slides the surface within its own monitor instead of jumping
+        to the primary one. Only a top-left on no monitor falls back.
+        """
         app = QApplication.instance()
         if app is None:
             return
+        frame = self.frameGeometry()
+        frame.moveTopLeft(self.pos())
         for screen in app.screens():
-            area = screen.availableGeometry()
-            frame = self.frameGeometry()
-            frame.moveTopLeft(self.pos())
-            if area.contains(frame):
+            if screen.availableGeometry().contains(frame):
                 return
-        primary = app.primaryScreen()
-        if primary is None:
-            return
-        area = primary.availableGeometry()
+        host = QApplication.screenAt(self.pos())
+        if host is not None:
+            area = host.availableGeometry()
+        else:
+            primary = app.primaryScreen()
+            if primary is None:
+                return
+            area = primary.availableGeometry()
         x = min(max(self.x(), area.left()), area.right() - self.width())
         y = min(max(self.y(), area.top()), area.bottom() - self.height())
         self.move(int(x), int(y))
 
     def _avoid_record_overlay(self):
-        """Never cover a recording indicator; grow upward instead."""
+        """Never cover a recording indicator.
+
+        It moves above the indicator; when there is no room above, below
+        it instead. Either way the result is re-clamped to its monitor.
+        """
         other = (self._record_overlay() if callable(self._record_overlay)
                  else self._record_overlay)
         try:
@@ -514,9 +556,17 @@ class BreakWindow(QWidget):
                 return
             mine = self.frameGeometry()
             theirs = other.frameGeometry()
-            if mine.intersects(theirs):
-                self.move(self.x(), theirs.top() - mine.height() - GAP)
-                self._reclamp()
+            if not mine.intersects(theirs):
+                return
+            app = QApplication.instance()
+            host = QApplication.screenAt(self.pos()) if app is not None else None
+            top = (host.availableGeometry().top() if host is not None else 0)
+            above = theirs.top() - mine.height() - GAP
+            if above >= top:
+                self.move(self.x(), above)
+            else:
+                self.move(self.x(), theirs.bottom() + GAP)
+            self._reclamp()
         except RuntimeError:
             pass  # the recording overlay went away mid-move
 
@@ -595,6 +645,9 @@ class BreakController(QObject):
         self._power_filter = None
         self._wts_registered = False
         self._suspended = False
+        self._holds = set()
+        self._capture_hold = False
+        self._last_corner = None
 
     # ---- settings ----------------------------------------------------------
 
@@ -611,6 +664,9 @@ class BreakController(QObject):
                             MIN_BREAK_MINUTES, MAX_BREAK_MINUTES, 5) * 60
         snooze = clamp_minutes(conf.get("break_snooze_minutes", 5),
                                MIN_SNOOZE_MINUTES, MAX_SNOOZE_MINUTES, 5) * 60
+        corner = conf.get("break_corner", "bottom-right")
+        if corner not in VALID_CORNERS:
+            corner = "bottom-right"
         self.engine.apply_durations(work, brk, snooze)
         if self.engine.set_enabled(enabled):
             self._announce()
@@ -620,6 +676,18 @@ class BreakController(QObject):
             self._waker.stop()
         if enabled and self._power_filter is None:
             self._install_power_filter()
+        # A changed corner beats a stale drag position: the window visibly
+        # moves there now; the next drag saves a new position over it.
+        # Otherwise the saved drag position keeps beating the corner.
+        if self._last_corner is not None and corner != self._last_corner:
+            try:
+                conf["break_pos"] = []
+                conf.save()
+            except OSError:
+                _log.warning("break corner change could not be saved")
+            if self.engine.phase != BreakPhase.OFF:
+                self.window.place()
+        self._last_corner = corner
         self.window.restyle()
         self._push_phase_to_window()
 
@@ -628,6 +696,10 @@ class BreakController(QObject):
         self._push_phase_to_window()
 
     def _push_phase_to_window(self):
+        # A capture in progress owns visibility: ticks, transitions and
+        # settings resyncs must not re-show the window until it is restored.
+        if self._capture_hold:
+            return
         if self.engine.phase == BreakPhase.OFF:
             self.window.set_phase(BreakPhase.OFF)
         else:
@@ -683,17 +755,48 @@ class BreakController(QObject):
     # ---- screenshot cooperation --------------------------------------------------
 
     def hide_for_capture(self):
-        """True when the window was visible and is now parked for a capture."""
-        if self.window.isVisible() and self.engine.phase != BreakPhase.OFF:
+        """Park the window for a capture; True when it was visible.
+
+        The hold stays until ``restore_after_capture``: meanwhile ticks,
+        phase transitions and settings resyncs must not re-show it.
+        """
+        if self.engine.phase == BreakPhase.OFF:
+            return False
+        was = self.window.isVisible()
+        self._capture_hold = True
+        if was:
             self.window.hide()
-            return True
-        return False
+        return was
 
     def restore_after_capture(self, was_visible):
+        self._capture_hold = False
+        # A feature disabled mid-capture stays off: never re-show it.
         if was_visible and self.engine.phase != BreakPhase.OFF:
-            self.window.show()
+            self._push_phase_to_window()
 
     # ---- power / lock --------------------------------------------------------------
+
+    def _hold(self, kind):
+        """Freeze the countdown for one reason (lock or sleep).
+
+        The engine resumes only once every hold is released, so a system
+        wake while the screen is still locked never restarts the counter.
+        A manual pause stays paused: the engine simply refuses the resume.
+        """
+        if not self._holds:
+            self._suspended = True
+            if self.engine.on_suspend():
+                self._announce()
+        self._holds.add(kind)
+
+    def _release(self, kind):
+        self._holds.discard(kind)
+        if not self._holds:
+            self._suspended = False
+            if self.engine.on_resume():
+                self._announce()
+            else:
+                self._push_phase_to_window()
 
     def _install_power_filter(self):
         if os.name != "nt":
@@ -702,7 +805,7 @@ class BreakController(QObject):
             app = QApplication.instance()
             if app is None:
                 return
-            self._power_filter = _PowerFilter(self._on_suspend, self._on_resume)
+            self._power_filter = _PowerFilter(self._hold, self._release)
             app.installNativeEventFilter(self._power_filter)
             self._register_session_notification(True)
         except Exception:
@@ -728,16 +831,10 @@ class BreakController(QObject):
             _log.exception("session notification registration failed")
 
     def _on_suspend(self):
-        self._suspended = True
-        if self.engine.on_suspend():
-            self._announce()
+        self._hold("sleep")
 
     def _on_resume(self):
-        self._suspended = False
-        if self.engine.on_resume():
-            self._announce()
-        else:
-            self._push_phase_to_window()
+        self._release("sleep")
 
     def retranslate(self):
         self.window.retranslate()
@@ -749,6 +846,9 @@ class BreakController(QObject):
             self._waker.stop()
         except RuntimeError:
             pass
+        self._holds.clear()
+        self._suspended = False
+        self._capture_hold = False
         try:
             app = QApplication.instance()
             if app is not None and self._power_filter is not None:
