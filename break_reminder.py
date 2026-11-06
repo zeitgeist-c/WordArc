@@ -148,12 +148,12 @@ class BreakEngine:
         elif self.phase == BreakPhase.BREAK and now >= self._deadline:
             self.phase = BreakPhase.BREAK_DONE
             self._done_until = now + BREAK_DONE_S
+            # The new 25 minutes start the instant the break ends: 00:00 is
+            # only a 2 s visual, never extra work time.
+            self._deadline = now + self.work_s
             events.append("break_finished")
         elif self.phase == BreakPhase.BREAK_DONE and now >= self._done_until:
-            # The 2 s of 00:00 belong to neither period: the fresh work
-            # deadline starts now, so they are never counted as work.
             self.phase = BreakPhase.WORKING
-            self._deadline = now + self.work_s
             events.append("work_started")
         return events
 
