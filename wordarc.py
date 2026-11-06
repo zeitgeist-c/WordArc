@@ -509,11 +509,23 @@ class WordArc:
                 bool(self.conf.get("break_enabled", False)))
 
     def _toggle_break(self, checked):
-        """Tray switch for the break reminder; persists and applies at once."""
+        """Tray switch for the break reminder; persists and applies at once.
+
+        Scoped to the break setting only: when the settings window is open
+        its checkbox follows, so a later Save cannot write the stale value
+        back over the tray's choice.
+        """
         breaks = getattr(self, "breaks", None)
         if breaks is None:
             return
         breaks.set_break_enabled(bool(checked))
+        box = getattr(getattr(self, "settings_window", None),
+                      "break_enabled", None)
+        if box is not None:
+            try:
+                box.setChecked(bool(checked))
+            except RuntimeError:
+                pass  # the window went away mid-toggle
         self._refresh_tray()
 
     # ---- actions ---------------------------------------------------------
