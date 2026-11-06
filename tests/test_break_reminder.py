@@ -583,6 +583,104 @@ class TestBreakSettingsHardening(unittest.TestCase):
         self.assertEqual(window.conf["break_corner"], "bottom-left")
 
 
+class TestTraySettingsConsistency(unittest.TestCase):
+    """Tray toggles while the settings window is open must stick.
+
+    Real SettingsWindow + real BreakController + the real
+    ``WordArc._toggle_break``; only the WordArc shell itself is a stub.
+    """
+
+    def setUp(self):
+        import pathlib
+        import tempfile
+        from unittest import mock
+        import settings_ui
+        import localspeech
+        import wordarc
+        self._wordarc = wordarc
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = pathlib.Path(self.tmp.name)
+        self.patchers = [
+            mock.patch.object(cfg, "CONFIG_DIR", root / "cfg"),
+            mock.patch.object(cfg, "CONFIG_FILE", root / "cfg" / "config.json"),
+            mock.patch.object(cfg, "DATA_DIR", root / "data"),
+            mock.patch.object(cfg, "HISTORY_FILE", root / "data" / "history.jsonl"),
+            mock.patch.object(cfg, "MEETINGS_DIR", root / "data" / "meetings"),
+            mock.patch.object(cfg, "MEETINGS_FILE", root / "data" / "meetings.jsonl"),
+            mock.patch.object(cfg.credential_store, "read", return_value=""),
+            mock.patch.object(cfg.credential_store, "read_all", return_value=[]),
+            mock.patch.object(cfg.credential_store, "write_all"),
+            mock.patch.object(settings_ui.audio, "list_sources", return_value=[]),
+            mock.patch.object(settings_ui.audio, "refresh_devices"),
+            mock.patch.object(settings_ui.audio, "list_monitors", return_value=[]),
+            mock.patch.object(settings_ui.startup, "is_enabled", return_value=True),
+            mock.patch.object(settings_ui.startup, "set_enabled"),
+            mock.patch.object(localspeech.vulkan_speech, "available", return_value=False),
+        ]
+        for patcher in self.patchers:
+            patcher.start()
+        self.addCleanup(self._stop)
+        self.conf = cfg.Config()
+        self.conf["break_enabled"] = True
+        self.window = settings_ui.SettingsWindow(self.conf, "wordarc toggle")
+        self.controller = wordarc.WordArc.__new__(wordarc.WordArc)
+        self.controller.conf = self.conf
+        self.controller.app = mock.Mock()
+        self.controller.tray = mock.Mock()
+        self.controller.tts = mock.Mock()
+        self.controller.tts.busy = False
+        self.controller.state = wordarc.IDLE
+        self.controller.meeting_state = wordarc.M_IDLE
+        self.controller.meeting_message = ""
+        for name in ("_toggle", "cancel", "_toggle_meeting", "cancel_meeting",
+                     "_take_screenshot", "open_settings", "restart"):
+            setattr(self.controller, name, mock.Mock())
+        self.controller.breaks = br.BreakController(self.conf)
+        self.controller.breaks.sync_from_conf()
+        self.controller.settings_window = self.window
+        self.controller._build_tray()
+        self.controller._refresh_tray()
+        self.addCleanup(self._teardown_widgets)
+
+    def _stop(self):
+        for patcher in self.patchers:
+            patcher.stop()
+
+    def _teardown_widgets(self):
+        self.controller.breaks.shutdown()
+        self.controller.breaks.window.deleteLater()
+        self.controller.breaks.deleteLater()
+        self.window.deleteLater()
+
+    def test_tray_off_then_save_keeps_it_off(self):
+        self.assertTrue(self.window.break_enabled.isChecked())
+        self.controller._toggle_break(False)
+        self.assertFalse(self.window.break_enabled.isChecked())
+        self.assertFalse(self.controller.break_action.isChecked())
+        # An unrelated change, then Save: the tray's choice must survive.
+        self.window.close_to_tray.setChecked(
+            not self.window.close_to_tray.isChecked())
+        self.assertTrue(self.window._save(quiet=True))
+        self.assertIs(self.conf["break_enabled"], False)
+        self.controller.breaks.sync_from_conf()
+        self.assertEqual(self.controller.breaks.engine.phase, br.BreakPhase.OFF)
+
+    def test_tray_on_then_save_keeps_it_on(self):
+        self.conf["break_enabled"] = False
+        self.controller.breaks.sync_from_conf()
+        self.window.break_enabled.setChecked(False)
+        self.controller._toggle_break(True)
+        self.assertTrue(self.window.break_enabled.isChecked())
+        self.assertTrue(self.controller.break_action.isChecked())
+        self.window.close_to_tray.setChecked(
+            not self.window.close_to_tray.isChecked())
+        self.assertTrue(self.window._save(quiet=True))
+        self.assertIs(self.conf["break_enabled"], True)
+        self.controller.breaks.sync_from_conf()
+        self.assertEqual(self.controller.breaks.engine.phase, br.BreakPhase.WORKING)
+
+
 class TestConfigDefaults(unittest.TestCase):
     def test_break_defaults(self):
         self.assertIs(cfg.DEFAULTS["break_enabled"], False)
