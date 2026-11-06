@@ -48,19 +48,24 @@ MIN_WORK_MINUTES = 5
 MAX_WORK_MINUTES = 180
 MIN_BREAK_MINUTES = 1
 MAX_BREAK_MINUTES = 60
-MIN_SNOOZE_MINUTES = 1
-MAX_SNOOZE_MINUTES = 30
 
 VALID_CORNERS = ("bottom-right", "bottom-left")
+
+# Fixed snooze choices offered on the reminder panel (minutes).
+SNOOZE_CHOICES = (1, 5, 10)
+
+# How long the finished break shows 00:00 before the next work period.
+BREAK_DONE_S = 2
 
 
 class BreakPhase(Enum):
     """The break reminder's state machine."""
 
     OFF = auto()       # feature disabled, nothing shown
-    WORKING = auto()   # counting down the work period
-    REMINDER = auto()  # work period over, waiting for the user's choice
-    BREAK = auto()     # break started by the user, counting down
+    WORKING = auto()   # counting down work (or a chosen snooze), hidden
+    REMINDER = auto()  # work period over, panel shown, break NOT started
+    BREAK = auto()     # break started by the user, counting down, shown
+    BREAK_DONE = auto()  # break over: 00:00 shown briefly, then hidden work
     PAUSED = auto()    # manually paused, or auto-paused by sleep/lock
 
 
@@ -87,15 +92,15 @@ class BreakEngine:
         self.phase = BreakPhase.OFF
         self.work_s = 25 * 60
         self.break_s = 5 * 60
-        self.snooze_s = 5 * 60
         self._deadline = 0.0
+        self._done_until = 0.0
         self._paused_from = BreakPhase.WORKING
         self._paused_remaining = 0.0
         self._auto_paused = False
 
     # ---- configuration -------------------------------------------------
 
-    def apply_durations(self, work_s, break_s, snooze_s, now=None):
+    def apply_durations(self, work_s, break_s, now=None):
         """New totals; an active countdown keeps its elapsed progress."""
         now = self._clock() if now is None else now
         if self.phase == BreakPhase.PAUSED:
@@ -111,7 +116,7 @@ class BreakEngine:
             self._deadline += work_s - self.work_s
         elif self.phase == BreakPhase.BREAK:
             self._deadline += break_s - self.break_s
-        self.work_s, self.break_s, self.snooze_s = work_s, break_s, snooze_s
+        self.work_s, self.break_s = work_s, break_s
 
     # ---- state changes --------------------------------------------------
 
@@ -129,8 +134,9 @@ class BreakEngine:
         return False
 
     def refresh(self, now=None):
-        """Fire due transitions. Returns events: 'reminder', 'break_finished'.
+        """Fire due transitions.
 
+        Returns events: 'reminder', 'break_finished', 'work_started'.
         Absolute deadlines make this idempotent: a transition changes the
         phase, so a late or repeated call cannot replay it.
         """
@@ -140,9 +146,15 @@ class BreakEngine:
             self.phase = BreakPhase.REMINDER
             events.append("reminder")
         elif self.phase == BreakPhase.BREAK and now >= self._deadline:
+            self.phase = BreakPhase.BREAK_DONE
+            self._done_until = now + BREAK_DONE_S
+            events.append("break_finished")
+        elif self.phase == BreakPhase.BREAK_DONE and now >= self._done_until:
+            # The 2 s of 00:00 belong to neither period: the fresh work
+            # deadline starts now, so they are never counted as work.
             self.phase = BreakPhase.WORKING
             self._deadline = now + self.work_s
-            events.append("break_finished")
+            events.append("work_started")
         return events
 
     def start_break(self, now=None):
@@ -153,17 +165,24 @@ class BreakEngine:
         self._deadline = now + self.break_s
         return True
 
-    def snooze(self, now=None):
+    def snooze(self, seconds, now=None):
+        """A chosen snooze: hide everything, remind again when it elapses.
+
+        The break never starts on its own.
+        """
         if self.phase != BreakPhase.REMINDER:
             return False
         now = self._clock() if now is None else now
         self.phase = BreakPhase.WORKING
-        self._deadline = now + self.snooze_s
+        self._deadline = now + max(1.0, float(seconds))
         return True
 
-    def end_break(self, now=None):
-        """Shorten a running break: a fresh work period starts at once."""
-        if self.phase != BreakPhase.BREAK:
+    def cancel(self, now=None):
+        """Drop the reminder: a fresh full work period starts at once.
+
+        Cancelling is not disabling: the feature stays on.
+        """
+        if self.phase != BreakPhase.REMINDER:
             return False
         now = self._clock() if now is None else now
         self.phase = BreakPhase.WORKING
@@ -172,21 +191,29 @@ class BreakEngine:
 
     def pause(self, now=None):
         if self.phase not in (BreakPhase.WORKING, BreakPhase.REMINDER,
-                              BreakPhase.BREAK):
+                              BreakPhase.BREAK, BreakPhase.BREAK_DONE):
             return False
         now = self._clock() if now is None else now
         self._paused_from = self.phase
-        self._paused_remaining = max(0.0, self._deadline - now)
+        self._paused_remaining = max(0.0, self._phase_remaining(now))
         self._auto_paused = False
         self.phase = BreakPhase.PAUSED
         return True
+
+    def _phase_remaining(self, now):
+        if self._paused_from == BreakPhase.BREAK_DONE:
+            return self._done_until - now
+        return self._deadline - now
 
     def resume(self, now=None):
         if self.phase != BreakPhase.PAUSED:
             return False
         now = self._clock() if now is None else now
         self.phase = self._paused_from
-        self._deadline = now + self._paused_remaining
+        if self.phase == BreakPhase.BREAK_DONE:
+            self._done_until = now + self._paused_remaining
+        else:
+            self._deadline = now + self._paused_remaining
         self._paused_remaining = 0.0
         self._auto_paused = False
         return True
@@ -196,11 +223,11 @@ class BreakEngine:
     def on_suspend(self, now=None):
         """Sleep or lock: freeze the countdown, keep the remainder."""
         if self.phase not in (BreakPhase.WORKING, BreakPhase.REMINDER,
-                              BreakPhase.BREAK):
+                              BreakPhase.BREAK, BreakPhase.BREAK_DONE):
             return False
         now = self._clock() if now is None else now
         self._paused_from = self.phase
-        self._paused_remaining = max(0.0, self._deadline - now)
+        self._paused_remaining = max(0.0, self._phase_remaining(now))
         self._auto_paused = True
         self.phase = BreakPhase.PAUSED
         return True
@@ -291,17 +318,19 @@ class _PowerFilter(QAbstractNativeEventFilter):
 
 
 class BreakWindow(QWidget):
-    """The small surface: compact timer while working, three buttons on reminder."""
+    """One panel, two faces.
+
+    The panel is visible only for the reminder, the running break and the
+    brief 00:00 after it. Work, snoozed waiting and pauses stay fully
+    hidden in the background; pausing and resuming live in the tray menu.
+    """
 
     start_requested = pyqtSignal()
-    snooze_requested = pyqtSignal()
-    pause_requested = pyqtSignal()
-    resume_requested = pyqtSignal()
-    end_break_requested = pyqtSignal()
-    dragged = pyqtSignal()
+    snooze_requested = pyqtSignal(int)  # chosen minutes: 1, 5 or 10
+    cancel_requested = pyqtSignal()
 
-    TIMER_W, TIMER_H = 170, 112
-    REMINDER_W, REMINDER_H = 300, 300
+    COUNTDOWN_W, COUNTDOWN_H = 220, 130
+    REMINDER_W, REMINDER_H = 300, 400
 
     def __init__(self, conf=None, record_overlay=None, parent=None):
         super().__init__(None)
@@ -309,7 +338,6 @@ class BreakWindow(QWidget):
         self._record_overlay = record_overlay
         self._phase = BreakPhase.OFF
         self._remaining = 0
-        self._snooze_minutes = 5
         self._drag_offset = None
         self._bg = QColor("#1C1C20")
         self._border = QColor("#34343C")
@@ -332,32 +360,25 @@ class BreakWindow(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(self._stack)
 
-        # -- timer face --
-        timer_page = QWidget()
-        timer_layout = QVBoxLayout(timer_page)
-        timer_layout.setContentsMargins(14, 10, 14, 10)
-        timer_layout.setSpacing(0)
+        # -- countdown face: the running break, then the brief 00:00 --
+        count_page = QWidget()
+        count_layout = QVBoxLayout(count_page)
+        count_layout.setContentsMargins(14, 12, 14, 12)
+        count_layout.setSpacing(2)
         self._time_label = QLabel("--:--")
         timer_font = self._time_label.font()
-        timer_font.setPointSize(20)
+        timer_font.setPointSize(28)
         timer_font.setBold(True)
         self._time_label.setFont(timer_font)
         self._time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        timer_layout.addWidget(self._time_label)
+        count_layout.addWidget(self._time_label)
         self._state_label = QLabel("")
         self._state_label.setObjectName("muted")
         self._state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        timer_layout.addWidget(self._state_label)
-        # Pausing must stay reachable while working: a small mouse-only
-        # button on the timer face itself (never keyboard focus).
-        self._face_button = QPushButton()
-        self._face_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._face_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._face_button.clicked.connect(self.pause_requested.emit)
-        timer_layout.addWidget(self._face_button)
-        self._stack.addWidget(timer_page)
+        count_layout.addWidget(self._state_label)
+        self._stack.addWidget(count_page)
 
-        # -- reminder face --
+        # -- reminder face: start, three fixed snoozes, cancel --
         reminder_page = QWidget()
         reminder_layout = QVBoxLayout(reminder_page)
         reminder_layout.setContentsMargins(16, 14, 16, 14)
@@ -379,21 +400,25 @@ class BreakWindow(QWidget):
         self._start_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._start_button.clicked.connect(self.start_requested.emit)
         reminder_layout.addWidget(self._start_button)
-        self._snooze_button = QPushButton()
-        self._snooze_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._snooze_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._snooze_button.clicked.connect(self.snooze_requested.emit)
-        reminder_layout.addWidget(self._snooze_button)
-        self._pause_button = QPushButton()
-        self._pause_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._pause_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._pause_button.clicked.connect(self.pause_requested.emit)
-        reminder_layout.addWidget(self._pause_button)
+        self._snooze_buttons = {}
+        for minutes in SNOOZE_CHOICES:
+            button = QPushButton()
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            button.clicked.connect(
+                lambda _checked=False, m=minutes: self.snooze_requested.emit(m))
+            reminder_layout.addWidget(button)
+            self._snooze_buttons[minutes] = button
+        self._cancel_button = QPushButton()
+        self._cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._cancel_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._cancel_button.clicked.connect(self.cancel_requested.emit)
+        reminder_layout.addWidget(self._cancel_button)
         self._stack.addWidget(reminder_page)
 
         self.retranslate()
         self.restyle()
-        self.setFixedSize(self.TIMER_W, self.TIMER_H)
+        self.setFixedSize(self.COUNTDOWN_W, self.COUNTDOWN_H)
 
         app = QApplication.instance()
         if app is not None:
@@ -408,7 +433,9 @@ class BreakWindow(QWidget):
         self._title_label.setText(t("Time for a break"))
         self._body_label.setText(t("Stand up and walk a little."))
         self._start_button.setText(t("Start the break"))
-        self._pause_button.setText(t("Pause"))
+        for minutes, button in self._snooze_buttons.items():
+            button.setText(t(f"Snooze {minutes} min"))
+        self._cancel_button.setText(t("Cancel"))
         self._update_texts()
 
     def restyle(self):
@@ -429,17 +456,16 @@ class BreakWindow(QWidget):
         self.setStyleSheet(sheet)
         self.update()
 
-    def set_phase(self, phase, remaining=0, snooze_minutes=5):
+    def set_phase(self, phase, remaining=0):
         self._phase = phase
         self._remaining = remaining
-        self._snooze_minutes = snooze_minutes
         if phase == BreakPhase.OFF:
             self.hide()
             return
         self._stack.setCurrentIndex(1 if phase == BreakPhase.REMINDER else 0)
         self.setFixedSize(
-            self.REMINDER_W if phase == BreakPhase.REMINDER else self.TIMER_W,
-            self.REMINDER_H if phase == BreakPhase.REMINDER else self.TIMER_H,
+            self.REMINDER_W if phase == BreakPhase.REMINDER else self.COUNTDOWN_W,
+            self.REMINDER_H if phase == BreakPhase.REMINDER else self.COUNTDOWN_H,
         )
         # Every resize re-clamps first: growing near a screen edge must stay
         # on the monitor it is on, never spill over or jump to the primary.
@@ -452,21 +478,9 @@ class BreakWindow(QWidget):
         self.update()
 
     def _update_texts(self):
-        if self._phase == BreakPhase.WORKING:
-            self._time_label.setText(_fmt(self._remaining))
-            self._state_label.setText(t("until the break"))
-            self._face_button.setText(t("Pause"))
-        elif self._phase == BreakPhase.BREAK:
+        if self._phase in (BreakPhase.BREAK, BreakPhase.BREAK_DONE):
             self._time_label.setText(_fmt(self._remaining))
             self._state_label.setText(t("break — walk a little"))
-            self._face_button.setText(t("Pause"))
-        elif self._phase == BreakPhase.PAUSED:
-            self._time_label.setText(_fmt(self._remaining))
-            self._state_label.setText(t("paused"))
-            self._face_button.setText(t("Resume"))
-        elif self._phase == BreakPhase.REMINDER:
-            self._snooze_button.setText(
-                t("Snooze {minutes} min", minutes=self._snooze_minutes))
 
     # ---- placement ---------------------------------------------------------
 
@@ -509,8 +523,8 @@ class BreakWindow(QWidget):
         screen = app.primaryScreen() if app is not None else screens[0]
         area = screen.availableGeometry()
         left = "left" in self._corner()
-        width = self.width() or self.TIMER_W
-        height = self.height() or self.TIMER_H
+        width = self.width() or self.COUNTDOWN_W
+        height = self.height() or self.COUNTDOWN_H
         x = area.left() + MARGIN if left else area.right() - width - MARGIN
         self.move(int(x), int(area.bottom() - height - MARGIN))
         self._reclamp()
@@ -573,8 +587,9 @@ class BreakWindow(QWidget):
     # ---- dragging ------------------------------------------------------------
 
     def mousePressEvent(self, event):
-        if (event.button() == Qt.MouseButton.LeftButton
-                and self._stack.currentIndex() == 0):
+        # Dragging works from any non-button surface, on either face.
+        if event.button() == Qt.MouseButton.LeftButton and not isinstance(
+                self.childAt(event.position().toPoint()), QPushButton):
             self._drag_offset = event.globalPosition().toPoint() - self.pos()
             event.accept()
             return
@@ -637,7 +652,7 @@ class BreakController(QObject):
         self.window = BreakWindow(conf, record_overlay)
         self.window.start_requested.connect(self.start_break_from_ui)
         self.window.snooze_requested.connect(self.snooze_from_ui)
-        self.window.pause_requested.connect(self.pause_from_ui)
+        self.window.cancel_requested.connect(self.cancel_from_ui)
 
         self._waker = QTimer(self)
         self._waker.setInterval(1000)
@@ -662,12 +677,10 @@ class BreakController(QObject):
                              MIN_WORK_MINUTES, MAX_WORK_MINUTES, 25) * 60
         brk = clamp_minutes(conf.get("break_break_minutes", 5),
                             MIN_BREAK_MINUTES, MAX_BREAK_MINUTES, 5) * 60
-        snooze = clamp_minutes(conf.get("break_snooze_minutes", 5),
-                               MIN_SNOOZE_MINUTES, MAX_SNOOZE_MINUTES, 5) * 60
         corner = conf.get("break_corner", "bottom-right")
         if corner not in VALID_CORNERS:
             corner = "bottom-right"
-        self.engine.apply_durations(work, brk, snooze)
+        self.engine.apply_durations(work, brk)
         if self.engine.set_enabled(enabled):
             self._announce()
         if enabled and not self._waker.isActive():
@@ -695,17 +708,21 @@ class BreakController(QObject):
         self.state_changed.emit(self.engine.phase)
         self._push_phase_to_window()
 
+    # Central visibility rule: the panel shows only for the reminder, the
+    # running break and the brief 00:00 after it. Work, snoozed waiting,
+    # pauses and OFF stay hidden, no matter what calls here.
+    _VISIBLE = (BreakPhase.REMINDER, BreakPhase.BREAK, BreakPhase.BREAK_DONE)
+
     def _push_phase_to_window(self):
         # A capture in progress owns visibility: ticks, transitions and
         # settings resyncs must not re-show the window until it is restored.
         if self._capture_hold:
             return
-        if self.engine.phase == BreakPhase.OFF:
-            self.window.set_phase(BreakPhase.OFF)
-        else:
+        if self.engine.phase in self._VISIBLE:
             self.window.set_phase(self.engine.phase,
-                                  self.engine.remaining(),
-                                  self.engine.snooze_s // 60)
+                                  self.engine.remaining())
+        else:
+            self.window.set_phase(BreakPhase.OFF)
 
     # ---- waker ---------------------------------------------------------------
 
@@ -713,7 +730,7 @@ class BreakController(QObject):
         if self._suspended:
             return
         for event in self.engine.refresh():
-            if event in ("reminder", "break_finished"):
+            if event in ("reminder", "break_finished", "work_started"):
                 self._announce()
         self.tick.emit(self.engine.remaining())
         self._push_phase_to_window()
@@ -724,25 +741,22 @@ class BreakController(QObject):
         if self.engine.start_break():
             self._announce()
 
-    def snooze_from_ui(self):
-        if self.engine.snooze():
+    def snooze_from_ui(self, minutes):
+        if self.engine.snooze(int(minutes) * 60):
             self._announce()
 
-    def pause_from_ui(self):
-        # The reminder face pauses; the timer face has no buttons (drag only).
-        if self.engine.phase == BreakPhase.PAUSED:
+    def cancel_from_ui(self):
+        if self.engine.cancel():
+            self._announce()
+
+    def set_paused(self, paused):
+        """Tray pause switch: pausing never pops the panel up."""
+        if paused:
+            if self.engine.pause():
+                self._announce()
+        else:
             if self.engine.resume():
                 self._announce()
-        elif self.engine.pause():
-            self._announce()
-
-    def resume_from_ui(self):
-        if self.engine.resume():
-            self._announce()
-
-    def end_break_from_ui(self):
-        if self.engine.end_break():
-            self._announce()
 
     def set_break_enabled(self, enabled):
         self._conf["break_enabled"] = bool(enabled)
@@ -770,9 +784,10 @@ class BreakController(QObject):
 
     def restore_after_capture(self, was_visible):
         self._capture_hold = False
-        # A feature disabled mid-capture stays off: never re-show it.
-        if was_visible and self.engine.phase != BreakPhase.OFF:
-            self._push_phase_to_window()
+        # The central visibility rule decides: a visible phase re-shows
+        # (even one reached mid-capture), everything else — including a
+        # feature disabled mid-capture — stays hidden.
+        self._push_phase_to_window()
 
     # ---- power / lock --------------------------------------------------------------
 

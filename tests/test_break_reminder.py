@@ -28,12 +28,11 @@ class FakeClock:
         self.now += seconds
 
 
-def make_engine(work_min=25, break_min=5, snooze_min=5):
+def make_engine(work_min=25, break_min=5):
     clock = FakeClock()
     engine = br.BreakEngine(clock=clock)
     engine.work_s = work_min * 60
     engine.break_s = break_min * 60
-    engine.snooze_s = snooze_min * 60
     return engine, clock
 
 
@@ -76,6 +75,10 @@ class TestEngine(unittest.TestCase):
         self.assertEqual(engine.phase, br.BreakPhase.BREAK)
         clock.advance(5 * 60)
         self.assertEqual(engine.refresh(clock()), ["break_finished"])
+        self.assertEqual(engine.phase, br.BreakPhase.BREAK_DONE)
+        self.assertEqual(engine.remaining(clock()), 0)
+        clock.advance(br.BREAK_DONE_S)
+        self.assertEqual(engine.refresh(clock()), ["work_started"])
         self.assertEqual(engine.phase, br.BreakPhase.WORKING)
         self.assertEqual(engine.remaining(clock()), 25 * 60)
 
@@ -92,17 +95,66 @@ class TestEngine(unittest.TestCase):
         self.assertFalse(engine2.start_break(clock2()))
         clock.advance(5 * 60)
         self.assertEqual(engine.refresh(clock()), ["break_finished"])
+        self.assertEqual(engine.phase, br.BreakPhase.BREAK_DONE)
 
-    def test_snooze(self):
+    def test_break_done_holds_zero_then_starts_fresh_work(self):
+        """00:00 shows for 2 s; those 2 s never count as work."""
         engine, clock = make_engine()
         engine.set_enabled(True, clock())
         clock.advance(25 * 60)
         engine.refresh(clock())
-        self.assertTrue(engine.snooze(clock()))
-        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
-        self.assertEqual(engine.remaining(clock()), 5 * 60)
+        engine.start_break(clock())
         clock.advance(5 * 60)
+        engine.refresh(clock())
+        done_at = clock()
+        self.assertEqual(engine.phase, br.BreakPhase.BREAK_DONE)
+        self.assertEqual(engine.remaining(clock()), 0)
+        clock.advance(1)
+        self.assertEqual(engine.refresh(clock()), [])
+        self.assertEqual(engine.phase, br.BreakPhase.BREAK_DONE)
+        clock.advance(1)
+        self.assertEqual(engine.refresh(clock()), ["work_started"])
+        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
+        # Fresh deadline starts at the hide moment, not at the break end.
+        self.assertEqual(engine._deadline, done_at + br.BREAK_DONE_S + 25 * 60)
+
+    def test_snooze_choices_each_reopen_the_reminder(self):
+        for minutes in br.SNOOZE_CHOICES:
+            engine, clock = make_engine()
+            engine.set_enabled(True, clock())
+            clock.advance(25 * 60)
+            engine.refresh(clock())
+            self.assertTrue(engine.snooze(minutes * 60, clock()))
+            self.assertEqual(engine.phase, br.BreakPhase.WORKING)
+            self.assertEqual(engine.remaining(clock()), minutes * 60)
+            # No auto break while snoozed: only the reminder returns.
+            clock.advance(minutes * 60)
+            self.assertEqual(engine.refresh(clock()), ["reminder"])
+            self.assertEqual(engine.phase, br.BreakPhase.REMINDER)
+
+    def test_snooze_rejected_outside_reminder(self):
+        engine, clock = make_engine()
+        engine.set_enabled(True, clock())
+        self.assertFalse(engine.snooze(60, clock()))
+        engine.pause(clock())
+        self.assertFalse(engine.snooze(60, clock()))
+
+    def test_cancel_starts_fresh_work_and_stays_enabled(self):
+        engine, clock = make_engine()
+        engine.set_enabled(True, clock())
+        clock.advance(25 * 60)
+        engine.refresh(clock())
+        self.assertTrue(engine.cancel(clock()))
+        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
+        self.assertEqual(engine.remaining(clock()), 25 * 60)
+        # Cancelling is not disabling: the next cycle still reminds.
+        clock.advance(25 * 60)
         self.assertEqual(engine.refresh(clock()), ["reminder"])
+
+    def test_cancel_rejected_outside_reminder(self):
+        engine, clock = make_engine()
+        engine.set_enabled(True, clock())
+        self.assertFalse(engine.cancel(clock()))
 
     def test_pause_resume_keeps_remaining(self):
         engine, clock = make_engine()
@@ -163,22 +215,25 @@ class TestEngine(unittest.TestCase):
         self.assertEqual(engine.phase, br.BreakPhase.WORKING)
         self.assertEqual(engine.remaining(clock()), 25 * 60)
 
-    def test_end_break_starts_fresh_work(self):
+    def test_pause_during_break_and_done(self):
         engine, clock = make_engine()
         engine.set_enabled(True, clock())
         clock.advance(25 * 60)
         engine.refresh(clock())
         engine.start_break(clock())
         clock.advance(60)
-        self.assertTrue(engine.end_break(clock()))
-        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
-        self.assertEqual(engine.remaining(clock()), 25 * 60)
+        self.assertTrue(engine.pause(clock()))
+        frozen = engine.remaining(clock())
+        clock.advance(600)
+        self.assertEqual(engine.remaining(clock()), frozen)
+        self.assertTrue(engine.resume(clock()))
+        self.assertEqual(engine.phase, br.BreakPhase.BREAK)
 
     def test_apply_durations_keeps_progress(self):
         engine, clock = make_engine()
         engine.set_enabled(True, clock())
         clock.advance(60)
-        engine.apply_durations(30 * 60, 5 * 60, 5 * 60, clock())
+        engine.apply_durations(30 * 60, 5 * 60, clock())
         self.assertEqual(engine.remaining(clock()), 30 * 60 - 60)
 
 
@@ -220,11 +275,12 @@ class TestController(unittest.TestCase):
         self.assertIs(self.controller._power_filter, filt)
         self.assertTrue(waker.isActive())
 
-    def test_enable_shows_timer_disable_hides(self):
+    def test_enable_hides_working_disable_hides(self):
         self.conf["break_enabled"] = True
         self.controller.sync_from_conf()
         self.assertEqual(self.controller.engine.phase, br.BreakPhase.WORKING)
-        self.assertTrue(self.controller.window.isVisible())
+        # Background counting: no window while working.
+        self.assertFalse(self.controller.window.isVisible())
         self.conf["break_enabled"] = False
         self.controller.sync_from_conf()
         self.assertEqual(self.controller.engine.phase, br.BreakPhase.OFF)
@@ -238,24 +294,68 @@ class TestController(unittest.TestCase):
         self.controller._wake()
         self.assertEqual(engine.phase, br.BreakPhase.REMINDER)
         window = self.controller.window
+        self.assertTrue(window.isVisible())
         self.assertEqual(window._stack.currentIndex(), 1)
         window._start_button.click()
         self.assertEqual(engine.phase, br.BreakPhase.BREAK)
         self.assertEqual(window._stack.currentIndex(), 0)
 
-    def test_snooze_and_pause_buttons(self):
+    def test_snooze_buttons_hide_and_cancel_restarts(self):
         self.conf["break_enabled"] = True
         self.controller.sync_from_conf()
         engine = self.controller.engine
-        engine._deadline = engine._clock() - 1
-        self.controller._wake()
         window = self.controller.window
-        window._snooze_button.click()
-        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
         engine._deadline = engine._clock() - 1
         self.controller._wake()
-        window._pause_button.click()
+        window._snooze_buttons[10].click()
+        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
+        self.assertFalse(window.isVisible())
+        engine._deadline = engine._clock() - 1
+        self.controller._wake()
+        self.assertTrue(window.isVisible())
+        window._cancel_button.click()
+        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
+        self.assertEqual(engine.remaining(), engine.work_s)
+        self.assertFalse(window.isVisible())
+
+    def test_break_done_shows_zero_then_hides(self):
+        self.conf["break_enabled"] = True
+        self.controller.sync_from_conf()
+        engine = self.controller.engine
+        window = self.controller.window
+        engine._deadline = engine._clock() - 1
+        self.controller._wake()
+        window._start_button.click()
+        engine._deadline = engine._clock() - 1
+        self.controller._wake()
+        self.assertEqual(engine.phase, br.BreakPhase.BREAK_DONE)
+        self.assertTrue(window.isVisible())
+        self.assertEqual(window._time_label.text(), "00:00")
+        engine._done_until = engine._clock() - 1
+        self.controller._wake()
+        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
+        self.assertFalse(window.isVisible())
+
+    def test_pause_never_pops_the_panel(self):
+        self.conf["break_enabled"] = True
+        self.controller.sync_from_conf()
+        engine = self.controller.engine
+        window = self.controller.window
+        self.controller.set_paused(True)
         self.assertEqual(engine.phase, br.BreakPhase.PAUSED)
+        self.assertFalse(window.isVisible())
+        self.controller.set_paused(False)
+        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
+        self.assertFalse(window.isVisible())
+        # Pausing the reminder hides it; resuming brings it back.
+        engine._deadline = engine._clock() - 1
+        self.controller._wake()
+        self.assertTrue(window.isVisible())
+        self.controller.set_paused(True)
+        self.assertFalse(window.isVisible())
+        self.controller.set_paused(False)
+        self.assertEqual(engine.phase, br.BreakPhase.REMINDER)
+        self.assertTrue(window.isVisible())
 
     def test_window_never_takes_focus(self):
         window = self.controller.window
@@ -266,16 +366,44 @@ class TestController(unittest.TestCase):
     def test_screenshot_hide_restore(self):
         self.conf["break_enabled"] = True
         self.controller.sync_from_conf()
-        self.assertTrue(self.controller.hide_for_capture())
-        self.assertFalse(self.controller.window.isVisible())
+        engine = self.controller.engine
+        window = self.controller.window
+        # Hidden background work: nothing to park, hold still set.
+        self.assertFalse(self.controller.hide_for_capture())
+        engine._deadline = engine._clock() - 1
+        self.controller._wake()
+        # The reminder was reached mid-capture: phase moves, panel stays down.
+        self.assertEqual(engine.phase, br.BreakPhase.REMINDER)
+        self.assertFalse(window.isVisible())
         self.controller.restore_after_capture(True)
-        self.assertTrue(self.controller.window.isVisible())
+        self.assertTrue(window.isVisible())
         # Disabled: hiding is a no-op and restores nothing.
         self.conf["break_enabled"] = False
         self.controller.sync_from_conf()
         self.assertFalse(self.controller.hide_for_capture())
         self.controller.restore_after_capture(False)
         self.assertFalse(self.controller.window.isVisible())
+
+    def test_capture_hold_blocks_tick_transition_and_resync(self):
+        self.conf["break_enabled"] = True
+        self.controller.sync_from_conf()
+        engine = self.controller.engine
+        window = self.controller.window
+        engine._deadline = engine._clock() - 1
+        self.controller._wake()
+        self.assertTrue(window.isVisible())
+        self.assertTrue(self.controller.hide_for_capture())
+        # A transition reached mid-capture must not re-show the panel.
+        engine.snooze(600)
+        engine._deadline = engine._clock() - 1
+        self.controller._wake()
+        self.assertEqual(engine.phase, br.BreakPhase.REMINDER)
+        self.assertFalse(window.isVisible(), "tick re-showed during capture")
+        self.controller.sync_from_conf()
+        self.assertFalse(window.isVisible(), "resync re-showed during capture")
+        self.controller.restore_after_capture(True)
+        self.assertTrue(window.isVisible())
+        self.assertEqual(window._stack.currentIndex(), 1)
 
     def test_avoids_recording_overlay(self):
         import overlay as rec_overlay_mod
@@ -288,6 +416,7 @@ class TestController(unittest.TestCase):
         try:
             window = self.controller.window
             window._record_overlay = rec
+            window.set_phase(br.BreakPhase.REMINDER, 0)
             window.move(100, 100)
             window._avoid_record_overlay()
             self.assertFalse(window.frameGeometry().intersects(rec.frameGeometry()))
@@ -361,29 +490,30 @@ class TestReviewFindings(unittest.TestCase):
         self.controller.deleteLater()
         i18n.set_language("en")
 
-    # -- 1: pause/resume reachable while working, through the real button --
-    def test_face_button_pauses_and_resumes_work(self):
+    # -- 1: pause lives in the tray and never pops the panel --
+    def test_tray_pause_hides_and_resume_restores(self):
         self.conf["break_enabled"] = True
         self.controller.sync_from_conf()
         window = self.controller.window
-        self.assertTrue(hasattr(window, "_face_button"))
         engine = self.controller.engine
-        window._face_button.click()
+        self.controller.set_paused(True)
         self.assertEqual(engine.phase, br.BreakPhase.PAUSED)
-        self.assertEqual(window._face_button.text(), "Resume")
-        frozen = engine.remaining()
-        window._face_button.click()
+        self.assertFalse(window.isVisible())
+        self.controller.set_paused(False)
         self.assertEqual(engine.phase, br.BreakPhase.WORKING)
-        self.assertEqual(engine.remaining(), frozen)
-        self.assertEqual(window._face_button.text(), "Pause")
+        self.assertFalse(window.isVisible())
 
-    # -- 2: capture hold suppresses every re-show until restore --
+    # -- 2: capture hold (covered in TestController with the new flow) --
     def test_capture_hold_blocks_tick_transition_and_resync(self):
         self.conf["break_enabled"] = True
         self.controller.sync_from_conf()
         engine = self.controller.engine
         window = self.controller.window
+        engine._deadline = engine._clock() - 1
+        self.controller._wake()
+        self.assertTrue(window.isVisible())
         self.assertTrue(self.controller.hide_for_capture())
+        engine.snooze(600)
         engine._deadline = engine._clock() - 1
         self.controller._wake()
         self.assertEqual(engine.phase, br.BreakPhase.REMINDER)
@@ -397,6 +527,9 @@ class TestReviewFindings(unittest.TestCase):
     def test_capture_restore_after_disable_stays_hidden(self):
         self.conf["break_enabled"] = True
         self.controller.sync_from_conf()
+        engine = self.controller.engine
+        engine._deadline = engine._clock() - 1
+        self.controller._wake()
         self.assertTrue(self.controller.hide_for_capture())
         self.conf["break_enabled"] = False
         self.controller.sync_from_conf()
@@ -411,19 +544,24 @@ class TestReviewFindings(unittest.TestCase):
         area = _APP.primaryScreen().availableGeometry()
         window.move(area.right() - window.width() - 1,
                     area.bottom() - window.height() - 1)
-        window.set_phase(br.BreakPhase.REMINDER, 0, 5)
+        window.set_phase(br.BreakPhase.REMINDER, 0)
         frame = window.frameGeometry()
         self.assertTrue(area.contains(frame), f"{frame.getRect()} vs {area.getRect()}")
 
-    def test_corner_change_moves_window_and_clears_drag_pos(self):
+    def test_corner_change_moves_visible_window_and_clears_drag_pos(self):
         self.conf["break_enabled"] = True
         self.controller.sync_from_conf()
+        engine = self.controller.engine
         window = self.controller.window
+        engine._deadline = engine._clock() - 1
+        self.controller._wake()
+        self.assertTrue(window.isVisible())
         area = _APP.primaryScreen().availableGeometry()
         self.assertGreaterEqual(window.x(), area.right() - window.width() - 60)
         self.conf["break_corner"] = "bottom-left"
         self.controller.sync_from_conf()
         self.assertEqual(self.conf.get("break_pos"), [])
+        self.assertTrue(window.isVisible())
         self.assertLess(window.x(), area.left() + 120)
 
     def test_saved_pos_beats_corner_until_corner_changes(self):
@@ -433,7 +571,10 @@ class TestReviewFindings(unittest.TestCase):
         self.conf["break_corner"] = "bottom-right"
         self.conf["break_pos"] = list(saved)
         self.controller.sync_from_conf()
+        engine = self.controller.engine
         window = self.controller.window
+        engine._deadline = engine._clock() - 1
+        self.controller._wake()
         self.assertEqual([window.x(), window.y()], saved)
 
     # -- 4: native filter with the real PyQt6 event type --
@@ -498,7 +639,7 @@ class TestReviewFindings(unittest.TestCase):
         clock.advance(60)
         engine.pause(clock())
         frozen = engine.remaining(clock())
-        engine.apply_durations(30 * 60, 5 * 60, 5 * 60, clock())
+        engine.apply_durations(30 * 60, 5 * 60, clock())
         self.assertEqual(engine.remaining(clock()), frozen + 5 * 60)
         engine.resume(clock())
         self.assertEqual(engine.phase, br.BreakPhase.WORKING)
@@ -536,6 +677,7 @@ class TestBreakSettingsHardening(unittest.TestCase):
             "break_break_minutes": -3,
             "break_snooze_minutes": [5],
             "break_corner": "top-left",
+            "break_pos": "nowhere",
         }), encoding="utf-8")
         self.patchers = [
             mock.patch.object(cfg, "CONFIG_DIR", root / "cfg"),
@@ -569,7 +711,7 @@ class TestBreakSettingsHardening(unittest.TestCase):
         self.assertTrue(window.break_enabled.isChecked())
         self.assertEqual(window.break_work.value(), 25)
         self.assertEqual(window.break_break.value(), 5)
-        self.assertEqual(window.break_snooze.value(), 5)
+        self.assertFalse(hasattr(window, "break_snooze"))
         self.assertEqual(window.break_corner.currentData(), "bottom-right")
 
     def test_break_card_saves_and_reloads(self):
@@ -680,21 +822,31 @@ class TestTraySettingsConsistency(unittest.TestCase):
         self.controller.breaks.sync_from_conf()
         self.assertEqual(self.controller.breaks.engine.phase, br.BreakPhase.WORKING)
 
+    def test_tray_pause_switch_hides_and_resumes(self):
+        breaks = self.controller.breaks
+        self.controller._toggle_break_pause(True)
+        self.assertEqual(breaks.engine.phase, br.BreakPhase.PAUSED)
+        self.assertFalse(breaks.window.isVisible())
+        self.assertTrue(self.controller.break_pause_action.isChecked())
+        self.controller._toggle_break_pause(False)
+        self.assertEqual(breaks.engine.phase, br.BreakPhase.WORKING)
+        self.assertFalse(self.controller.break_pause_action.isChecked())
+
 
 class TestConfigDefaults(unittest.TestCase):
     def test_break_defaults(self):
         self.assertIs(cfg.DEFAULTS["break_enabled"], False)
         self.assertEqual(cfg.DEFAULTS["break_work_minutes"], 25)
         self.assertEqual(cfg.DEFAULTS["break_break_minutes"], 5)
-        self.assertEqual(cfg.DEFAULTS["break_snooze_minutes"], 5)
         self.assertEqual(cfg.DEFAULTS["break_corner"], "bottom-right")
         self.assertEqual(cfg.DEFAULTS["break_pos"], [])
 
     def test_tr_covers_new_strings(self):
         table = i18n.TABLES["tr"]
         for key in ("Break reminder", "Time for a break", "Start the break",
-                    "Snooze {minutes} min", "Pause", "Remind me to stand up",
-                    "Work minutes", "Break minutes", "Snooze minutes", "Corner"):
+                    "Snooze 1 min", "Snooze 5 min", "Snooze 10 min",
+                    "Cancel", "Pause break timer", "Remind me to stand up",
+                    "Work minutes", "Break minutes", "Corner"):
             self.assertIn(key, table, key)
 
 
