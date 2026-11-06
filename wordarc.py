@@ -406,6 +406,11 @@ class WordArc:
         self.break_action.triggered.connect(self._toggle_break)
         self.menu.addAction(self.break_action)
 
+        self.break_pause_action = QAction(t("Pause break timer"), self.menu)
+        self.break_pause_action.setCheckable(True)
+        self.break_pause_action.triggered.connect(self._toggle_break_pause)
+        self.menu.addAction(self.break_pause_action)
+
         self.restart_action = QAction(t("Restart"), self.menu)
         self.restart_action.triggered.connect(self.restart)
         self.menu.addAction(self.restart_action)
@@ -507,6 +512,14 @@ class WordArc:
         if getattr(self, "break_action", None) is not None:
             self.break_action.setChecked(
                 bool(self.conf.get("break_enabled", False)))
+        if getattr(self, "break_pause_action", None) is not None:
+            breaks = getattr(self, "breaks", None)
+            paused = (breaks is not None
+                      and breaks.engine.phase == break_reminder.BreakPhase.PAUSED)
+            self.break_pause_action.setChecked(paused)
+            self.break_pause_action.setEnabled(
+                breaks is not None
+                and breaks.engine.phase != break_reminder.BreakPhase.OFF)
 
     def _toggle_break(self, checked):
         """Tray switch for the break reminder; persists and applies at once.
@@ -526,6 +539,14 @@ class WordArc:
                 box.setChecked(bool(checked))
             except RuntimeError:
                 pass  # the window went away mid-toggle
+        self._refresh_tray()
+
+    def _toggle_break_pause(self, checked):
+        """Tray pause switch; pausing never pops the panel up."""
+        breaks = getattr(self, "breaks", None)
+        if breaks is None:
+            return
+        breaks.set_paused(bool(checked))
         self._refresh_tray()
 
     # ---- actions ---------------------------------------------------------

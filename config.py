@@ -471,7 +471,6 @@ DEFAULTS = {
     "break_enabled": False,             # break reminder feature off by default
     "break_work_minutes": 25,           # work period in minutes (5-180)
     "break_break_minutes": 5,           # break period in minutes (1-60)
-    "break_snooze_minutes": 5,          # snooze duration in minutes (1-30)
     "break_corner": "bottom-right",     # bottom-right | bottom-left
     "break_pos": [],                    # dragged position [x, y]; [] = corner
     "gemini_api_key": "",

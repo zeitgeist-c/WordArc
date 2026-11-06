@@ -2312,17 +2312,11 @@ class SettingsWindow(QDialog):
         self.break_break.setMaximumWidth(90)
         self.break_break.setToolTip(
             t("How long the break lasts once you start it."))
-        self.break_snooze = QSpinBox()
-        self.break_snooze.setRange(1, 30)
-        self.break_snooze.setMaximumWidth(90)
-        self.break_snooze.setToolTip(
-            t("How long snoozing postpones the reminder."))
         spins = QHBoxLayout()
         spins.setContentsMargins(0, 0, 0, 0)
         spins.setSpacing(12)
         spins.addWidget(self._label_row("Work minutes", self.break_work), 1)
         spins.addWidget(self._label_row("Break minutes", self.break_break), 1)
-        spins.addWidget(self._label_row("Snooze minutes", self.break_snooze), 1)
         spins_holder = QWidget()
         spins_holder.setLayout(spins)
         body.addWidget(spins_holder)
@@ -3538,9 +3532,6 @@ class SettingsWindow(QDialog):
         self.break_break.setValue(break_reminder.clamp_minutes(
             conf.get("break_break_minutes", 5),
             break_reminder.MIN_BREAK_MINUTES, break_reminder.MAX_BREAK_MINUTES, 5))
-        self.break_snooze.setValue(break_reminder.clamp_minutes(
-            conf.get("break_snooze_minutes", 5),
-            break_reminder.MIN_SNOOZE_MINUTES, break_reminder.MAX_SNOOZE_MINUTES, 5))
         corner = conf.get("break_corner") or "bottom-right"
         if corner not in break_reminder.VALID_CORNERS:
             corner = "bottom-right"
@@ -3674,7 +3665,6 @@ class SettingsWindow(QDialog):
         conf["break_enabled"] = self.break_enabled.isChecked()
         conf["break_work_minutes"] = self.break_work.value()
         conf["break_break_minutes"] = self.break_break.value()
-        conf["break_snooze_minutes"] = self.break_snooze.value()
         conf["break_corner"] = self.break_corner.currentData() or "bottom-right"
         try:
             startup.set_enabled(conf["start_with_windows"])
