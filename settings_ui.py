@@ -1287,6 +1287,10 @@ class SettingsWindow(QDialog):
              "Models, language, startup and appearance.",
              style.standardIcon(QStyle.StandardPixmap.SP_ComputerIcon),
              self._settings_tab(), False),
+            ("break_reminder", (), "Break reminder",
+             "Stand up every 30 minutes: 25 min work + 5 min break.",
+             style.standardIcon(QStyle.StandardPixmap.SP_MediaPause),
+             self._break_reminder_tab(), False),
         ]
         for main_id, aliases, title, description, icon, body, scroll in specs:
             body = self._workspace_page(main_id, body)
@@ -1367,7 +1371,7 @@ class SettingsWindow(QDialog):
 
     def _workspace_page(self, kind, original):
         """Move existing controls into fixed local pages, preserving callbacks."""
-        if kind in ("screenshot", "speak"):
+        if kind in ("screenshot", "speak", "break_reminder"):
             return original
         old = original.layout()
         widgets = []
@@ -2784,6 +2788,51 @@ class SettingsWindow(QDialog):
         if hasattr(self, 'local_stt_device'):
             self.local_stt_device.setCurrentIndex(self.local_stt_device.findData('cpu'))
 
+    def _break_reminder_tab(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setSpacing(14)
+
+        card, body = self._section_card(
+            "Break reminder", "Take regular breaks from the screen.")
+        self.break_enabled = QCheckBox(t("Remind me to stand up"))
+        self.break_enabled.setToolTip(
+            t("Off by default; turn it on here or from the tray menu."))
+        body.addWidget(self.break_enabled)
+        self.break_work = QSpinBox()
+        self.break_work.setRange(5, 180)
+        self.break_work.setMaximumWidth(90)
+        self.break_work.setToolTip(t("How long to work before the reminder."))
+        self.break_break = QSpinBox()
+        self.break_break.setRange(1, 60)
+        self.break_break.setMaximumWidth(90)
+        self.break_break.setToolTip(
+            t("How long the break lasts once you start it."))
+        self.break_snooze = QSpinBox()
+        self.break_snooze.setRange(1, 30)
+        self.break_snooze.setMaximumWidth(90)
+        self.break_snooze.setToolTip(
+            t("How long snoozing postpones the reminder."))
+        spins = QHBoxLayout()
+        spins.setContentsMargins(0, 0, 0, 0)
+        spins.setSpacing(12)
+        spins.addWidget(self._label_row("Work minutes", self.break_work), 1)
+        spins.addWidget(self._label_row("Break minutes", self.break_break), 1)
+        spins.addWidget(self._label_row("Snooze minutes", self.break_snooze), 1)
+        spins_holder = QWidget()
+        spins_holder.setLayout(spins)
+        body.addWidget(spins_holder)
+        self.break_corner = FitsOnScreenCombo()
+        for value in ("bottom-right", "bottom-left"):
+            self.break_corner.addItem(t(value), value)
+        self.break_corner.setToolTip(
+            t("Where the small timer sits. Drag it anywhere; the position is kept."))
+        body.addWidget(self._label_row("Corner", self.break_corner))
+        layout.addWidget(card)
+
+        layout.addStretch(1)
+        return page
+
     def _settings_tab(self):
         """Shared AI and application sections built straight into one tab.
 
@@ -3493,6 +3542,16 @@ class SettingsWindow(QDialog):
         self.history_limit.setEnabled(self.history_enabled.isChecked())
         self.history_limit.setValue(max(0, int(conf["history_limit"])))
 
+        self.break_enabled.setChecked(bool(conf.get("break_enabled", False)))
+        self.break_work.setValue(max(5, min(180, int(conf.get(
+            "break_work_minutes", 25) or 25))))
+        self.break_break.setValue(max(1, min(60, int(conf.get(
+            "break_break_minutes", 5) or 5))))
+        self.break_snooze.setValue(max(1, min(30, int(conf.get(
+            "break_snooze_minutes", 5) or 5))))
+        self._select_data(self.break_corner,
+                          conf.get("break_corner") or "bottom-right")
+
         self._refresh_shortcut_status()
         self._refresh_meeting_shortcut_status()
         self._load_history()
@@ -3618,6 +3677,11 @@ class SettingsWindow(QDialog):
         conf["shortcut"] = self.shortcut.currentText().strip() or "Ctrl+Space"
         conf["history_enabled"] = self.history_enabled.isChecked()
         conf["history_limit"] = self.history_limit.value()
+        conf["break_enabled"] = self.break_enabled.isChecked()
+        conf["break_work_minutes"] = self.break_work.value()
+        conf["break_break_minutes"] = self.break_break.value()
+        conf["break_snooze_minutes"] = self.break_snooze.value()
+        conf["break_corner"] = self.break_corner.currentData() or "bottom-right"
         try:
             startup.set_enabled(conf["start_with_windows"])
         except startup.StartupError as exc:

@@ -45,6 +45,7 @@ from PyQt6.QtWidgets import (QApplication, QMenu, QSplashScreen,
                              QSystemTrayIcon)  # noqa: E402
 
 import audio  # noqa: E402
+import break_reminder  # noqa: E402
 import config as cfg  # noqa: E402
 import diagnostics  # noqa: E402
 import hotkey  # noqa: E402
@@ -355,6 +356,8 @@ class WordArc:
             self._on_screenshot_preferences_saved)
         self.screenshot_controller.ocr_done.connect(self._on_screenshot_ocr)
         self.screenshot_controller.speak_done.connect(self._on_screenshot_speak)
+        self.breaks = break_reminder.BreakController(self.conf, self.overlay)
+        self.screenshot_controller.add_capture_helper(self.breaks)
         self._apply_settings()
         self.tray.show()
 
@@ -397,6 +400,11 @@ class WordArc:
         self.settings_action = QAction(t("Settings…"), self.menu)
         self.settings_action.triggered.connect(self.open_settings)
         self.menu.addAction(self.settings_action)
+
+        self.break_action = QAction(t("Break reminder"), self.menu)
+        self.break_action.setCheckable(True)
+        self.break_action.triggered.connect(self._toggle_break)
+        self.menu.addAction(self.break_action)
 
         self.restart_action = QAction(t("Restart"), self.menu)
         self.restart_action.triggered.connect(self.restart)
@@ -496,6 +504,17 @@ class WordArc:
             return
         self._set_icon(icon)
         self.tray.setToolTip(t(tip))
+        if getattr(self, "break_action", None) is not None:
+            self.break_action.setChecked(
+                bool(self.conf.get("break_enabled", False)))
+
+    def _toggle_break(self, checked):
+        """Tray switch for the break reminder; persists and applies at once."""
+        breaks = getattr(self, "breaks", None)
+        if breaks is None:
+            return
+        breaks.set_break_enabled(bool(checked))
+        self._refresh_tray()
 
     # ---- actions ---------------------------------------------------------
 
@@ -1330,6 +1349,9 @@ class WordArc:
         # next save.
         self._build_tray()
         self._refresh_tray()
+        breaks = getattr(self, "breaks", None)
+        if breaks is not None:
+            breaks.retranslate()
         old = self.settings_window
         if old is None:
             # A language saved from the Settings tab arrives here a turn later,
@@ -1420,6 +1442,9 @@ class WordArc:
         theme.ThemeManager.apply(self.conf["theme_mode"], self.app)
         self.overlay.corner = self.conf["overlay_corner"]
         overlay.set_meter(self.conf.get("overlay_meter") or "spectrum")
+        breaks = getattr(self, "breaks", None)
+        if breaks is not None:
+            breaks.sync_from_conf()
         self._build_tray()
         self._refresh_tray()
         self._apply_hotkeys()
@@ -1452,6 +1477,9 @@ class WordArc:
     def shutdown(self):
         self._quitting = True
         self.screenshot_controller.shutdown()
+        breaks = getattr(self, "breaks", None)
+        if breaks is not None:
+            breaks.shutdown()
         self.evdev.stop()
         self.cancel_hotkey.stop()
         self.pipeline.cancel()

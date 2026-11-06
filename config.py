@@ -468,6 +468,12 @@ DEFAULTS = {
     "settings_size": [],                # remembered settings window [w, h]; [] = auto
     "start_with_windows": True,
     "close_to_tray": True,
+    "break_enabled": False,             # break reminder feature off by default
+    "break_work_minutes": 25,           # work period in minutes (5-180)
+    "break_break_minutes": 5,           # break period in minutes (1-60)
+    "break_snooze_minutes": 5,          # snooze duration in minutes (1-30)
+    "break_corner": "bottom-right",     # bottom-right | bottom-left
+    "break_pos": [],                    # dragged position [x, y]; [] = corner
     "gemini_api_key": "",
     "gemini_next_slot": 0,      # round-robin: which API slot the next cloud job starts from
     "gemini_last_used": [],     # last successful use per slot (ISO-8601 str, "" = none yet)
