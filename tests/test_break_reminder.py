@@ -1,12 +1,13 @@
 """Break reminder: deterministic engine tests (fake clock) + offscreen UI tests."""
 
+import ctypes
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import unittest
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QByteArray
 from PyQt6.QtWidgets import QApplication
 
 import break_reminder as br
@@ -329,6 +330,257 @@ class TestController(unittest.TestCase):
         i18n.set_language("tr")
         self.controller.retranslate()
         self.assertEqual(self.controller.window._start_button.text(), "Molayı başlat")
+
+
+def _native_msg(wparam):
+    """A real WM_... message buffer; its address is what Qt hands over."""
+    from ctypes import wintypes
+
+    class _MSG(ctypes.Structure):
+        _fields_ = [("hwnd", wintypes.HWND),
+                    ("message", wintypes.UINT),
+                    ("wParam", wintypes.WPARAM),
+                    ("lParam", wintypes.LPARAM),
+                    ("time", wintypes.DWORD),
+                    ("pt", wintypes.POINT)]
+
+    return _MSG(0, 0, wparam, 0, 0, wintypes.POINT(0, 0))
+
+
+class TestReviewFindings(unittest.TestCase):
+    """Codex review gaps: each test fails before its fix."""
+
+    def setUp(self):
+        i18n.set_language("en")
+        self.conf = FakeConf()
+        self.controller = br.BreakController(self.conf)
+
+    def tearDown(self):
+        self.controller.shutdown()
+        self.controller.window.deleteLater()
+        self.controller.deleteLater()
+        i18n.set_language("en")
+
+    # -- 1: pause/resume reachable while working, through the real button --
+    def test_face_button_pauses_and_resumes_work(self):
+        self.conf["break_enabled"] = True
+        self.controller.sync_from_conf()
+        window = self.controller.window
+        self.assertTrue(hasattr(window, "_face_button"))
+        engine = self.controller.engine
+        window._face_button.click()
+        self.assertEqual(engine.phase, br.BreakPhase.PAUSED)
+        self.assertEqual(window._face_button.text(), "Resume")
+        frozen = engine.remaining()
+        window._face_button.click()
+        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
+        self.assertEqual(engine.remaining(), frozen)
+        self.assertEqual(window._face_button.text(), "Pause")
+
+    # -- 2: capture hold suppresses every re-show until restore --
+    def test_capture_hold_blocks_tick_transition_and_resync(self):
+        self.conf["break_enabled"] = True
+        self.controller.sync_from_conf()
+        engine = self.controller.engine
+        window = self.controller.window
+        self.assertTrue(self.controller.hide_for_capture())
+        engine._deadline = engine._clock() - 1
+        self.controller._wake()
+        self.assertEqual(engine.phase, br.BreakPhase.REMINDER)
+        self.assertFalse(window.isVisible(), "tick re-showed during capture")
+        self.controller.sync_from_conf()
+        self.assertFalse(window.isVisible(), "resync re-showed during capture")
+        self.controller.restore_after_capture(True)
+        self.assertTrue(window.isVisible())
+        self.assertEqual(window._stack.currentIndex(), 1)
+
+    def test_capture_restore_after_disable_stays_hidden(self):
+        self.conf["break_enabled"] = True
+        self.controller.sync_from_conf()
+        self.assertTrue(self.controller.hide_for_capture())
+        self.conf["break_enabled"] = False
+        self.controller.sync_from_conf()
+        self.controller.restore_after_capture(True)
+        self.assertFalse(self.controller.window.isVisible())
+
+    # -- 3: placement across resizes, corners and saved positions --
+    def test_growth_near_edge_stays_on_monitor(self):
+        self.conf["break_enabled"] = True
+        self.controller.sync_from_conf()
+        window = self.controller.window
+        area = _APP.primaryScreen().availableGeometry()
+        window.move(area.right() - window.width() - 1,
+                    area.bottom() - window.height() - 1)
+        window.set_phase(br.BreakPhase.REMINDER, 0, 5)
+        frame = window.frameGeometry()
+        self.assertTrue(area.contains(frame), f"{frame.getRect()} vs {area.getRect()}")
+
+    def test_corner_change_moves_window_and_clears_drag_pos(self):
+        self.conf["break_enabled"] = True
+        self.controller.sync_from_conf()
+        window = self.controller.window
+        area = _APP.primaryScreen().availableGeometry()
+        self.assertGreaterEqual(window.x(), area.right() - window.width() - 60)
+        self.conf["break_corner"] = "bottom-left"
+        self.controller.sync_from_conf()
+        self.assertEqual(self.conf.get("break_pos"), [])
+        self.assertLess(window.x(), area.left() + 120)
+
+    def test_saved_pos_beats_corner_until_corner_changes(self):
+        area = _APP.primaryScreen().availableGeometry()
+        saved = [area.left() + 200, area.top() + 200]
+        self.conf["break_enabled"] = True
+        self.conf["break_corner"] = "bottom-right"
+        self.conf["break_pos"] = list(saved)
+        self.controller.sync_from_conf()
+        window = self.controller.window
+        self.assertEqual([window.x(), window.y()], saved)
+
+    # -- 4: native filter with the real PyQt6 event type --
+    def _send_native(self, kind=None, **kwargs):
+        filt = self.controller._power_filter
+        self.assertIsNotNone(filt)
+        if kind == "lock":
+            msg, wparam = filt.WM_WTSSESSION_CHANGE, filt.WTS_SESSION_LOCK
+        elif kind == "unlock":
+            msg, wparam = filt.WM_WTSSESSION_CHANGE, filt.WTS_SESSION_UNLOCK
+        elif kind == "suspend":
+            msg, wparam = filt.WM_POWERBROADCAST, filt.PBT_APMSUSPEND
+        elif kind == "resume":
+            msg, wparam = filt.WM_POWERBROADCAST, filt.PBT_APMRESUMESUSPEND
+        buf = _native_msg(wparam)
+        buf.message = msg
+        accepted, _ = filt.nativeEventFilter(
+            QByteArray(b"windows_generic_MSG"), ctypes.addressof(buf))
+        self.assertFalse(accepted)
+
+    def test_native_filter_drives_controller_suspend_resume(self):
+        self.conf["break_enabled"] = True
+        self.controller.sync_from_conf()
+        engine = self.controller.engine
+        self._send_native("suspend")
+        self.assertEqual(engine.phase, br.BreakPhase.PAUSED)
+        self.assertTrue(self.controller._suspended)
+        self._send_native("resume")
+        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
+        self.assertFalse(self.controller._suspended)
+
+    def test_lock_sleep_wake_unlock_runs_only_after_unlock(self):
+        self.conf["break_enabled"] = True
+        self.controller.sync_from_conf()
+        engine = self.controller.engine
+        before = engine.remaining()
+        self._send_native("lock")
+        self._send_native("suspend")
+        self._send_native("resume")  # system woke, screen still locked
+        self.assertEqual(engine.phase, br.BreakPhase.PAUSED,
+                         "counter ran while the screen was still locked")
+        self._send_native("unlock")
+        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
+        self.assertGreaterEqual(engine.remaining(), before - 2)
+
+    def test_manual_pause_survives_lock_cycle(self):
+        self.conf["break_enabled"] = True
+        self.controller.sync_from_conf()
+        engine = self.controller.engine
+        engine.pause()
+        frozen = engine.remaining()
+        self._send_native("lock")
+        self._send_native("unlock")
+        self.assertEqual(engine.phase, br.BreakPhase.PAUSED)
+        self.assertEqual(engine.remaining(), frozen)
+
+    # -- 5: corrupt config never breaks settings; paused durations stay sane --
+    def test_paused_duration_change_keeps_progress(self):
+        clock = FakeClock()
+        engine = br.BreakEngine(clock=clock)
+        engine.set_enabled(True, clock())
+        clock.advance(60)
+        engine.pause(clock())
+        frozen = engine.remaining(clock())
+        engine.apply_durations(30 * 60, 5 * 60, 5 * 60, clock())
+        self.assertEqual(engine.remaining(clock()), frozen + 5 * 60)
+        engine.resume(clock())
+        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
+
+
+class TestBreakSettingsLocation(unittest.TestCase):
+    """Finding 6: break controls live inside the Settings tab, not a new tab."""
+
+    def test_no_separate_break_tab(self):
+        import settings_ui
+        import inspect
+        nav = inspect.getsource(settings_ui.SettingsWindow._build_navigation)
+        self.assertNotIn("break_reminder", nav)
+        general = inspect.getsource(settings_ui.SettingsWindow._general_tab)
+        self.assertIn("break_enabled", general)
+
+
+class TestBreakSettingsHardening(unittest.TestCase):
+    """Finding 5 end to end: corrupt break values never break the window."""
+
+    def setUp(self):
+        import json
+        import pathlib
+        import tempfile
+        from unittest import mock
+        import settings_ui
+        import localspeech
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = pathlib.Path(self.tmp.name)
+        (root / "cfg").mkdir(parents=True, exist_ok=True)
+        (root / "cfg" / "config.json").write_text(json.dumps({
+            "break_enabled": True,
+            "break_work_minutes": "soon",
+            "break_break_minutes": -3,
+            "break_snooze_minutes": [5],
+            "break_corner": "top-left",
+        }), encoding="utf-8")
+        self.patchers = [
+            mock.patch.object(cfg, "CONFIG_DIR", root / "cfg"),
+            mock.patch.object(cfg, "CONFIG_FILE", root / "cfg" / "config.json"),
+            mock.patch.object(cfg, "DATA_DIR", root / "data"),
+            mock.patch.object(cfg, "HISTORY_FILE", root / "data" / "history.jsonl"),
+            mock.patch.object(cfg, "MEETINGS_DIR", root / "data" / "meetings"),
+            mock.patch.object(cfg, "MEETINGS_FILE", root / "data" / "meetings.jsonl"),
+            mock.patch.object(cfg.credential_store, "read", return_value=""),
+            mock.patch.object(cfg.credential_store, "read_all", return_value=[]),
+            mock.patch.object(cfg.credential_store, "write_all"),
+            mock.patch.object(settings_ui.audio, "list_sources", return_value=[]),
+            mock.patch.object(settings_ui.audio, "refresh_devices"),
+            mock.patch.object(settings_ui.audio, "list_monitors", return_value=[]),
+            mock.patch.object(settings_ui.startup, "is_enabled", return_value=True),
+            mock.patch.object(settings_ui.startup, "set_enabled"),
+            mock.patch.object(localspeech.vulkan_speech, "available", return_value=False),
+        ]
+        for patcher in self.patchers:
+            patcher.start()
+        self.addCleanup(self._stop)
+        import settings_ui as sui
+        self.window = sui.SettingsWindow(cfg.Config(), "wordarc toggle")
+
+    def _stop(self):
+        for patcher in self.patchers:
+            patcher.stop()
+
+    def test_corrupt_values_fall_back_to_safe_defaults(self):
+        window = self.window
+        self.assertTrue(window.break_enabled.isChecked())
+        self.assertEqual(window.break_work.value(), 25)
+        self.assertEqual(window.break_break.value(), 5)
+        self.assertEqual(window.break_snooze.value(), 5)
+        self.assertEqual(window.break_corner.currentData(), "bottom-right")
+
+    def test_break_card_saves_and_reloads(self):
+        window = self.window
+        self.assertIn("settings", window._tab_index)
+        window.break_work.setValue(45)
+        window.break_corner.setCurrentIndex(
+            window.break_corner.findData("bottom-left"))
+        self.assertTrue(window._save(quiet=True))
+        self.assertEqual(window.conf["break_work_minutes"], 45)
+        self.assertEqual(window.conf["break_corner"], "bottom-left")
 
 
 class TestConfigDefaults(unittest.TestCase):
