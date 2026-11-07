@@ -793,6 +793,27 @@ class Config:
         except credential_store.CredentialError:
             return ""
 
+    def stored_gemini_keys_verified(self):
+        """Keys plus vault-read trust from ONE verified read.
+
+        Returns (keys, trusted): trusted is True only when a single
+        read_all() call delivered the whole list, so callers never pair
+        a list from a failed read with a trust flag from a later,
+        successful one. On a failed read the legacy single-key slot is
+        still surfaced for compatibility, but untrusted: saving an
+        empty list then must be blocked, not written back.
+        """
+        direct = self["gemini_api_key"].strip()
+        try:
+            stored = credential_store.read_all()
+        except credential_store.CredentialError:
+            single = self.stored_gemini_key()
+            return ([single] if single else [], False)
+        if direct:
+            return ([direct] + [key for key in stored if key != direct],
+                    True)
+        return (stored, True)
+
     def stored_gemini_keys(self):
         direct = self["gemini_api_key"].strip()
         if direct:
