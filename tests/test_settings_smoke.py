@@ -169,23 +169,47 @@ class TestSettingsSmoke(unittest.TestCase):
         cfg.credential_store.write_all.assert_called_once_with([])
         applied.assert_called_once_with()
 
-    def test_unread_vault_blocks_save_over_existing_keys(self):
-        # The vault held keys but was unreadable at load: the empty UI
-        # list must not be written back over them.
-        window = self.window
-        window._gemini_keys = []
-        window._gemini_keys_trusted = False  # as _load() sets on read failure
-        with mock.patch.object(settings_ui.startup, "set_enabled"), \
-             mock.patch.object(settings_ui, "info_box"), \
-             mock.patch.object(settings_ui, "warn_box") as warned, \
-             mock.patch.object(cfg.credential_store, "read_all",
-                               return_value=["vault-key"]) as vault_read, \
-             mock.patch.object(cfg.credential_store, "write_all") as vault_write:
-            result = window._save()
-        self.assertFalse(result)
-        vault_write.assert_not_called()
+    def test_failed_first_read_never_marks_empty_list_trusted(self):
+        # The exact review finding: the load-time read fails (empty
+        # list) while the save-time read succeeds (keys exist). The
+        # empty list must stay untrusted and the save must be blocked.
+        failed = cfg.credential_store.CredentialError("locked")
+        with mock.patch.object(cfg.credential_store, "read_all",
+                               side_effect=[failed, ["vault-key"]]), \
+             mock.patch.object(settings_ui, "warn_box") as warned:
+            loaded = settings_ui.SettingsWindow(cfg.Config(),
+                                                "wordarc toggle")
+            try:
+                self.assertEqual(loaded._gemini_keys, [])
+                self.assertFalse(loaded._gemini_keys_trusted)
+                self.assertFalse(loaded._save())
+            finally:
+                loaded.close()
+                loaded.deleteLater()
+                self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         warned.assert_called_once()
-        vault_read.assert_called()  # the save-time read still ran
+        cfg.credential_store.write_all.assert_not_called()
+
+    def test_deliberate_key_removal_still_saves_empty_list(self):
+        # Trusted load plus an explicit UI removal: clearing the last
+        # key on purpose must still write the empty list through.
+        with mock.patch.object(cfg.credential_store, "read_all",
+                               return_value=["k1"]), \
+             mock.patch.object(settings_ui.startup, "set_enabled"), \
+             mock.patch.object(settings_ui, "info_box"):
+            loaded = settings_ui.SettingsWindow(cfg.Config(),
+                                                "wordarc toggle")
+            try:
+                self.assertEqual(loaded._gemini_keys, ["k1"])
+                self.assertTrue(loaded._gemini_keys_trusted)
+                loaded._remove_gemini_key(0)
+                self.assertEqual(loaded._gemini_keys, [])
+                self.assertTrue(loaded._save(quiet=True))
+            finally:
+                loaded.close()
+                loaded.deleteLater()
+                self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        cfg.credential_store.write_all.assert_called_once_with([])
 
     def test_agent_surface_is_gone_and_legacy_values_survive_save(self):
         window = self.window

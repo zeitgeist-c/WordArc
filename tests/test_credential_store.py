@@ -18,6 +18,21 @@ def test_read_all_preserves_order_and_deduplicates():
         assert credential_store.read_all() == ["primary", "backup"]
 
 
+def test_write_all_reads_before_any_delete_on_unreadable_vault():
+    with mock.patch.object(
+        credential_store, "read_target",
+        side_effect=credential_store.CredentialError("locked"),
+    ), mock.patch.object(
+        credential_store, "write_target"
+    ) as write_target, mock.patch.object(
+        credential_store, "delete_target"
+    ) as delete_target:
+        with pytest.raises(credential_store.CredentialError):
+            credential_store.write_all([])
+    write_target.assert_not_called()
+    delete_target.assert_not_called()
+
+
 def test_write_all_uses_only_fixed_targets_and_clears_unused_slots():
     state = {target: "old" for target in credential_store.TARGETS}
 

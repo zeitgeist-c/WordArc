@@ -3474,15 +3474,12 @@ class SettingsWindow(QDialog):
         self.filter_hallucinations.setChecked(conf["filter_hallucinations"])
         self.keep_audio.setChecked(conf["keep_audio"])
 
-        self._gemini_keys = conf.stored_gemini_keys()
-        try:
-            cfg.credential_store.read_all()
-            self._gemini_keys_trusted = True
-        except cfg.credential_store.CredentialError:
-            # The vault was unreadable at load: the list above may be
-            # empty while keys still exist. _save() must not write it
-            # back, or it would erase keys it never saw.
-            self._gemini_keys_trusted = False
+        # List and trust come from ONE verified vault read: pairing a
+        # list from a failed read with a flag from a later successful
+        # one would mark an empty list trusted and let _save() erase
+        # keys it never saw.
+        self._gemini_keys, self._gemini_keys_trusted = (
+            conf.stored_gemini_keys_verified())
         self._gemini_labels = conf.key_labels(len(self._gemini_keys))
         self._refresh_gemini_keys()
         self.transcribe_model.setCurrentText(conf["gemini_transcribe_model"])
