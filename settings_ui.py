@@ -3475,6 +3475,14 @@ class SettingsWindow(QDialog):
         self.keep_audio.setChecked(conf["keep_audio"])
 
         self._gemini_keys = conf.stored_gemini_keys()
+        try:
+            cfg.credential_store.read_all()
+            self._gemini_keys_trusted = True
+        except cfg.credential_store.CredentialError:
+            # The vault was unreadable at load: the list above may be
+            # empty while keys still exist. _save() must not write it
+            # back, or it would erase keys it never saw.
+            self._gemini_keys_trusted = False
         self._gemini_labels = conf.key_labels(len(self._gemini_keys))
         self._refresh_gemini_keys()
         self.transcribe_model.setCurrentText(conf["gemini_transcribe_model"])
@@ -3672,6 +3680,15 @@ class SettingsWindow(QDialog):
             warn_box(self, t("Error"), str(exc))
             return
         previous_keys = conf.stored_gemini_keys()
+        if (not getattr(self, "_gemini_keys_trusted", True)
+                and previous_keys and not self._gemini_keys):
+            # The vault was unreadable when this window opened, so the
+            # empty list above may hide existing keys. Writing it back
+            # would erase them; block the save instead of guessing.
+            warn_box(self, t("Error"), t(
+                "Could not read the saved API keys, so nothing was saved. "
+                "Reopen Settings and try again."))
+            return
         try:
             cfg.credential_store.write_all(self._gemini_keys)
         except cfg.credential_store.CredentialError as exc:

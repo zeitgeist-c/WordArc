@@ -169,6 +169,24 @@ class TestSettingsSmoke(unittest.TestCase):
         cfg.credential_store.write_all.assert_called_once_with([])
         applied.assert_called_once_with()
 
+    def test_unread_vault_blocks_save_over_existing_keys(self):
+        # The vault held keys but was unreadable at load: the empty UI
+        # list must not be written back over them.
+        window = self.window
+        window._gemini_keys = []
+        window._gemini_keys_trusted = False  # as _load() sets on read failure
+        with mock.patch.object(settings_ui.startup, "set_enabled"), \
+             mock.patch.object(settings_ui, "info_box"), \
+             mock.patch.object(settings_ui, "warn_box") as warned, \
+             mock.patch.object(cfg.credential_store, "read_all",
+                               return_value=["vault-key"]) as vault_read, \
+             mock.patch.object(cfg.credential_store, "write_all") as vault_write:
+            result = window._save()
+        self.assertFalse(result)
+        vault_write.assert_not_called()
+        warned.assert_called_once()
+        vault_read.assert_called()  # the save-time read still ran
+
     def test_agent_surface_is_gone_and_legacy_values_survive_save(self):
         window = self.window
         window.conf["assistant_provider"] = "codex"
