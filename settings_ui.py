@@ -3554,6 +3554,10 @@ class SettingsWindow(QDialog):
         "start recording" path saves quietly so the take uses what is on
         screen — a failure still blocks it, loudly, through warn_box.
         """
+        if getattr(self.conf, "settings_write_blocked", False) is True:
+            warn_box(self, t("Error"), t(
+                "WordArc could not recover the settings safely. Existing files were kept."))
+            return False
         # Check before mutating settings: aliases such as Ctrl/Control and
         # Print/PrintScreen resolve to the same Windows binding.
         seen = {}

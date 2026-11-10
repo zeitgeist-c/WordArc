@@ -177,8 +177,8 @@ class DownloadTests(unittest.TestCase):
             self.assertEqual(urlopen.call_count, 3)
 
     def test_stray_copy_blocks_setup_before_any_quit(self):
-        with mock.patch.object(update, "other_copies_running",
-                               return_value=[4321]):
+        with mock.patch.object(update, "update_processes",
+                               return_value=(0, [4321])):
             with self.assertRaises(update.UpdateError) as ctx:
                 update.spawn_setup(Path("WordArc-9.9.9.exe"),
                                    version="9.9.9", sha256="0" * 64)
@@ -187,7 +187,20 @@ class DownloadTests(unittest.TestCase):
     def test_no_stray_copy_reported_from_source_checkout(self):
         # The test suite runs unfrozen: there is no installed copy to
         # collide with, even while the user's own app is running.
-        self.assertEqual(update.other_copies_running(), [])
+        self.assertEqual(update.update_processes(), (0, []))
+
+    def test_onefile_launcher_is_part_of_the_current_application(self):
+        import update_protocol
+        folder = Path("C:/Program Files/WordArc")
+        exe = str(folder / "WordArc.exe")
+        images = {100: exe, 101: exe, 200: "C:/Other/WordArc.exe"}
+        with mock.patch.object(update, "_wordarc_process_images", return_value=images), \
+             mock.patch.object(update_protocol, "install_directory", return_value=folder), \
+             mock.patch.object(update.os, "getpid", return_value=101), \
+             mock.patch.object(update.os, "getppid", return_value=100):
+            self.assertEqual(update.update_processes(), (100, []))
+            images[201] = exe
+            self.assertEqual(update.update_processes(), (100, [201]))
 
 
 class StampTests(unittest.TestCase):
@@ -246,6 +259,20 @@ class HelperDirTests(unittest.TestCase):
                                    return_value=Path(tmp) / "wiped-empty"), \
                  mock.patch.object(config, "DATA_DIR", data):
                 self.assertEqual(update._helper_dir(), cached)
+
+    def test_first_update_survives_partial_bundle_cleanup(self):
+        import config
+        with tempfile.TemporaryDirectory() as tmp:
+            bundled = Path(tmp) / "bundle"
+            bundled.mkdir()
+            self._helper_tree(bundled)
+            data = Path(tmp) / "data"
+            with mock.patch("brand.resource_path", return_value=bundled), \
+                 mock.patch.object(config, "DATA_DIR", data), \
+                 mock.patch.object(update.sys, "frozen", True, create=True):
+                update.prime_supervisor_cache()
+                (bundled / "WordArcUpdate.exe").unlink()
+                self.assertEqual(update._helper_dir(), data / "update-helper")
 
     def test_tampered_cache_is_rejected(self):
         import config

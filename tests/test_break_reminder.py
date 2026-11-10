@@ -352,6 +352,34 @@ class TestController(unittest.TestCase):
         self.assertEqual(engine.phase, br.BreakPhase.WORKING)
         self.assertFalse(window.isVisible())
 
+    def test_countdown_controls_pause_resume_and_end_the_break(self):
+        self.conf["break_enabled"] = True
+        self.controller.sync_from_conf()
+        engine = self.controller.engine
+        clock = FakeClock()
+        engine._clock = clock
+        engine._deadline = clock()
+        self.controller._wake()
+        window = self.controller.window
+        window._start_button.click()
+        self.assertEqual(window._time_label.text(), "05:00")
+        clock.advance(30)
+        window._pause_button.click()
+        self.assertTrue(window.isVisible())
+        self.assertEqual(window._time_label.text(), "04:30")
+        self.assertEqual(window._pause_button.text(), "Resume")
+        self.assertFalse(window._pet._timer.isActive())
+        clock.advance(60)
+        window._pause_button.click()
+        self.assertEqual(engine.phase, br.BreakPhase.BREAK)
+        self.assertEqual(window._time_label.text(), "04:30")
+        self.assertTrue(window._pet._timer.isActive())
+        window._end_button.click()
+        self.assertEqual(engine.phase, br.BreakPhase.WORKING)
+        self.assertEqual(engine.remaining(), 25 * 60)
+        self.assertFalse(window.isVisible())
+        self.assertFalse(window._pet._timer.isActive())
+
     def test_pause_never_pops_the_panel(self):
         self.conf["break_enabled"] = True
         self.controller.sync_from_conf()

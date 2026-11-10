@@ -4,7 +4,7 @@ Layout since the Inno Setup migration:
   dist/WordArc-X.Y.Z.exe  -- the Inno installer (the only release asset)
   dist/inner/WordArc.exe  -- the frozen app, fixed name, packed by Inno
 
-No versioned portable exe and no BAT launcher may remain in dist/.
+The current setup is the only release asset. Older packages may remain in dist/.
 User data (%APPDATA%/WordArc, %LOCALAPPDATA%/WordArc: recordings,
 meetings, models) is outside the installer and is asserted as preserved
 by tests/test_install_migration.py on the .iss source.
@@ -44,11 +44,21 @@ def main():
     inner = root / "dist" / "inner" / "WordArc.exe"
     assert setup.is_file(), "missing setup delivery"
     assert inner.is_file(), "missing inner frozen app"
-    leftover_bats = sorted((root / "dist").glob(f"{BRAND.name}-*.bat"))
-    assert not leftover_bats, f"portable launcher remains: {leftover_bats}"
-    leftover_portables = [p for p in (root / "dist").glob(f"{BRAND.name}-*.exe")
-                          if p != setup]
-    assert not leftover_portables, f"portable exe remains: {leftover_portables}"
+    # Only the selected installer is uploaded. Check its Inno metadata
+    # directly rather than treating historical installers as portable apps.
+    import pefile
+    with pefile.PE(str(setup), fast_load=True) as setup_pe:
+        setup_pe.parse_data_directories(
+            directories=[pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_RESOURCE']])
+        descriptions = [table.entries.get(b'FileDescription', b'').strip()
+                        for group in getattr(setup_pe, 'FileInfo', [])
+                        for info in group if info.Key == b'StringFileInfo'
+                        for table in info.StringTable]
+        assert b'WordArc Setup' in descriptions, 'delivery is not the WordArc installer'
+        version = setup_pe.VS_FIXEDFILEINFO[0]
+        actual = (version.FileVersionMS >> 16, version.FileVersionMS & 0xffff,
+                  version.FileVersionLS >> 16)
+        assert actual == tuple(map(int, BRAND.version.split('.'))), 'wrong setup file version'
     # The installer must carry the app, not an empty shell: Inno compresses
     # ~1.5 GB down, but never below a third of the inner size.
     ratio = setup.stat().st_size / inner.stat().st_size
@@ -65,7 +75,6 @@ def main():
                     if key.replace('\\', '/') == 'native/whisper-vulkan/' + name), None)
         assert key is not None, f'missing native Vulkan file: {name}'
         assert hashlib.sha256(reader.extract(key)).hexdigest() == manifest['files'][name], f'changed bundled native file: {name}'
-    import pefile
     for name in native.FILES:
         if name.startswith('cpu/') and name.endswith(('.exe', '.dll')):
             dependencies = {row.dll.decode().lower() for row in pefile.PE(str(native.DEST / name)).DIRECTORY_ENTRY_IMPORT}
@@ -151,7 +160,7 @@ def main():
     assert "PanelTabs" in list(constants(archive.extract("settings_ui"))), "old workspace layout bundled"
     for name in ("settings_ui", "screenshot_capture", "screenshot_editor", "ocr", "update", "theme", "worker", "localspeech", "livespeech", "cuda_runtime", "cuda_libs", "faster_whisper", "vulkan_speech", "local_stt_diagnostic"):
         assert name in archive.toc, f"missing bundled module: {name}"
-    for name in ("brand", "hotkey", "paste", "settings_ui", "screenshot_capture", "screenshot_editor", "ocr", "update", "update_diagnostic", "overlay", "localspeech", "livespeech", "vulkan_speech", "vulkan_runtime", "config", "i18n", "cuda_recovery", "cuda_runtime", "cuda_libs", "local_stt_diagnostic"):
+    for name in ("brand", "break_reminder", "brand_migration", "hotkey", "paste", "settings_ui", "screenshot_capture", "screenshot_editor", "ocr", "update", "update_diagnostic", "overlay", "localspeech", "livespeech", "vulkan_speech", "vulkan_runtime", "config", "i18n", "cuda_recovery", "cuda_runtime", "cuda_libs", "local_stt_diagnostic"):
         source = compile((root / (name + '.py')).read_bytes(), name + '.py', 'exec', dont_inherit=True)
         # Code equality compares bytecode/constants recursively. marshal bytes
         # also encode incidental string interning/shared-reference identities,

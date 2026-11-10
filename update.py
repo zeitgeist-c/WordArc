@@ -198,17 +198,10 @@ def setup_temp_path(version: str) -> Path:
     return config.DATA_DIR / "updates" / "downloads" / f"{BRAND.name}-{version}.exe"
 
 
-def other_copies_running() -> list:
-    """PIDs of other installed WordArc copies still running, if any.
-
-    The updater closes its own copy through the installer handshake; a
-    second copy holding the program files makes RestartManager fail with
-    a suppressed dialog and a rolled-back update. Refuse upfront instead.
-    Windows-only and frozen-only: anywhere else there is no installed
-    copy to collide with.
-    """
+def _wordarc_process_images() -> dict[int, str]:
+    """Resolve images of the current package and installed WordArc processes."""
     if sys.platform != "win32" or not getattr(sys, "frozen", False):
-        return []
+        return {}
     import ctypes
     from ctypes import wintypes as w
     kernel = ctypes.windll.kernel32
@@ -218,8 +211,6 @@ def other_copies_running() -> list:
     kernel.Process32FirstW.restype = w.BOOL
     kernel.Process32NextW.argtypes = [w.HANDLE, w.LPVOID]
     kernel.Process32NextW.restype = w.BOOL
-    kernel.GetCurrentProcessId.argtypes = []
-    kernel.GetCurrentProcessId.restype = w.DWORD
     kernel.OpenProcess.argtypes = [w.DWORD, w.BOOL, w.DWORD]
     kernel.OpenProcess.restype = w.HANDLE
     kernel.QueryFullProcessImageNameW.argtypes = [w.HANDLE, w.DWORD, w.LPWSTR,
@@ -250,27 +241,39 @@ def other_copies_running() -> list:
         finally:
             kernel.CloseHandle(handle)
 
-    from update_protocol import install_directory
-    target = os.path.normcase(str(install_directory()))
     snapshot = kernel.CreateToolhelp32Snapshot(2, 0)
     if snapshot == w.HANDLE(-1).value:
-        return []
+        return {}
     try:
-        found = []
+        images = {}
+        names = {"wordarc.exe", Path(sys.executable).name.lower()}
         entry = Entry()
         entry.dwSize = ctypes.sizeof(entry)
-        me = kernel.GetCurrentProcessId()
         ok = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
         while ok:
-            if (entry.th32ProcessID != me
-                    and entry.szExeFile.lower() == "wordarc.exe"):
+            if entry.szExeFile.lower() in names:
                 image = image_of(entry.th32ProcessID)
-                if image and os.path.normcase(image).startswith(target + os.sep):
-                    found.append(entry.th32ProcessID)
+                if image:
+                    images[entry.th32ProcessID] = image
             ok = kernel.Process32NextW(snapshot, ctypes.byref(entry))
-        return found
+        return images
     finally:
         kernel.CloseHandle(snapshot)
+
+
+def update_processes() -> tuple[int, list[int]]:
+    """Return our onefile launcher and any independent installed instances."""
+    from update_protocol import install_directory
+    images = {pid: os.path.normcase(os.path.normpath(path))
+              for pid, path in _wordarc_process_images().items()}
+    me, parent = os.getpid(), os.getppid()
+    # The launcher is the actual parent and runs the same image as the GUI.
+    launcher = parent if (parent in images and me in images
+                          and images[parent] == images[me]) else 0
+    installed = os.path.normcase(os.path.normpath(install_directory() / "WordArc.exe"))
+    others = [pid for pid, image in images.items()
+              if pid not in (me, launcher) and image == installed]
+    return launcher, others
 
 
 def _helper_dir():
@@ -289,9 +292,9 @@ def _helper_dir():
     for candidate in (bundled, cache):
         try:
             manifest = json.loads((candidate / "manifest.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if protocol.digest(candidate / "WordArcUpdate.exe") != manifest.get("sha256"):
+            if protocol.digest(candidate / "WordArcUpdate.exe") != manifest.get("sha256"):
+                continue
+        except (OSError, ValueError, AttributeError):
             continue
         if candidate is bundled:
             try:
@@ -304,6 +307,15 @@ def _helper_dir():
     raise UpdateError("The update supervisor is damaged. Reinstall WordArc.")
 
 
+def prime_supervisor_cache():
+    """Save the helper while the extracted bundle is still present."""
+    if getattr(sys, "frozen", False):
+        try:
+            _helper_dir()
+        except UpdateError as exc:
+            log.warning("could not prepare the update supervisor: %s", exc)
+
+
 def spawn_setup(setup_exe: Path, *, version: str, sha256: str, timeout=110,
                 old_exe=None, old_pid=None, helper_dir=None) -> Path:
     """Wait off the GUI thread for installer readiness, never just ShellExecute success."""
@@ -314,11 +326,11 @@ def spawn_setup(setup_exe: Path, *, version: str, sha256: str, timeout=110,
     import time
     import uuid
     import config
-    from brand import resource_path
     import update_protocol as protocol
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         raise UpdateError("Invalid update version")
-    if other_copies_running():
+    launcher_pid, other_pids = update_processes()
+    if other_pids:
         raise UpdateError(
             "Another copy of WordArc is still running and holding the "
             "program files. Close every WordArc icon (check the system "
@@ -347,7 +359,8 @@ def spawn_setup(setup_exe: Path, *, version: str, sha256: str, timeout=110,
             owned.append(dict(path=str(path), sha256=protocol.digest(path)))
     job = dict(schema=1, id=folder.name, version=version,
                setup=str(Path(setup_exe).resolve()), sha256=sha256,
-               old_pid=old_pid or os.getpid(), old_exe=str(current), old_sha256=owned[0]["sha256"],
+               old_pid=old_pid or os.getpid(), old_launcher_pid=launcher_pid,
+               old_exe=str(current), old_sha256=owned[0]["sha256"],
                new_exe=str(protocol.install_directory() / "WordArc.exe"), old_files=owned)
     (folder / "job.json").write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
     process = subprocess.Popen([str(helper), "--job", str(folder / "job.json")],

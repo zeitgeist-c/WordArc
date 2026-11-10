@@ -1455,3 +1455,36 @@ TABLES = {
     "ja": _merge(_JA1, _JA2, _JA3, _JA4, _JA5, _JA6, _JA7, _BR_PENDING),
     "ko": _merge(_KO1, _KO2, _KO3, _KO4, _KO5, _KO6, _KO7, _BR_PENDING),
 }
+
+for _code, (_break_title, _end_break, _snooze) in {
+    "tr": ("Mola", "Molayı bitir", "Ertele"),
+    "de": ("Pause", "Pause beenden", "Später"),
+    "es": ("Pausa", "Terminar la pausa", "Posponer"),
+    "fr": ("Pause", "Terminer la pause", "Reporter"),
+    "it": ("Pausa", "Termina la pausa", "Rinvia"),
+    "pt-BR": ("Pausa", "Encerrar a pausa", "Adiar"),
+    "ru": ("Перерыв", "Завершить перерыв", "Отложить"),
+    "pl": ("Przerwa", "Zakończ przerwę", "Odłóż"),
+    "nl": ("Pauze", "Pauze beëindigen", "Uitstellen"),
+    "zh-CN": ("休息", "结束休息", "稍后"),
+    "ja": ("休憩", "休憩を終了", "あとで"),
+    "ko": ("휴식", "휴식 끝내기", "미루기"),
+}.items():
+    TABLES[_code].update({"Break": _break_title, "End the break": _end_break,
+                          "Snooze": _snooze})
+
+for _code, _message in {
+    "tr": "WordArc ayarları güvenle kurtaramadı. Mevcut dosyalar korundu.",
+    "de": "WordArc konnte die Einstellungen nicht sicher wiederherstellen. Die vorhandenen Dateien wurden beibehalten.",
+    "es": "WordArc no pudo recuperar los ajustes de forma segura. Se conservaron los archivos existentes.",
+    "fr": "WordArc n’a pas pu restaurer les paramètres en toute sécurité. Les fichiers existants ont été conservés.",
+    "it": "WordArc non ha potuto recuperare le impostazioni in sicurezza. I file esistenti sono stati conservati.",
+    "pt-BR": "O WordArc não conseguiu recuperar as configurações com segurança. Os arquivos existentes foram preservados.",
+    "ru": "WordArc не смог безопасно восстановить настройки. Существующие файлы сохранены.",
+    "pl": "WordArc nie mógł bezpiecznie odzyskać ustawień. Istniejące pliki zachowano.",
+    "nl": "WordArc kon de instellingen niet veilig herstellen. De bestaande bestanden zijn behouden.",
+    "zh-CN": "WordArc 无法安全恢复设置。现有文件已保留。",
+    "ja": "WordArc は設定を安全に復元できませんでした。既存のファイルは保持されています。",
+    "ko": "WordArc가 설정을 안전하게 복구하지 못했습니다. 기존 파일은 보존되었습니다.",
+}.items():
+    TABLES[_code]["WordArc could not recover the settings safely. Existing files were kept."] = _message

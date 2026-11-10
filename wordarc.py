@@ -357,9 +357,14 @@ class WordArc:
         self.screenshot_controller.ocr_done.connect(self._on_screenshot_ocr)
         self.screenshot_controller.speak_done.connect(self._on_screenshot_speak)
         self.breaks = break_reminder.BreakController(self.conf, self.overlay)
+        self.breaks.state_changed.connect(lambda _phase: self._refresh_break_actions())
         self.screenshot_controller.add_capture_helper(self.breaks)
         self._apply_settings()
         self.tray.show()
+        if getattr(self.conf, "settings_write_blocked", False) is True:
+            self.tray.showMessage(BRAND.name, t(
+                "WordArc could not recover the settings safely. Existing files were kept."),
+                QSystemTrayIcon.MessageIcon.Warning, 10000)
 
     # ---- tray ----------------------------------------------------------
 
@@ -495,6 +500,7 @@ class WordArc:
         self.meeting_action.setText(t(meeting_labels[self.meeting_state]))
         self.meeting_action.setEnabled(self.meeting_state != M_WORKING)
         self.meeting_cancel_action.setEnabled(self.meeting_state == M_RECORDING)
+        self._refresh_break_actions()
 
         # A meeting speaks last: it runs for an hour and then works for minutes,
         # so it would otherwise own the icon for most of the day.
@@ -509,6 +515,8 @@ class WordArc:
             return
         self._set_icon(icon)
         self.tray.setToolTip(t(tip))
+
+    def _refresh_break_actions(self):
         if getattr(self, "break_action", None) is not None:
             self.break_action.setChecked(
                 bool(self.conf.get("break_enabled", False)))
@@ -1736,26 +1744,15 @@ def _ask_first_run_language():
 
 
 def _apply_first_run_language(conf, setup_lang):
-    """The installer's language wins unless the user already chose one.
-
-    Fresh installs take it (or ask when setup passed none); existing installs
-    take it only while the stored language was never explicitly chosen, so a
-    reinstall repairs the language without overriding a deliberate choice.
-    """
-    if setup_lang and not conf.get("ui_language_explicit"):
-        conf["ui_language"] = setup_lang
-        conf["ui_language_explicit"] = True
-        i18n.set_language(setup_lang)
-    elif conf.fresh and not setup_lang:
-        chosen = _ask_first_run_language()
-        if chosen:
-            conf["ui_language"] = chosen
-            conf["ui_language_explicit"] = True
-            i18n.set_language(chosen)
-        else:
-            return
-    else:
+    """Choose a language only for a profile with no saved settings."""
+    if not conf.fresh:
         return
+    chosen = setup_lang or _ask_first_run_language()
+    if not chosen:
+        return
+    conf["ui_language"] = chosen
+    conf["ui_language_explicit"] = True
+    i18n.set_language(chosen)
     try:
         conf.save()
     except OSError:
@@ -1766,12 +1763,10 @@ def _apply_first_run_language(conf, setup_lang):
 def ensure_startup_registration(conf):
     """Create the Windows Run entry once when the setting says 'on'.
 
-    Schema 5 made "start with Windows" the default, so an install that joined
-    it through the migration must also register itself: the version just
-    installed has to boot with the next sign-in. A box the user left off reads
-    False and is never re-registered, and an existing entry is left untouched.
+    Use the saved choice when it could be read. An existing entry is left
+    untouched, and a damaged profile must not apply the default to Windows.
     """
-    if not conf["start_with_windows"]:
+    if getattr(conf, "settings_write_blocked", False) is True or not conf["start_with_windows"]:
         return False
     try:
         if startup.is_enabled():
@@ -1868,12 +1863,16 @@ def main():
         return 0
 
     splash = _startup_splash(app)
+    if getattr(sys, "frozen", False):
+        from update import prime_supervisor_cache
+        prime_supervisor_cache()
 
     tray_available = QSystemTrayIcon.isSystemTrayAvailable()
     if not tray_available:
         print("wordarc: no system tray found, running anyway")
 
     conf = cfg.Config()
+    conf.ensure_backup()
     _apply_first_run_language(conf, _setup_language_arg(sys.argv))
     ensure_startup_registration(conf)
     # Device discovery can wait on a GPU driver for tens of seconds. Settings

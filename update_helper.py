@@ -43,9 +43,12 @@ class NativeHost:
                         ("lpIDList", w.LPVOID), ("lpClass", w.LPCWSTR), ("hkeyClass", w.HKEY),
                         ("dwHotKey", w.DWORD), ("hIcon", w.HANDLE), ("hProcess", w.HANDLE)]
         params = ["/SILENT", "/NORESTART", "/SUPPRESSMSGBOXES", "/SP-",
+                  "/NOCLOSEAPPLICATIONS",
                   "/LOG=" + str(folder / "setup.log"),
                   "/WORDARC_READY=" + str(folder / "installer.ready"),
-                  "/WORDARC_OLDPID=" + str(job["old_pid"]), "/WORDARC_MANAGED=1"]
+                  "/WORDARC_OLDPID=" + str(job["old_pid"]),
+                  "/WORDARC_LAUNCHERPID=" + str(job.get("old_launcher_pid", 0)),
+                  "/WORDARC_MANAGED=1"]
         info = ShellInfo()
         info.cbSize = ctypes.sizeof(info)
         info.fMask = 0x40 | 0x100  # SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC
