@@ -41,17 +41,12 @@ class TestConfigLoadSave(unittest.TestCase):
         cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         cfg.CONFIG_FILE.write_text(json.dumps({"theme_mode": "neon"}), encoding="utf-8")
         self.assertEqual(cfg.Config()["theme_mode"], "dark")
-    def test_start_with_windows_migrates_once_and_off_stays_off(self):
+    def test_upgrade_keeps_start_with_windows_off(self):
         cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        # A schema-4 config that never opted in joins the new default once.
         cfg.CONFIG_FILE.write_text(json.dumps(
             {"config_schema": 4, "start_with_windows": False}), encoding="utf-8")
-        self.assertTrue(cfg.Config()["start_with_windows"])
-        # Saving that turn persists schema 5 with True.
-        cfg.Config().save()
-        # A user who then turns it off keeps it off across restarts.
         c = cfg.Config()
-        c["start_with_windows"] = False
+        self.assertFalse(c["start_with_windows"])
         c.save()
         self.assertFalse(cfg.Config()["start_with_windows"])
 
@@ -151,6 +146,57 @@ class TestConfigLoadSave(unittest.TestCase):
         kept = cfg.CONFIG_FILE.parent / (cfg.CONFIG_FILE.name + ".corrupt")
         self.assertTrue(kept.exists(), "an unreadable settings file must be kept")
 
+    def test_existing_profile_backup_recovers_when_primary_is_damaged(self):
+        cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        saved = {"theme_mode": "light", "history_limit": 123,
+                 "ui_language": "tr", "config_schema": 5,
+                 "tts_shortcut": "Ctrl+Shift+O", "future_option": [3]}
+        cfg.CONFIG_FILE.write_text(json.dumps(saved), encoding="utf-8-sig")
+        cfg.Config().ensure_backup()
+        damaged = b'{"theme_mode": '
+        cfg.CONFIG_FILE.write_bytes(damaged)
+        recovered = cfg.Config()
+        self.assertFalse(recovered.fresh)
+        self.assertEqual(recovered["theme_mode"], "light")
+        self.assertEqual(recovered["tts_shortcut"], "Ctrl+Shift+O")
+        self.assertEqual(cfg.CONFIG_FILE.read_bytes(), damaged)
+        recovered.save()
+        stored = json.loads(cfg.CONFIG_FILE.read_text(encoding="utf-8"))
+        self.assertEqual(stored["future_option"], [3])
+        self.assertEqual(stored["history_limit"], 123)
+        self.assertEqual(cfg.CONFIG_FILE.with_suffix(".json.corrupt").read_bytes(), damaged)
+        self.assertEqual(json.loads(cfg.CONFIG_FILE.with_suffix(".json.bak").read_text(
+            encoding="utf-8")), stored)
+
+    def test_missing_primary_recovers_latest_save_before_legacy_settings(self):
+        import brand_migration
+        conf = cfg.Config()
+        conf["history_limit"] = 79
+        conf.save()
+        conf["history_limit"] = 123
+        conf.save()
+        cfg.CONFIG_FILE.unlink()
+        legacy = cfg.CONFIG_DIR.parent / "Verbatim"
+        legacy.mkdir()
+        (legacy / "config.json").write_text('{"history_limit": 5}', encoding="utf-8")
+        brand_migration.migrate_storage(legacy, cfg.CONFIG_DIR,
+                                        legacy / "data", cfg.DATA_DIR)
+        self.assertFalse(cfg.CONFIG_FILE.exists())
+        recovered = cfg.Config()
+        self.assertFalse(recovered.fresh)
+        self.assertEqual(recovered["history_limit"], 123)
+
+    def test_unrecoverable_settings_cannot_be_overwritten_with_defaults(self):
+        cfg.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        for invalid in (b'[]', b'{}', b'{"bad":'):
+            with self.subTest(invalid=invalid):
+                cfg.CONFIG_FILE.write_bytes(invalid)
+                conf = cfg.Config()
+                self.assertFalse(conf.fresh)
+                with self.assertRaisesRegex(OSError, "could not recover"):
+                    conf.save()
+                self.assertEqual(cfg.CONFIG_FILE.read_bytes(), invalid)
+
     def test_a_setting_of_the_wrong_type_falls_back_to_its_default(self):
         """A hand-edited file can hold a number where a string belongs, and the
         strip()/int() calls that read it took the app down before it opened."""
@@ -236,6 +282,11 @@ class TestPromptAssembly(unittest.TestCase):
 class TestHistory(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        profile = pathlib.Path(self.tmp.name) / "profile"
+        config_paths = mock.patch.multiple(cfg, CONFIG_DIR=profile,
+                                           CONFIG_FILE=profile / "config.json")
+        config_paths.start()
+        self.addCleanup(config_paths.stop)
         self.old = cfg.DATA_DIR
         cfg.DATA_DIR = pathlib.Path(self.tmp.name)
         cfg.HISTORY_FILE = cfg.DATA_DIR / "history.jsonl"

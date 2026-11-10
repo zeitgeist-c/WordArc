@@ -609,60 +609,77 @@ def _fits(default, value):
     return default is None or isinstance(value, type(default))
 
 
-def _keep_unreadable_config():
-    """Keep a copy of a settings file that could not be read.
+def _read_settings(path):
+    with path.open(encoding="utf-8-sig") as fh:
+        stored = json.load(fh)
+    if not isinstance(stored, dict) or not stored:
+        raise ValueError("Expected a non-empty settings object")
+    return stored
 
-    The next save() writes the defaults over it, so without this the user's
-    settings would be gone without a trace.
-    """
-    keep = CONFIG_FILE.parent / (CONFIG_FILE.name + ".corrupt")
+
+def _write_settings(path, stored):
+    tmp = path.with_name(path.name + ".tmp")
+    with tmp.open("w", encoding="utf-8") as fh:
+        json.dump(stored, fh, ensure_ascii=False, indent=2)
+    tmp.replace(path)
+
+
+def _keep_unreadable_config():
+    """Keep the original before allowing a recovered profile to replace it."""
+    keep = CONFIG_FILE.with_suffix(".json.corrupt")
     try:
-        if CONFIG_FILE.exists() and not keep.exists():
-            shutil.copy2(CONFIG_FILE, keep)
-            _log.warning("settings kept as %s", keep)
+        if keep.exists():
+            return keep.read_bytes() == CONFIG_FILE.read_bytes()
+        shutil.copy2(CONFIG_FILE, keep)
+        _log.warning("settings kept as %s", keep)
+        return True
     except OSError as exc:
         _log.warning("could not keep a copy of the unreadable settings (%s)", exc)
+        return False
 
 
 class Config:
     def __init__(self):
-        self.data = dict(DEFAULTS)
-        # Keys a newer version wrote that this one does not know: carried
-        # verbatim and written back on save, never silently dropped. Without
-        # this, merely opening settings in an older build erases newer
-        # settings (labels, new prompts) on the next save.
-        self._unknown = {}
-        # Fresh install: there was no config file before (the first-run language
-        # choice and the handing over of the installer language run only here).
-        # A broken file does not count as fresh: the user had settings.
-        self.fresh = not CONFIG_FILE.exists()
         self.load()
 
-    def load(self):
-        stored = {}
+    def _load_stored(self):
+        self.fresh = False
+        self.settings_write_blocked = False
+        missing = False
+        original_kept = False
         try:
-            with open(CONFIG_FILE, encoding="utf-8") as fh:
-                stored = json.load(fh)
-            if isinstance(stored, dict):
-                for key, value in stored.items():
-                    if key not in DEFAULTS:
-                        self._unknown[key] = value
-                        continue
-                    if _fits(DEFAULTS[key], value):
-                        self.data[key] = value
-                    else:
-                        _log.warning("settings: %r holds an unexpected type; "
-                                     "keeping the default", key)
+            return _read_settings(CONFIG_FILE), "loaded file"
         except FileNotFoundError:
-            pass
+            missing = True
         except (ValueError, OSError) as exc:
-            # ValueError covers both a broken document and one saved in another
-            # encoding (UnicodeDecodeError): either reached main() and took the
-            # window down before it ever opened.
-            _log.warning("could not read settings (%s); using defaults", exc)
-            _keep_unreadable_config()
+            _log.warning("could not read settings (%s)", exc)
+            original_kept = _keep_unreadable_config()
+        try:
+            stored = _read_settings(CONFIG_FILE.with_suffix(".json.bak"))
+            self.settings_write_blocked = not (missing or original_kept)
+            return stored, "recovered from backup"
+        except FileNotFoundError:
+            self.fresh = missing and not CONFIG_FILE.with_suffix(".json.corrupt").exists()
+        except (OSError, ValueError) as exc:
+            _log.warning("could not read settings backup (%s)", exc)
+        self.settings_write_blocked = not self.fresh
+        return {}, "fresh defaults" if self.fresh else "unreadable file, saving blocked"
+
+    def load(self):
+        stored, origin = self._load_stored()
+        self.data = dict(DEFAULTS)
+        # Keep keys from newer releases across downgrade and re-save.
+        self._unknown = {}
+        for key, value in stored.items():
+            if key not in DEFAULTS:
+                self._unknown[key] = value
+            elif _fits(DEFAULTS[key], value):
+                self.data[key] = value
+            else:
+                _log.warning("settings: %r holds an unexpected type; keeping the default", key)
         self._migrate(stored)
-        self._migrate_plaintext_secret()
+        if not self.settings_write_blocked:
+            self._migrate_plaintext_secret()
         self.data["overlay_corner"] = _CORNER_MIGRATION.get(
             self.data["overlay_corner"], self.data["overlay_corner"]
         )
@@ -677,15 +694,8 @@ class Config:
             self.data[key] = {"none": "minimal", "xhigh": "high", "max": "high"}.get(self.data[key], self.data[key])
         # Legacy 'auto'/unknown language records are pulled to explicit English.
         self.data["ui_language"] = i18n.resolve(self.data.get("ui_language"))
-        if self.fresh:
-            origin = "fresh defaults"
-        elif isinstance(stored, dict) and stored:
-            origin = "loaded file"
-        else:
-            origin = "unreadable file, defaults kept"
         _log.info("settings: %s (%d stored keys, schema %s)", origin,
-                  len(stored) if isinstance(stored, dict) else 0,
-                  self.data.get("config_schema"))
+                  len(stored), self.data.get("config_schema"))
         i18n.set_language(self.data["ui_language"])
 
     def _migrate(self, stored):
@@ -708,12 +718,6 @@ class Config:
         # keeps that behaviour. New installs default to disabled.
         if "config_schema" not in stored and "history_limit" in stored:
             self.data["history_enabled"] = True
-        # Schema 5 turned "start with Windows" into the default. Existing
-        # installs join it once; a box the user turns off afterwards is never
-        # re-enabled, because saving persists False and the schema is already 5.
-        if (stored.get("config_schema", 1) < 5
-                and stored.get("start_with_windows") is False):
-            self.data["start_with_windows"] = True
         if self.data.get("theme_mode") not in ("dark", "light"):
             self.data["theme_mode"] = "dark"
         if self.data.get("local_stt_device") not in ("auto", "cuda", "vulkan", "cpu"):
@@ -725,10 +729,11 @@ class Config:
         # Reading-aloud keys used to grab globals by default; one of them
         # collides on some machines and toasted on every start. They are
         # opt-in now: stored old defaults fall back to tab-only.
-        if self.data.get("tts_shortcut") == "Ctrl+Shift+O":
-            self.data["tts_shortcut"] = ""
-        if self.data.get("tts_stop_shortcut") == "Ctrl+Shift+X":
-            self.data["tts_stop_shortcut"] = ""
+        if "config_schema" not in stored:
+            if self.data.get("tts_shortcut") == "Ctrl+Shift+O":
+                self.data["tts_shortcut"] = ""
+            if self.data.get("tts_stop_shortcut") == "Ctrl+Shift+X":
+                self.data["tts_stop_shortcut"] = ""
         self.data["config_schema"] = CONFIG_SCHEMA
 
     def _migrate_plaintext_secret(self):
@@ -752,7 +757,26 @@ class Config:
         except OSError as exc:
             print(f"wordarc: could not rewrite settings after key migration ({exc})")
 
+    def ensure_backup(self):
+        """Protect settings from an older release before the first new save."""
+        if self.settings_write_blocked:
+            return
+        backup = CONFIG_FILE.with_suffix(".json.bak")
+        with _save_lock:
+            if backup.exists():
+                return
+            try:
+                stored = _read_settings(CONFIG_FILE)
+                if not stored.get("gemini_api_key"):
+                    _write_settings(backup, stored)
+            except FileNotFoundError:
+                pass
+            except (OSError, ValueError) as exc:
+                _log.warning("could not create settings backup (%s)", exc)
+
     def save(self):
+        if self.settings_write_blocked:
+            raise OSError("WordArc could not recover the settings safely. Existing files were kept.")
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         secret = self.data.get("gemini_api_key", "").strip()
         if secret:
@@ -766,12 +790,13 @@ class Config:
         # the GUI thread saves a setting, and both wrote the same config.json.tmp
         # — one replace then lost the file to the other (WinError 32).
         with _save_lock:
-            tmp = CONFIG_FILE.with_suffix(".json.tmp")
             merged = dict(self.data)
             merged.update(self._unknown)
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(merged, fh, ensure_ascii=False, indent=2)
-            tmp.replace(CONFIG_FILE)
+            _write_settings(CONFIG_FILE, merged)
+            try:
+                _write_settings(CONFIG_FILE.with_suffix(".json.bak"), merged)
+            except OSError as exc:
+                _log.warning("could not refresh settings backup (%s)", exc)
         self.data["ui_language"] = i18n.resolve(self.data.get("ui_language"))
         i18n.set_language(self.data["ui_language"])
 

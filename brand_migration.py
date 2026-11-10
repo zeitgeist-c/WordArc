@@ -35,19 +35,25 @@ def _copy_missing_file(source: Path, target: Path) -> bool:
     return True
 
 
-def _copy_missing_tree(source: Path, target: Path) -> int:
+def _copy_missing_tree(source: Path, target: Path, *, skip=()) -> int:
     if not source.is_dir():
         return 0
     copied = 0
     for path in source.rglob("*"):
-        if path.is_file():
-            copied += int(_copy_missing_file(path, target / path.relative_to(source)))
+        relative = path.relative_to(source)
+        if relative not in skip and path.is_file():
+            copied += int(_copy_missing_file(path, target / relative))
     return copied
 
 
 def migrate_storage(legacy_config_dir: Path, config_dir: Path,
                     legacy_data_dir: Path, data_dir: Path) -> int:
-    copied = _copy_missing_tree(legacy_config_dir, config_dir)
+    # Config owns recovery from WordArc's latest valid profile. A legacy
+    # Verbatim file must not take precedence just because config.json vanished.
+    recovering = any((config_dir / name).exists()
+                     for name in ("config.json.bak", "config.json.corrupt"))
+    copied = _copy_missing_tree(legacy_config_dir, config_dir,
+                                skip=(Path("config.json"),) if recovering else ())
     copied += _copy_missing_tree(legacy_data_dir, data_dir)
     return copied
 

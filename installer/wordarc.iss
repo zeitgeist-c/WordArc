@@ -41,7 +41,7 @@ SolidCompression=yes
 Compression=lzma2/max
 OutputDir=..\dist
 OutputBaseFilename=WordArc-{#AppVersion}
-UninstallDisplayName=WordArc {#AppVersion}
+UninstallDisplayName=WordArc
 WizardStyle=modern
 ; The setup file itself carries the product icon instead of the
 ; generic download arrow; brand assets are rendered by build_brand_assets.
@@ -232,7 +232,7 @@ begin
     Exit;
   try
     WMI := CreateOleObject('WbemScripting.SWbemLocator');
-    Service := WMI.ConnectServer('.', 'root\\CIMV2');
+    Service := WMI.ConnectServer('.', 'root\CIMV2');
     Procs := Service.ExecQuery(
       'SELECT ExecutablePath FROM Win32_Process WHERE Name="WordArc.exe"');
   except
@@ -248,7 +248,7 @@ begin
     except
       ExePath := '';
     end;
-    if (ExePath = '') or (Pos(Lowercase(RemoveBackslash(Dir)), ExePath) <> 1) then
+    if CompareText(ExePath, AddBackslash(Dir) + 'WordArc.exe') <> 0 then
       Continue;
     if Turkish then
       Result := 'Başka bir WordArc kopyası çalışıyor ve kurulumun değiştirmesi ' +
@@ -294,12 +294,63 @@ begin
 #endif
 end;
 
+function WaitForUpdateOwner(): String;
+var
+  PID, LauncherPID: Integer;
+  AppHandle, LauncherHandle: THandle;
+  ReadyFile: String;
+begin
+  Result := '';
+  PID := StrToIntDef(ExpandConstant('{param:WORDARC_OLDPID|0}'), 0);
+  LauncherPID := StrToIntDef(ExpandConstant('{param:WORDARC_LAUNCHERPID|0}'), 0);
+  ReadyFile := ExpandConstant('{param:WORDARC_READY|}');
+  AppHandle := 0;
+  LauncherHandle := 0;
+  try
+    { Acquire handles before signalling readiness: these identify the same
+      processes even if Windows later reuses their PIDs. }
+    if PID > 0 then
+      AppHandle := OpenProcess($100000, False, PID);
+    if LauncherPID > 0 then
+      LauncherHandle := OpenProcess($100000, False, LauncherPID);
+    if ((PID > 0) and (AppHandle = 0)) or
+       ((LauncherPID > 0) and (LauncherHandle = 0)) then
+    begin
+      Result := 'The running WordArc could not be identified. The update was cancelled.';
+      Exit;
+    end;
+    if ReadyFile <> '' then
+      if not SaveStringToFile(ReadyFile, 'ready', False) then
+      begin
+        Result := 'The application could not be notified that setup is ready.';
+        Exit;
+      end;
+    if AppHandle <> 0 then
+      if WaitForSingleObject(AppHandle, 90000) <> 0 then
+      begin
+        Result := 'The current WordArc did not close. Installation was cancelled.';
+        Exit;
+      end;
+    if LauncherHandle <> 0 then
+    begin
+      if WaitForSingleObject(LauncherHandle, 90000) <> 0 then
+        Result := 'The WordArc launcher did not close. Installation was cancelled.';
+    end
+    else if AppHandle <> 0 then
+      Sleep(1000); { Compatibility with older clients lacking a launcher PID. }
+  finally
+    if LauncherHandle <> 0 then
+      CloseHandle(LauncherHandle);
+    if AppHandle <> 0 then
+      CloseHandle(AppHandle);
+  end;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  Code, PID, WaitResult: Integer;
-  Handle: THandle;
+  Code: Integer;
   Health: AnsiString;
-  Report, ReadyFile: String;
+  Report: String;
 begin
   Result := '';
   if not PreflightDone then
@@ -324,26 +375,7 @@ begin
     end;
     PreflightDone := True;
   end;
-  ReadyFile := ExpandConstant('{param:WORDARC_READY|}');
-  if ReadyFile <> '' then
-    if not SaveStringToFile(ReadyFile, 'ready', False) then
-    begin
-      Result := 'The application could not be notified that setup is ready.';
-      Exit;
-    end;
-  PID := StrToIntDef(ExpandConstant('{param:WORDARC_OLDPID|0}'), 0);
-  if PID > 0 then
-  begin
-    Handle := OpenProcess($100000, False, PID);
-    if Handle <> 0 then
-    begin
-      WaitResult := WaitForSingleObject(Handle, 120000);
-      CloseHandle(Handle);
-      if WaitResult <> 0 then
-        Result := 'The current WordArc did not close. Installation was cancelled.';
-    end;
-    Sleep(1000); { Allow the one-file bootloader to release the executable. }
-  end;
+  Result := WaitForUpdateOwner();
   { Manual runs have no old-PID wait above; stray copies are asked about here.
     Managed runs never kill, but still abort on a stray copy instead of
     failing later inside RestartManager with a suppressed dialog.
