@@ -295,6 +295,7 @@ DE3 = {
 "Screenshots": "Screenshots",
 "PNG image (*.png)": "PNG-Bild (*.png)",
 "JPEG image (*.jpg *.jpeg)": "JPEG-Bild (*.jpg *.jpeg)",
+"JPEG XL image (*.jxl)": "JPEG-XL-Bild (*.jxl)",
 "Screenshot options": "Screenshot-Optionen",
 "Capture": "Erfassen",
 "Capture screenshot": "Screenshot erfassen",
@@ -309,6 +310,19 @@ DE3 = {
 "Capture full screen": "Vollbild erfassen",
 "Select screenshot area": "Screenshot-Bereich wählen",
 "Extract text (OCR)": "Text extrahieren (OCR)",
+"Translate to Turkish": "Ins Türkische übersetzen",
+"Text selection bar": "Textauswahlleiste",
+"Show a small toolbar next to selected text.":
+    "Zeigt eine kleine Leiste neben dem ausgewählten Text.",
+"Off by default. Applies as soon as you save; no restart needed.":
+    "Standardmäßig aus. Wird sofort nach dem Speichern übernommen; "
+    "kein Neustart nötig.",
+"Explain": "Erklären",
+"Summarize": "Zusammenfassen",
+"The selection is too long.": "Die Auswahl ist zu lang.",
+"Screenshot translation": "Screenshot-Übersetzung",
+"Translation copied to the clipboard.":
+    "Übersetzung in die Zwischenablage kopiert.",
 "Updates": "Updates",
 "Newer versions of WordArc.": "Neuere Versionen von WordArc.",
 "Check for updates": "Nach Updates suchen",
@@ -1120,6 +1134,7 @@ ES3 = {
 "Screenshots": "Capturas",
 "PNG image (*.png)": "Imagen PNG (*.png)",
 "JPEG image (*.jpg *.jpeg)": "Imagen JPEG (*.jpg *.jpeg)",
+"JPEG XL image (*.jxl)": "Imagen JPEG XL (*.jxl)",
 "Screenshot options": "Opciones de captura",
 "Capture": "Capturar",
 "Capture screenshot": "Capturar pantalla",
@@ -1134,6 +1149,19 @@ ES3 = {
 "Capture full screen": "Capturar pantalla completa",
 "Select screenshot area": "Seleccionar área de captura",
 "Extract text (OCR)": "Extraer texto (OCR)",
+"Translate to Turkish": "Traducir al turco",
+"Text selection bar": "Barra de selección de texto",
+"Show a small toolbar next to selected text.":
+    "Muestra una pequeña barra junto al texto seleccionado.",
+"Off by default. Applies as soon as you save; no restart needed.":
+    "Desactivada por defecto. Se aplica al guardar; "
+    "no es necesario reiniciar.",
+"Explain": "Explicar",
+"Summarize": "Resumir",
+"The selection is too long.": "La selección es demasiado larga.",
+"Screenshot translation": "Traducción de la captura",
+"Translation copied to the clipboard.":
+    "Traducción copiada al portapapeles.",
 "Updates": "Actualizaciones",
 "Newer versions of WordArc.": "Versiones más nuevas de WordArc.",
 "Check for updates": "Buscar actualizaciones",
@@ -1939,6 +1967,7 @@ FR3 = {
 "Screenshots": "Captures d'écran",
 "PNG image (*.png)": "Image PNG (*.png)",
 "JPEG image (*.jpg *.jpeg)": "Image JPEG (*.jpg *.jpeg)",
+"JPEG XL image (*.jxl)": "Image JPEG XL (*.jxl)",
 "Screenshot options": "Options de capture",
 "Capture": "Capturer",
 "Capture screenshot": "Capturer l'écran",
@@ -1953,6 +1982,19 @@ FR3 = {
 "Capture full screen": "Capturer tout l'écran",
 "Select screenshot area": "Sélectionner la zone de capture",
 "Extract text (OCR)": "Extraire le texte (OCR)",
+"Translate to Turkish": "Traduire en turc",
+"Text selection bar": "Barre de sélection de texte",
+"Show a small toolbar next to selected text.":
+    "Affiche une petite barre à côté du texte sélectionné.",
+"Off by default. Applies as soon as you save; no restart needed.":
+    "Désactivée par défaut. Appliquée dès l'enregistrement ; "
+    "aucun redémarrage requis.",
+"Explain": "Expliquer",
+"Summarize": "Résumer",
+"The selection is too long.": "La sélection est trop longue.",
+"Screenshot translation": "Traduction de la capture",
+"Translation copied to the clipboard.":
+    "Traduction copiée dans le presse-papiers.",
 "Updates": "Mises à jour",
 "Newer versions of WordArc.": "Versions plus récentes de WordArc.",
 "Check for updates": "Rechercher des mises à jour",
@@ -2759,6 +2801,7 @@ IT3 = {
 "Screenshots": "Screenshot",
 "PNG image (*.png)": "Immagine PNG (*.png)",
 "JPEG image (*.jpg *.jpeg)": "Immagine JPEG (*.jpg *.jpeg)",
+"JPEG XL image (*.jxl)": "Immagine JPEG XL (*.jxl)",
 "Screenshot options": "Opzioni screenshot",
 "Capture": "Cattura",
 "Capture screenshot": "Cattura schermo",
@@ -2773,6 +2816,19 @@ IT3 = {
 "Capture full screen": "Cattura tutto lo schermo",
 "Select screenshot area": "Seleziona area screenshot",
 "Extract text (OCR)": "Estrai testo (OCR)",
+"Translate to Turkish": "Traduci in turco",
+"Text selection bar": "Barra di selezione del testo",
+"Show a small toolbar next to selected text.":
+    "Mostra una piccola barra accanto al testo selezionato.",
+"Off by default. Applies as soon as you save; no restart needed.":
+    "Disattivata per impostazione predefinita. Applicata al salvataggio; "
+    "non serve riavviare.",
+"Explain": "Spiega",
+"Summarize": "Riassumi",
+"The selection is too long.": "La selezione è troppo lunga.",
+"Screenshot translation": "Traduzione dello screenshot",
+"Translation copied to the clipboard.":
+    "Traduzione copiata negli appunti.",
 "Updates": "Aggiornamenti",
 "Newer versions of WordArc.": "Versioni più nuove di WordArc.",
 "Check for updates": "Controlla aggiornamenti",
@@ -3578,6 +3634,7 @@ PB3 = {
 "Screenshots": "Capturas",
 "PNG image (*.png)": "Imagem PNG (*.png)",
 "JPEG image (*.jpg *.jpeg)": "Imagem JPEG (*.jpg *.jpeg)",
+"JPEG XL image (*.jxl)": "Imagem JPEG XL (*.jxl)",
 "Screenshot options": "Opções de captura",
 "Capture": "Capturar",
 "Capture screenshot": "Capturar tela",
@@ -3592,6 +3649,19 @@ PB3 = {
 "Capture full screen": "Capturar tela cheia",
 "Select screenshot area": "Selecionar área de captura",
 "Extract text (OCR)": "Extrair texto (OCR)",
+"Translate to Turkish": "Traduzir para o turco",
+"Text selection bar": "Barra de seleção de texto",
+"Show a small toolbar next to selected text.":
+    "Mostra uma pequena barra ao lado do texto selecionado.",
+"Off by default. Applies as soon as you save; no restart needed.":
+    "Desativada por padrão. Aplicada ao salvar; "
+    "não é preciso reiniciar.",
+"Explain": "Explicar",
+"Summarize": "Resumir",
+"The selection is too long.": "A seleção é longa demais.",
+"Screenshot translation": "Tradução da captura de tela",
+"Translation copied to the clipboard.":
+    "Tradução copiada para a área de transferência.",
 "Updates": "Atualizações",
 "Newer versions of WordArc.": "Versões mais novas do WordArc.",
 "Check for updates": "Verificar atualizações",
@@ -4397,6 +4467,7 @@ RU3 = {
 "Screenshots": "Скриншоты",
 "PNG image (*.png)": "Изображение PNG (*.png)",
 "JPEG image (*.jpg *.jpeg)": "Изображение JPEG (*.jpg *.jpeg)",
+"JPEG XL image (*.jxl)": "Изображение JPEG XL (*.jxl)",
 "Screenshot options": "Параметры скриншота",
 "Capture": "Захватить",
 "Capture screenshot": "Захватить экран",
@@ -4411,6 +4482,19 @@ RU3 = {
 "Capture full screen": "Захватить весь экран",
 "Select screenshot area": "Выбрать область скриншота",
 "Extract text (OCR)": "Извлечь текст (OCR)",
+"Translate to Turkish": "Перевести на турецкий",
+"Text selection bar": "Панель выделения текста",
+"Show a small toolbar next to selected text.":
+    "Показывает небольшую панель рядом с выделенным текстом.",
+"Off by default. Applies as soon as you save; no restart needed.":
+    "По умолчанию выключена. Применяется сразу после сохранения; "
+    "перезапуск не нужен.",
+"Explain": "Объяснить",
+"Summarize": "Резюмировать",
+"The selection is too long.": "Выделение слишком длинное.",
+"Screenshot translation": "Перевод скриншота",
+"Translation copied to the clipboard.":
+    "Перевод скопирован в буфер обмена.",
 "Updates": "Обновления",
 "Newer versions of WordArc.": "Новые версии WordArc.",
 "Check for updates": "Проверить обновления",
@@ -5217,6 +5301,7 @@ PL3 = {
 "Screenshots": "Zrzuty ekranu",
 "PNG image (*.png)": "Obraz PNG (*.png)",
 "JPEG image (*.jpg *.jpeg)": "Obraz JPEG (*.jpg *.jpeg)",
+"JPEG XL image (*.jxl)": "Obraz JPEG XL (*.jxl)",
 "Screenshot options": "Opcje zrzutu",
 "Capture": "Przechwyć",
 "Capture screenshot": "Przechwyć ekran",
@@ -5231,6 +5316,19 @@ PL3 = {
 "Capture full screen": "Przechwyć cały ekran",
 "Select screenshot area": "Wybierz obszar zrzutu",
 "Extract text (OCR)": "Wyodrębnij tekst (OCR)",
+"Translate to Turkish": "Przetłumacz na turecki",
+"Text selection bar": "Pasek zaznaczenia tekstu",
+"Show a small toolbar next to selected text.":
+    "Pokazuje mały pasek obok zaznaczonego tekstu.",
+"Off by default. Applies as soon as you save; no restart needed.":
+    "Domyślnie wyłączony. Stosowane od razu po zapisaniu; "
+    "ponowne uruchomienie nie jest potrzebne.",
+"Explain": "Wyjaśnij",
+"Summarize": "Podsumuj",
+"The selection is too long.": "Zaznaczenie jest za długie.",
+"Screenshot translation": "Tłumaczenie zrzutu ekranu",
+"Translation copied to the clipboard.":
+    "Tłumaczenie skopiowano do schowka.",
 "Updates": "Aktualizacje",
 "Newer versions of WordArc.": "Nowsze wersje WordArc.",
 "Check for updates": "Sprawdź aktualizacje",
@@ -6037,6 +6135,7 @@ NL3 = {
 "Screenshots": "Screenshots",
 "PNG image (*.png)": "PNG-afbeelding (*.png)",
 "JPEG image (*.jpg *.jpeg)": "JPEG-afbeelding (*.jpg *.jpeg)",
+"JPEG XL image (*.jxl)": "JPEG XL-afbeelding (*.jxl)",
 "Screenshot options": "Screenshotopties",
 "Capture": "Vastleggen",
 "Capture screenshot": "Scherm vastleggen",
@@ -6051,6 +6150,19 @@ NL3 = {
 "Capture full screen": "Volledig scherm vastleggen",
 "Select screenshot area": "Screenshotgebied selecteren",
 "Extract text (OCR)": "Tekst extraheren (OCR)",
+"Translate to Turkish": "Naar het Turks vertalen",
+"Text selection bar": "Tekstselectiebalk",
+"Show a small toolbar next to selected text.":
+    "Toont een kleine balk naast de geselecteerde tekst.",
+"Off by default. Applies as soon as you save; no restart needed.":
+    "Standaard uit. Wordt direct na opslaan toegepast; "
+    "opnieuw opstarten is niet nodig.",
+"Explain": "Uitleggen",
+"Summarize": "Samenvatten",
+"The selection is too long.": "De selectie is te lang.",
+"Screenshot translation": "Vertaling van de schermopname",
+"Translation copied to the clipboard.":
+    "Vertaling naar het klembord gekopieerd.",
 "Updates": "Updates",
 "Newer versions of WordArc.": "Nieuwere versies van WordArc.",
 "Check for updates": "Controleren op updates",
@@ -6857,6 +6969,7 @@ ZH3 = {
 "Screenshots": "截图",
 "PNG image (*.png)": "PNG 图像（*.png）",
 "JPEG image (*.jpg *.jpeg)": "JPEG 图像（*.jpg *.jpeg）",
+"JPEG XL image (*.jxl)": "JPEG XL 图像（*.jxl）",
 "Screenshot options": "截图选项",
 "Capture": "捕获",
 "Capture screenshot": "捕获屏幕",
@@ -6871,6 +6984,18 @@ ZH3 = {
 "Capture full screen": "捕获全屏",
 "Select screenshot area": "选择截图区域",
 "Extract text (OCR)": "提取文本（OCR）",
+"Translate to Turkish": "翻译成土耳其语",
+"Text selection bar": "文本选择栏",
+"Show a small toolbar next to selected text.":
+    "在所选文本旁边显示一个小工具栏。",
+"Off by default. Applies as soon as you save; no restart needed.":
+    "默认关闭。保存后立即生效，无需重启。",
+"Explain": "解释",
+"Summarize": "总结",
+"The selection is too long.": "所选内容过长。",
+"Screenshot translation": "屏幕截图翻译",
+"Translation copied to the clipboard.":
+    "翻译已复制到剪贴板。",
 "Updates": "更新",
 "Newer versions of WordArc.": "更新版本的 WordArc。",
 "Check for updates": "检查更新",
@@ -7674,6 +7799,7 @@ JA3 = {
 "Screenshots": "スクリーンショット",
 "PNG image (*.png)": "PNG 画像（*.png）",
 "JPEG image (*.jpg *.jpeg)": "JPEG 画像（*.jpg *.jpeg）",
+"JPEG XL image (*.jxl)": "JPEG XL 画像（*.jxl）",
 "Screenshot options": "スクリーンショットオプション",
 "Capture": "キャプチャ",
 "Capture screenshot": "画面をキャプチャ",
@@ -7688,6 +7814,18 @@ JA3 = {
 "Capture full screen": "全画面をキャプチャ",
 "Select screenshot area": "スクリーンショット範囲を選択",
 "Extract text (OCR)": "テキストを抽出（OCR）",
+"Translate to Turkish": "トルコ語に翻訳",
+"Text selection bar": "テキスト選択バー",
+"Show a small toolbar next to selected text.":
+    "選択したテキストの横に小さなツールバーを表示します。",
+"Off by default. Applies as soon as you save; no restart needed.":
+    "デフォルトではオフ。保存後すぐに適用され、再起動は不要です。",
+"Explain": "説明",
+"Summarize": "要約",
+"The selection is too long.": "選択範囲が長すぎます。",
+"Screenshot translation": "スクリーンショットの翻訳",
+"Translation copied to the clipboard.":
+    "翻訳をクリップボードにコピーしました。",
 "Updates": "更新",
 "Newer versions of WordArc.": "WordArc の新バージョン。",
 "Check for updates": "更新を確認",
@@ -8491,6 +8629,7 @@ KO3 = {
 "Screenshots": "스크린샷",
 "PNG image (*.png)": "PNG 이미지(*.png)",
 "JPEG image (*.jpg *.jpeg)": "JPEG 이미지(*.jpg *.jpeg)",
+"JPEG XL image (*.jxl)": "JPEG XL 이미지(*.jxl)",
 "Screenshot options": "스크린샷 옵션",
 "Capture": "캡처",
 "Capture screenshot": "화면 캡처",
@@ -8505,6 +8644,19 @@ KO3 = {
 "Capture full screen": "전체 화면 캡처",
 "Select screenshot area": "스크린샷 영역 선택",
 "Extract text (OCR)": "텍스트 추출(OCR)",
+"Translate to Turkish": "튀르키예어로 번역",
+"Text selection bar": "텍스트 선택 막대",
+"Show a small toolbar next to selected text.":
+    "선택한 텍스트 옆에 작은 도구 모음을 표시합니다.",
+"Off by default. Applies as soon as you save; no restart needed.":
+    "기본적으로 꺼져 있습니다. 저장하면 즉시 적용되며 "
+    "다시 시작할 필요가 없습니다.",
+"Explain": "설명",
+"Summarize": "요약",
+"The selection is too long.": "선택 영역이 너무 깁니다.",
+"Screenshot translation": "스크린샷 번역",
+"Translation copied to the clipboard.":
+    "번역이 클립보드에 복사되었습니다.",
 "Updates": "업데이트",
 "Newer versions of WordArc.": "새 버전의 WordArc.",
 "Check for updates": "업데이트 확인",

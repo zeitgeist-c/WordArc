@@ -62,6 +62,7 @@ import i18n  # noqa: E402
 from i18n import t  # noqa: E402
 import livespeech  # noqa: E402
 import screenshot_capture  # noqa: E402
+import selection_bar  # noqa: E402
 from meeting import MeetingPipeline  # noqa: E402
 import overlay  # noqa: E402
 from overlay import Overlay  # noqa: E402
@@ -356,6 +357,13 @@ class WordArc:
             self._on_screenshot_preferences_saved)
         self.screenshot_controller.ocr_done.connect(self._on_screenshot_ocr)
         self.screenshot_controller.speak_done.connect(self._on_screenshot_speak)
+        self.screenshot_controller.translate_done.connect(
+            self._on_screenshot_translate)
+        self.selection_controller = selection_bar.SelectionBarController(
+            self.conf)
+        self.selection_controller.failed.connect(self._on_selection_failed)
+        self.selection_controller.result_ready.connect(
+            self._on_selection_result)
         self.breaks = break_reminder.BreakController(self.conf, self.overlay)
         self.breaks.state_changed.connect(lambda _phase: self._refresh_break_actions())
         self.screenshot_controller.add_capture_helper(self.breaks)
@@ -675,6 +683,21 @@ class WordArc:
             self.tray.showMessage(BRAND.name, message,
                                   QSystemTrayIcon.MessageIcon.Warning, 5000)
 
+    def _on_selection_failed(self, message):
+        logging.getLogger("wordarc.selection").warning("selection failed: %s",
+                                                       message)
+        if self.tray.isVisible():
+            self.tray.showMessage(BRAND.name, message,
+                                  QSystemTrayIcon.MessageIcon.Warning, 5000)
+
+    def _on_selection_result(self, kind, text):
+        # Queued in from the AI worker thread; safe on the GUI thread.
+        titles = {"translate": t("Translate to Turkish"),
+                  "explain": t("Explain"), "summarize": t("Summarize")}
+        dialog = selection_bar.SelectionResultDialog(
+            titles.get(kind, t("Translate to Turkish")), text)
+        dialog.exec()
+
     def _on_screenshot_ocr(self, text):
         # Queued in from the OCR worker thread; safe on the GUI thread.
         if not text:
@@ -704,6 +727,19 @@ class WordArc:
             self.tray.showMessage(BRAND.name, t("Reading the capture…"),
                                   QSystemTrayIcon.MessageIcon.Information, 4000)
         self.tts.speak(text, speed)
+
+    def _on_screenshot_translate(self, text):
+        # Queued in from the translate worker thread; safe on the GUI thread.
+        if not text:
+            self._on_screenshot_failed(t("No readable text found in the capture."))
+            return
+        dialog = screenshot_capture.TranslationResultDialog(text)
+        dialog.exec()
+        if dialog.result() == dialog.DialogCode.Accepted:
+            if self.tray.isVisible():
+                self.tray.showMessage(
+                    BRAND.name, t("Translation copied to the clipboard."),
+                    QSystemTrayIcon.MessageIcon.Information, 4000)
 
     def _on_screenshot_preferences_saved(self, directory, image_format):
         window = self.settings_window
@@ -1483,6 +1519,10 @@ class WordArc:
         theme.ThemeManager.apply(self.conf["theme_mode"], self.app)
         self.overlay.corner = self.conf["overlay_corner"]
         overlay.set_meter(self.conf.get("overlay_meter") or "spectrum")
+        selection = getattr(self, "selection_controller", None)
+        if selection is not None:
+            selection.set_enabled(
+                bool(self.conf.get("selection_bar_enabled", False)))
         breaks = getattr(self, "breaks", None)
         if breaks is not None:
             breaks.sync_from_conf()
@@ -1518,6 +1558,9 @@ class WordArc:
     def shutdown(self):
         self._quitting = True
         self.screenshot_controller.shutdown()
+        selection = getattr(self, "selection_controller", None)
+        if selection is not None:
+            selection.shutdown()
         breaks = getattr(self, "breaks", None)
         if breaks is not None:
             breaks.shutdown()

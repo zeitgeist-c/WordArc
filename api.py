@@ -485,6 +485,20 @@ class GeminiClient:
                                     timeout, self.should_stop)
         )
 
+    def explain(self, text, model, system_prompt, timeout=180):
+        return self._call(
+            lambda key: gemini_chat([{"role": "user", "content": wrap_source(text)}],
+                                    key, model, system_prompt,
+                                    timeout, self.should_stop)
+        )
+
+    def summarize(self, text, model, system_prompt, timeout=180):
+        return self._call(
+            lambda key: gemini_chat([{"role": "user", "content": wrap_source(text)}],
+                                    key, model, system_prompt,
+                                    timeout, self.should_stop)
+        )
+
     def complete(self, messages, model, system_prompt="", timeout=180):
         return self._call(
             lambda key: gemini_chat(messages, key, model, system_prompt,

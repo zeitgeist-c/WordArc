@@ -20,6 +20,9 @@ av==18.1.0
 # is pinned above (shared with local speech). requests rides in as rapidocr's
 # model-download path, even though shipped models never download at runtime.
 rapidocr==3.10.0
+# Right-to-left rendering for the screenshot-translate flow's Arabic engine
+# (rapidocr[rtl]); without it Arabic recognition is skipped, not failed.
+python-bidi==0.6.12
 opencv-python-headless==4.11.0.86
 pyclipper==1.4.0
 shapely==2.2.0
@@ -31,6 +34,12 @@ charset-normalizer==3.5.2
 idna==3.20
 urllib3==2.8.0
 pillow==13.0.0
+# Lossless JPEG XL screenshots (screenshot_capture._write_jxl): the codec
+# ships its own libjxl DLLs, so the frozen app needs no OS extension.
+pillow-jxl-plugin==1.3.8
+# Text-selection toolbar (selection_bar.py): UI Automation TextPattern reads
+# through plain ctypes, so the frozen app needs no extra system component.
+uiautomation==2.0.29
 pyyaml==6.0.3
 tqdm==4.70.1
 six==1.17.0
