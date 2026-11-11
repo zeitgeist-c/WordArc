@@ -80,6 +80,243 @@ def _get_rapid_engine():
     return _rapid_engine
 
 
+def _run_engine(engine, image):
+    """One engine pass -> [(text, score, box|None)] in engine order.
+
+    ``box`` is a float (N, 2) array in image pixels when the engine
+    reports one, else None. Empty/garbage-free: blank texts are dropped,
+    everything else survives for the merge/filter stages to judge.
+    """
+    import numpy as np
+    result = engine(image)
+    txts = list(getattr(result, "txts", ()) or ())
+    boxes = getattr(result, "boxes", None)
+    scores = list(getattr(result, "scores", None) or [])
+    lines = []
+    for i, raw in enumerate(txts):
+        text = str(raw).strip()
+        if not text:
+            continue
+        box = None
+        try:
+            if boxes is not None and i < len(boxes) and boxes[i] is not None:
+                box = np.asarray(boxes[i], dtype=float).reshape(-1, 2)
+        except Exception:
+            box = None
+        try:
+            score = float(scores[i]) if i < len(scores) else 0.0
+        except Exception:
+            score = 0.0
+        lines.append((text, score, box))
+    return lines
+
+
+def _bbox(box):
+    x0, y0 = box.min(axis=0)
+    x1, y1 = box.max(axis=0)
+    return float(x0), float(y0), float(x1), float(y1)
+
+
+def _iou(a, b):
+    ax0, ay0, ax1, ay1 = _bbox(a)
+    bx0, by0, bx1, by1 = _bbox(b)
+    ix0, iy0 = max(ax0, bx0), max(ay0, by0)
+    ix1, iy1 = min(ax1, bx1), min(ay1, by1)
+    inter = max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
+    union = (ax1 - ax0) * (ay1 - ay0) + (bx1 - bx0) * (by1 - by0) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _similar(a: str, b: str) -> bool:
+    """Whether two reads plausibly show the same line (not neighbours)."""
+    from difflib import SequenceMatcher
+    return SequenceMatcher(None, a.strip().lower(),
+                           b.strip().lower()).ratio() > 0.5
+
+
+def _merge_lines(base, extra):
+    """Fuse a second pass into the first, keeping reading order.
+
+    A second-pass box that matches a first-pass box *and* reads alike
+    replaces it when its recognition score is higher (small text often
+    misreads first, then reads clean on the scaled pass). A near-identical
+    box (IoU > 0.8) is the same line even when both reads garble
+    differently, so the higher score wins there too. Anything else
+    is appended: dense neighbouring rows overlap, and must never knock
+    each other out. Exact duplicate texts collapse, keeping the best.
+    """
+    merged = list(base)
+    for text, score, box in extra:
+        if box is None:
+            merged.append((text, score, box))
+            continue
+        best, best_iou = -1, 0.0
+        for i, (_t, _s, bb) in enumerate(merged):
+            if bb is None:
+                continue
+            value = _iou(box, bb)
+            if value > best_iou:
+                best, best_iou = i, value
+        same_line = best_iou > 0.8 or (
+            best_iou > 0.6 and _similar(text, merged[best][0])) \
+            if best >= 0 else False
+        if best >= 0 and same_line:
+            # A clear margin: at epsilon gaps the original-scale read wins
+            # over a same-box garble that happens to score a hair higher.
+            if score > merged[best][1] + 0.03:
+                merged[best] = (text, score, merged[best][2])
+        else:
+            merged.append((text, score, box))
+    heights = [_bbox(bb)[3] - _bbox(bb)[1] for _t, _s, bb in merged
+               if bb is not None]
+    row_tol = max(4.0, (sorted(heights)[len(heights) // 2] * 0.5
+                        if heights else 8.0))
+
+    def key(item):
+        _t, _s, bb = item
+        if bb is None:
+            return (10 ** 9, 0.0)
+        x0, y0, x1, y1 = _bbox(bb)
+        return (int(((y0 + y1) / 2) // row_tol), (x0 + x1) / 2)
+
+    merged.sort(key=key)
+    best_by_text: dict = {}
+    for text, score, box in merged:
+        folded = text.strip().lower()
+        prev = best_by_text.get(folded)
+        if prev is None or score > prev[1]:
+            best_by_text[folded] = (text, score, box)
+    ordered = sorted(best_by_text.values(), key=key)
+    # Near-duplicate collapse: the two passes sometimes read one line twice
+    # with a character apart ("ayarlar"/"ayariar"). On the same row, near
+    # identical reads keep only the surer one.
+    out = []
+    for text, score, box in ordered:
+        if box is not None:
+            row = key((text, score, box))[0]
+            dupe = out and key(out[-1])[0] == row and _near_dupe(
+                text, out[-1][0])
+            if dupe:
+                if score > out[-1][1]:
+                    out[-1] = (text, score, box)
+                continue
+        out.append((text, score, box))
+    return out
+
+
+def _near_dupe(a: str, b: str) -> bool:
+    """Whether two reads are one character apart (same line, twice read).
+
+    Short headers ("Bölüm 1"/"Bölüm 2") also differ by one character, so
+    this only applies to longer lines.
+    """
+    from difflib import SequenceMatcher
+    a, b = a.strip().lower(), b.strip().lower()
+    if min(len(a), len(b)) < 10:
+        return False
+    return SequenceMatcher(None, a, b).ratio() > 0.85
+
+
+# Code points the multilingual recogniser emits for icons and ornaments
+# (CJK hallucinations, geometric shapes, dingbats): a real single-letter
+# label is Latin, so these mark a wordless box as probable junk.
+_SUSPICIOUS_RANGES = (
+    (0x2500, 0x2BFF),  # box drawing, shapes, arrows, dingbats
+    (0x3040, 0x30FF), (0x31F0, 0x31FF),  # hiragana + katakana
+    (0x3400, 0x4DBF), (0x4E00, 0x9FFF),  # CJK
+    (0xAC00, 0xD7AF),  # hangul syllables
+)
+
+
+def _suspicious(char: str) -> bool:
+    code = ord(char)
+    return any(lo <= code <= hi for lo, hi in _SUSPICIOUS_RANGES)
+
+
+def _has_word(text: str) -> bool:
+    """Whether the text holds a run of 2+ letters/digits (any script)."""
+    run = 0
+    for char in text:
+        run = run + 1 if char.isalnum() else 0
+        if run >= 2:
+            return True
+    return False
+
+
+def _drop_junk(lines):
+    """Remove icon/ornament hallucinations, keep real short text.
+
+    A wordless box the size of an icon is dropped when its score is less
+    than certain or every character is a suspicious symbol. Real one- or
+    two-letter labels (Latin, certain score) survive; so do multi-letter
+    lines in any script, including Japanese.
+    """
+    kept = []
+    for text, score, box in lines:
+        if _has_word(text):
+            kept.append((text, score, box))
+            continue
+        small = True
+        if box is not None:
+            x0, y0, x1, y1 = _bbox(box)
+            small = max(x1 - x0, y1 - y0) < 30
+        chars = [c for c in text.strip() if not c.isspace()]
+        if small and (score < 0.995
+                      or (chars and all(_suspicious(c)
+                                        or not c.isalnum() for c in chars))):
+            log.debug("OCR junk dropped (%0.2f): %r", score, text)
+            continue
+        kept.append((text, score, box))
+    return kept
+
+
+def _needs_second_pass(lines, height: int, width: int) -> bool:
+    """Whether a scaled re-read is worth its second."""
+    if not lines:
+        # Nothing at all, yet room for text: the pass may have missed all.
+        return height >= 40 and width >= 100
+    boxes = [bb for _t, _s, bb in lines if bb is not None]
+    if boxes:
+        heights = sorted(_bbox(bb)[3] - _bbox(bb)[1] for bb in boxes)
+        if heights[len(heights) // 2] < 14:
+            return True  # small glyphs: recognition earns more pixels
+    for text, score, _bb in lines:
+        if _has_word(text) and score < 0.9:
+            return True  # a shaky read worth a second opinion
+    return False
+
+
+def _recognize_multipass(engine, image):
+    """Run the engine, then a scaled pass when the first looks shaky.
+
+    The detector normalises its input size, so one pass is enough for
+    normal text; the second pass (up to 2x, capped by pixel budget) feeds
+    the recogniser more glyph pixels for small or shaky lines. Returns
+    merged, filtered [(text, score, box)] in reading order.
+    """
+    import math
+    import numpy as np
+    from PIL import Image
+    with _rapid_lock:
+        base = _run_engine(engine, image)
+    height, width = image.shape[:2]
+    if not _needs_second_pass(base, height, width):
+        return _drop_junk(base)
+    # Pixel budget, not long side: wide regions still earn their upscale.
+    scale = min(2.0, math.sqrt(6_000_000.0 / (height * width)))
+    if scale < 1.15:
+        return _drop_junk(base)
+    big = np.array(Image.fromarray(image).resize(
+        (round(width * scale), round(height * scale)), Image.LANCZOS))
+    with _rapid_lock:
+        extra = _run_engine(engine, big)
+    extra = [(t, s, b / scale if b is not None else None)
+             for t, s, b in extra]
+    log.info("OCR second pass (%.1fx): %d + %d lines", scale,
+             len(base), len(extra))
+    return _drop_junk(_merge_lines(base, extra))
+
+
 def _recognize_rapid(png_bytes: bytes) -> str:
     """PNG bytes -> recognised text, via the shared ONNX engine."""
     if cv2 is None:
@@ -89,10 +326,8 @@ def _recognize_rapid(png_bytes: bytes) -> str:
     image = cv2.imdecode(np.frombuffer(png_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
     if image is None:
         raise OcrUnavailable("the captured image could not be decoded")
-    with _rapid_lock:
-        result = engine(image)
-    lines = [str(t).strip() for t in (getattr(result, "txts", ()) or ()) if str(t).strip()]
-    return "\n".join(lines).strip()
+    lines = _recognize_multipass(engine, image)
+    return "\n".join(text for text, _score, _box in lines).strip()
 
 
 # --- Windows fallback (kept for machines without the ONNX stack) -----------
@@ -278,11 +513,8 @@ def _recognize_script(png_bytes: bytes, lang: str) -> str:
                          cv2.IMREAD_COLOR)
     if image is None:
         raise OcrUnavailable("the captured image could not be decoded")
-    with _rapid_lock:
-        result = engine(image)
-    lines = [str(t).strip() for t in (getattr(result, "txts", ()) or ())
-             if str(t).strip()]
-    return "\n".join(lines).strip()
+    lines = _recognize_multipass(engine, image)
+    return "\n".join(text for text, _score, _box in lines).strip()
 
 
 async def _recognize_all(png_bytes: bytes) -> str:
