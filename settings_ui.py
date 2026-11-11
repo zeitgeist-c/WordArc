@@ -2297,6 +2297,14 @@ class SettingsWindow(QDialog):
         body.addWidget(previews_row)
         layout.addWidget(interface)
 
+        selection, body = self._section_card(
+            "Text selection bar", "Show a small toolbar next to selected text.")
+        self.selection_bar_enabled = QCheckBox(t("Text selection bar"))
+        self.selection_bar_enabled.setToolTip(t(
+            "Off by default. Applies as soon as you save; no restart needed."))
+        body.addWidget(self.selection_bar_enabled)
+        layout.addWidget(selection)
+
         breaks, body = self._section_card(
             "Break reminder", "Take regular breaks from the screen.")
         self.break_enabled = QCheckBox(t("Remind me to stand up"))
@@ -3296,6 +3304,7 @@ class SettingsWindow(QDialog):
         self.screenshot_format = FitsOnScreenCombo()
         self.screenshot_format.addItem("PNG", "PNG")
         self.screenshot_format.addItem("JPEG", "JPEG")
+        self.screenshot_format.addItem("JPEG XL (.jxl)", "JXL")
         body.addWidget(self._label_row("Image format", self.screenshot_format))
         layout.addWidget(options)
         layout.addStretch(1)
@@ -3531,6 +3540,8 @@ class SettingsWindow(QDialog):
         self.history_limit.setValue(max(0, int(conf["history_limit"])))
 
         self.break_enabled.setChecked(bool(conf.get("break_enabled", False)))
+        self.selection_bar_enabled.setChecked(
+            bool(conf.get("selection_bar_enabled", False)))
         self.break_work.setValue(break_reminder.clamp_minutes(
             conf.get("break_work_minutes", 25),
             break_reminder.MIN_WORK_MINUTES, break_reminder.MAX_WORK_MINUTES, 25))
@@ -3672,6 +3683,7 @@ class SettingsWindow(QDialog):
         conf["history_enabled"] = self.history_enabled.isChecked()
         conf["history_limit"] = self.history_limit.value()
         conf["break_enabled"] = self.break_enabled.isChecked()
+        conf["selection_bar_enabled"] = self.selection_bar_enabled.isChecked()
         conf["break_work_minutes"] = self.break_work.value()
         conf["break_break_minutes"] = self.break_break.value()
         conf["break_corner"] = self.break_corner.currentData() or "bottom-right"

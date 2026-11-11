@@ -88,6 +88,26 @@ datas += _cv2_datas
 binaries += _cv2_binaries
 hiddenimports += _cv2_hidden
 
+# JPEG XL screenshots (pillow-jxl-plugin, requirements-lock): the JXL codec is
+# imported lazily, so plain analysis misses it. collect_all brings Pillow with
+# its native _imaging module; pillow_jxl's delvewheel DLL directory is not a
+# package, so the bundled libjxl runtime must ride along explicitly, next to
+# pillow_jxl exactly as it sits in site-packages.
+_pil_datas, _pil_binaries, _pil_hidden = collect_all('PIL')
+datas += _pil_datas
+binaries += _pil_binaries
+hiddenimports += _pil_hidden
+hiddenimports += ['pillow_jxl', 'pillow_jxl.JpegXLImagePlugin']
+# Text-selection toolbar (selection_bar.py): uiautomation is imported lazily,
+# so plain analysis misses it. Pure Python over the OS UIA API: no data files.
+hiddenimports += ['uiautomation']
+import pillow_jxl as _pillow_jxl_pkg
+_jxl_libs = (Path(_pillow_jxl_pkg.__file__).resolve().parent.parent
+             / 'pillow_jxl_plugin.libs')
+assert _jxl_libs.is_dir(), 'pillow-jxl-plugin DLL directory is missing'
+datas += [(str(_dll), 'pillow_jxl_plugin.libs')
+          for _dll in sorted(_jxl_libs.glob('*.dll'))]
+
 
 a = Analysis(
     ['wordarc.py'],

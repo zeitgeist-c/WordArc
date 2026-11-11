@@ -430,6 +430,7 @@ TR = {
     "Screenshots": "Ekran görüntüleri",
     "PNG image (*.png)": "PNG görüntüsü (*.png)",
     "JPEG image (*.jpg *.jpeg)": "JPEG görüntüsü (*.jpg *.jpeg)",
+    "JPEG XL image (*.jxl)": "JPEG XL görüntüsü (*.jxl)",
     "Screenshot options": "Ekran görüntüsü ayarları",
     "Capture": "Yakalama",
     "Capture screenshot": "Ekran görüntüsü al",
@@ -446,6 +447,19 @@ TR = {
     "Capture full screen": "Tüm ekranı yakala",
     "Select screenshot area": "Ekran görüntüsü alanını seçin",
     "Extract text (OCR)": "Metni ayıkla (OCR)",
+    "Translate to Turkish": "Türkçeye çevir",
+    "Text selection bar": "Metin seçim çubuğu",
+    "Show a small toolbar next to selected text.":
+        "Seçili metnin yanında küçük bir araç çubuğu gösterir.",
+    "Off by default. Applies as soon as you save; no restart needed.":
+        "Varsayılan olarak kapalı. Kaydedince hemen uygulanır; "
+        "yeniden başlatma gerekmez.",
+    "Explain": "Açıkla",
+    "Summarize": "Özetle",
+    "The selection is too long.": "Seçim çok uzun.",
+    "Screenshot translation": "Ekran görüntüsü çevirisi",
+    "Translation copied to the clipboard.":
+        "Çeviri panoya kopyalandı.",
     "Updates": "Güncellemeler",
     "Newer versions of WordArc.": "WordArc'ın yeni sürümleri.",
     "Check for updates": "Güncellemeleri denetle",

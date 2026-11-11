@@ -201,3 +201,188 @@ def extract_text(image, ui_language: str = "") -> str:
     except Exception as exc:
         log.warning("Windows OCR failed: %s", exc)
         raise OcrUnavailable("No OCR engine could read the image") from exc
+
+
+# Extra per-script engines for the translate flow only (arabic/cyrillic
+# PP-OCRv5 rec models). They are built lazily and cached. The model files
+# must already sit next to RapidOCR's bundled ones: this flow never downloads
+# at runtime, so a machine without them only skips that script.
+_SCRIPT_LANGS = ("arabic", "cyrillic")
+_script_engines: dict = {}
+
+
+def _script_model_ready(lang: str) -> bool:
+    """Whether the extra rec model for one script is already on disk."""
+    try:
+        import rapidocr
+        from pathlib import Path
+        models = Path(rapidocr.__file__).resolve().parent / "models"
+        return (models / f"{lang}_PP-OCRv5_rec_mobile.onnx").is_file()
+    except Exception:
+        return False
+
+
+def _has_nonlatin(text: str) -> bool:
+    """Whether the text holds a non-Latin script (Cyrillic, Arabic, CJK…)."""
+    for char in text:
+        code = ord(char)
+        if (0x0400 <= code <= 0x052F  # Cyrillic
+                or 0x0600 <= code <= 0x06FF  # Arabic
+                or 0x0750 <= code <= 0x077F  # Arabic Supplement
+                or 0x08A0 <= code <= 0x08FF  # Arabic Extended-B
+                or 0xFB50 <= code <= 0xFDFF  # Arabic Presentation-A
+                or 0xFE70 <= code <= 0xFEFF  # Arabic Presentation-B
+                or 0x3040 <= code <= 0x30FF  # Hiragana + Katakana
+                or 0x31F0 <= code <= 0x31FF  # Katakana Phonetic Ext.
+                or 0x3400 <= code <= 0x4DBF  # CJK Extension A
+                or 0x4E00 <= code <= 0x9FFF  # CJK Unified
+                or 0xAC00 <= code <= 0xD7AF):  # Hangul Syllables
+            return True
+    return False
+
+
+def _get_script_engine(lang):
+    """Build (once) the RapidOCR engine for one extra script."""
+    engine = _script_engines.get(lang)
+    if engine is not None:
+        return engine
+    if not _script_model_ready(lang):
+        raise OcrUnavailable(
+            f"the {lang} OCR model is not installed; skipping that script")
+    if cv2 is None:
+        raise OcrUnavailable("OpenCV is not installed")
+    try:
+        from rapidocr import RapidOCR
+        from rapidocr.utils.typings import ModelType, OCRVersion
+        engine = RapidOCR(params={"Global.log_level": "warning",
+                                  "Rec.ocr_version": OCRVersion.PPOCRV5,
+                                  "Rec.lang_type": lang,
+                                  "Rec.model_type": ModelType.MOBILE})
+    except Exception as exc:
+        raise OcrUnavailable(
+            f"the {lang} OCR engine is not available") from exc
+    _script_engines[lang] = engine
+    return engine
+
+
+def _recognize_script(png_bytes: bytes, lang: str) -> str:
+    """PNG bytes -> recognised text with one extra per-script engine."""
+    if cv2 is None:
+        raise OcrUnavailable("OpenCV is not installed")
+    try:
+        import numpy as np
+    except ImportError as exc:
+        raise OcrUnavailable("numpy is not installed") from exc
+    engine = _get_script_engine(lang)
+    image = cv2.imdecode(np.frombuffer(png_bytes, dtype=np.uint8),
+                         cv2.IMREAD_COLOR)
+    if image is None:
+        raise OcrUnavailable("the captured image could not be decoded")
+    with _rapid_lock:
+        result = engine(image)
+    lines = [str(t).strip() for t in (getattr(result, "txts", ()) or ())
+             if str(t).strip()]
+    return "\n".join(lines).strip()
+
+
+async def _recognize_all(png_bytes: bytes) -> str:
+    """Recognise with every installed Windows language pack; keep the best.
+
+    The screenshot-translate flow must not assume the source language matches
+    the UI language, so each recogniser reads the same bitmap and the longest
+    non-empty result wins. An empty string means no pack could read anything.
+    """
+    BitmapDecoder, OcrEngine, InMemoryRandomAccessStream = _imports()
+    available = list(OcrEngine.available_recognizer_languages)
+    if not available:
+        raise OcrUnavailable("No Windows OCR language pack is installed")
+    stream = InMemoryRandomAccessStream()
+    await stream.write_async(png_bytes)
+    stream.seek(0)
+    decoder = await BitmapDecoder.create_async(stream)
+    bitmap = await decoder.get_software_bitmap_async()
+    best = ""
+    for language in available:
+        try:
+            engine = OcrEngine.try_create_from_language(language)
+            if engine is None:
+                continue
+            result = await engine.recognize_async(bitmap)
+        except Exception as exc:
+            log.warning("Windows OCR (%s) failed: %s",
+                        getattr(language, "language_tag", "?"), exc)
+            continue
+        text = "\n".join(line.text for line in result.lines).strip()
+        if len(text) > len(best):
+            best = text
+    return best
+
+
+def extract_text_for_translate(image) -> str:
+    """QImage -> recognised text for the screenshot-translate flow.
+
+    Unlike extract_text this never consults the UI language: RapidOCR's
+    multilingual model reads first, then every installed Windows recogniser
+    gets a turn, plus the extra Arabic/Cyrillic engines when their models
+    are on disk. A candidate holding a non-Latin script wins over longer
+    Latin look-alikes (a wrong-script recogniser's guesswork); otherwise the
+    longest result wins. '' means nothing was readable.
+    """
+    from PyQt6.QtCore import QBuffer, QIODevice
+    from PyQt6.QtGui import QImage
+
+    if image.format() != QImage.Format.Format_RGBA8888:
+        image = image.convertToFormat(QImage.Format.Format_RGBA8888)
+    buffer = QBuffer()
+    buffer.open(QIODevice.OpenModeFlag.ReadWrite)
+    if not image.save(buffer, "PNG"):
+        raise OcrUnavailable("the captured image could not be encoded")
+    png_bytes = bytes(buffer.data())
+    buffer.close()
+    rapid_available = _rapid_ready()
+    candidates: list[str] = []
+    rapid_ok = False
+    if rapid_available:
+        try:
+            text = _recognize_rapid(png_bytes)
+            rapid_ok = True
+            if text.strip():
+                candidates.append(text)
+        except OcrUnavailable:
+            rapid_ok = False
+        except Exception as exc:
+            rapid_ok = True  # the engine exists; this image glitched it
+            log.warning("RapidOCR failed, falling back to Windows OCR: %s",
+                        exc)
+    windows_error = None
+    try:
+        text = asyncio.run(_recognize_all(png_bytes))
+        if text.strip():
+            candidates.append(text)
+    except OcrUnavailable as exc:
+        windows_error = exc
+    except Exception as exc:
+        log.warning("Windows OCR failed: %s", exc)
+    for lang in _SCRIPT_LANGS:
+        try:
+            text = _recognize_script(png_bytes, lang)
+        except OcrUnavailable as exc:
+            log.info("script OCR (%s) unavailable: %s", lang, exc)
+            continue
+        except Exception as exc:
+            log.warning("script OCR (%s) failed: %s", lang, exc)
+            continue
+        if text.strip():
+            candidates.append(text)
+    if candidates:
+        # A real non-Latin script beats a longer Latin guess; otherwise the
+        # longest candidate (usually the most complete read) wins.
+        return max(candidates, key=lambda s: (_has_nonlatin(s), len(s)))
+    if windows_error is not None and not rapid_ok:
+        import asset_cache
+        if not asset_cache.bundle_intact():
+            raise OcrUnavailable(
+                "WordArc's own files were deleted while it was running "
+                "(temp cleaner); restart WordArc and try again") from None
+        raise windows_error
+    return ""

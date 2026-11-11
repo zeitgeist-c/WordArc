@@ -12,15 +12,19 @@ import logging
 import threading
 from pathlib import Path
 
-from PyQt6.QtCore import QPoint, QRect, QSize, QStandardPaths, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import (QBuffer, QIODevice, QPoint, QRect, QSize,
+                           QStandardPaths, Qt, QTimer, pyqtSignal)
 from PyQt6.QtGui import (QColor, QCursor, QFont, QGuiApplication, QIcon, QImage,
                          QPainter, QPen, QPixmap, QScreen)
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (QButtonGroup, QColorDialog, QDialog,
-                             QFileDialog, QFrame, QHBoxLayout, QToolButton, QSpinBox,
+                             QFileDialog, QFrame, QHBoxLayout,
+                             QPushButton, QTextEdit, QToolButton, QSpinBox,
                              QVBoxLayout, QWidget)
 
+import api
 import ocr
+from config import SCREENSHOT_TRANSLATE_PROMPT
 from i18n import t
 from screenshot_editor import (DEFAULT_COLOR, DEFAULT_WIDTH, LINE_TOOLS,
                                REGION_TOOLS, STEP_RADIUS, TOOLS,
@@ -46,6 +50,7 @@ def _tool_icon(name, color="#e9edf5"):
         "copy": '<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15 8V3H3v13h5"/>',
         "ocr": '<path d="M4 7V4h16v3M4 17v3h16v-3M8 9h9M8 13h6"/>',
         "speak": '<path d="M4 9v6h4l5 4V5L8 9H4zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/>',
+        "translate": '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3.2 3.6 3.2 13.4 0 17M12 3.5c-3.2 3.6-3.2 13.4 0 17"/>',
         "save": '<path d="M4 3h13l4 4v14H3V3zM7 3v6h10V3M7 21v-8h10v8"/>',
         "cancel": '<path d="m6 6 12 12M18 6 6 18"/>',
         "color": f'<circle cx="12" cy="12" r="8" fill="{color}" stroke="#ffffff"/>',
@@ -102,6 +107,7 @@ class RegionOverlay(QWidget):
     save_requested = pyqtSignal(QImage)
     ocr_requested = pyqtSignal(QImage)
     speak_requested = pyqtSignal(QImage)
+    translate_requested = pyqtSignal(QImage)
     cancelled = pyqtSignal()
     activated = pyqtSignal()
 
@@ -190,10 +196,12 @@ class RegionOverlay(QWidget):
             QToolButton:disabled { background: transparent; border-color: transparent; }
             QToolButton#screenshotOverlayCopy,
             QToolButton#screenshotOverlayOcr,
-            QToolButton#screenshotOverlaySpeak { background: #665096; }
+            QToolButton#screenshotOverlaySpeak,
+            QToolButton#screenshotOverlayTranslate { background: #665096; }
             QToolButton#screenshotOverlayCopy:hover,
             QToolButton#screenshotOverlayOcr:hover,
-            QToolButton#screenshotOverlaySpeak:hover { background: #8064b8; }
+            QToolButton#screenshotOverlaySpeak:hover,
+            QToolButton#screenshotOverlayTranslate:hover { background: #8064b8; }
             QToolButton#screenshotOverlayCancel:hover { background: #823d4c; }
             QSpinBox {
                 background: #2d3341; color: #e9edf5; border: 1px solid #444b5c;
@@ -284,6 +292,14 @@ class RegionOverlay(QWidget):
         # Reading needs the same OCR engine, so it shares its visibility.
         self.speak_button.setVisible(ocr.is_available())
         options.addWidget(self.speak_button)
+        self.translate_button = self._toolbar_button("translate",
+                                                     "Translate to Turkish")
+        self.translate_button.setObjectName("screenshotOverlayTranslate")
+        self.translate_button.clicked.connect(self._quick_translate)
+        # Translation starts from the same OCR engine, so it shares its
+        # visibility. The API key is checked when the worker runs, not here.
+        self.translate_button.setVisible(ocr.is_available())
+        options.addWidget(self.translate_button)
         self.save_button = self._toolbar_button("save", "Save", "Ctrl+S")
         self.save_button.setObjectName("screenshotOverlaySave")
         self.save_button.clicked.connect(self._quick_save)
@@ -386,6 +402,12 @@ class RegionOverlay(QWidget):
         if image is None:
             return
         self.speak_requested.emit(image)
+
+    def _quick_translate(self):
+        image = self._export_image()
+        if image is None:
+            return
+        self.translate_requested.emit(image)
 
     def _undo(self):
         if self.model.undo():
@@ -875,33 +897,79 @@ class RegionOverlay(QWidget):
         super().keyPressEvent(event)
 
 
+def _write_jxl(image, target) -> None:
+    """QImage -> lossless .jxl with its alpha channel intact.
+
+    Qt cannot write JPEG XL itself, so the image travels through an in-memory
+    lossless PNG into Pillow (pillow-jxl-plugin). Raises OSError when the
+    codec is missing or the write fails; the caller turns that into the same
+    "could not write" message the other formats show.
+    """
+    try:
+        import pillow_jxl  # noqa: F401  (registers JXL; DLLs ride with it)
+        from io import BytesIO
+        from PIL import Image as PilImage
+        buffer = QBuffer()
+        buffer.open(QIODevice.OpenModeFlag.ReadWrite)
+        try:
+            if not image.save(buffer, "PNG"):
+                raise OSError(t("Could not write the image file."))
+            shot = PilImage.open(BytesIO(bytes(buffer.data())))
+            shot.save(str(target), lossless=True)
+        finally:
+            buffer.close()
+    except OSError:
+        raise
+    except Exception as exc:
+        raise OSError(t("Could not write the image file.")) from exc
+
+
 def save_image_to_file(image, conf, parent=None):
     """Ask for a path and write the image; returns (folder, format, name)."""
     image_format = conf.get("screenshot_format", "PNG") or "PNG"
-    suffix = image_format.lower()
+    if image_format not in ("PNG", "JPEG", "JXL"):
+        image_format = "PNG"
+    suffix = {"PNG": "png", "JPEG": "jpg", "JXL": "jxl"}[image_format]
     configured = conf.get("screenshot_directory", "")
     folder = (Path(configured).expanduser() if configured else
               default_save_folder())
     stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     name = f"WordArc_{stamp}.{suffix}"
-    initial_filter = (t("JPEG image (*.jpg *.jpeg)") if image_format == "JPEG"
-                      else t("PNG image (*.png)"))
+    suggested = folder / name
+    filters = (t("PNG image (*.png);;JPEG image (*.jpg *.jpeg)") + ";;"
+               + t("JPEG XL image (*.jxl)"))
+    initial_filter = {"JPEG": t("JPEG image (*.jpg *.jpeg)"),
+                      "JXL": t("JPEG XL image (*.jxl)")}.get(
+                          image_format, t("PNG image (*.png)"))
     path, _selected_filter = QFileDialog.getSaveFileName(
-        parent, t("Save screenshot"), str(folder / name),
-        t("PNG image (*.png);;JPEG image (*.jpg *.jpeg)"), initial_filter)
+        parent, t("Save screenshot"), str(suggested),
+        filters, initial_filter)
     if not path:
         return None
     target = Path(path)
-    selected_format = ("JPEG" if _selected_filter.startswith("JPEG")
-                       else "PNG")
-    if target.suffix.lower() in (".jpg", ".jpeg"):
-        selected_format = "JPEG"
-    elif target.suffix.lower() == ".png":
-        selected_format = "PNG"
+    # The filter strings are translated, but their (*.ext) globs never are.
+    if "*.jxl" in _selected_filter:
+        filter_format = "JXL"
+    elif "*.jpg" in _selected_filter or "*.jpeg" in _selected_filter:
+        filter_format = "JPEG"
     else:
-        target = target.with_suffix(
-            ".jpg" if selected_format == "JPEG" else ".png")
+        filter_format = "PNG"
+    suffix_format = {".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG",
+                     ".jxl": "JXL"}.get(target.suffix.lower())
+    if target.name != suggested.name and suffix_format is not None:
+        # The user typed their own file name: its extension decides.
+        selected_format = suffix_format
+    else:
+        # The suggested name is untouched (or has no known extension): the
+        # picked filter decides, and the suffix follows it.
+        selected_format = filter_format
+        if suffix_format != filter_format:
+            target = target.with_suffix(
+                {"JPEG": ".jpg", "PNG": ".png", "JXL": ".jxl"}[filter_format])
     target.parent.mkdir(parents=True, exist_ok=True)
+    if selected_format == "JXL":
+        _write_jxl(image, target)
+        return str(target.parent), selected_format, target.name
     if selected_format == "JPEG" and image.hasAlphaChannel():
         opaque = QImage(image.size(), QImage.Format.Format_RGB32)
         opaque.fill(Qt.GlobalColor.white)
@@ -915,6 +983,41 @@ def save_image_to_file(image, conf, parent=None):
     return str(target.parent), selected_format, target.name
 
 
+class TranslationResultDialog(QDialog):
+    """Small readable window for a screenshot translation.
+
+    The clipboard is written only when the user presses Copy: showing the
+    window never touches it.
+    """
+
+    def __init__(self, text, parent=None):
+        super().__init__(parent)
+        self._text = str(text or "")
+        self.setWindowTitle(t("Screenshot translation"))
+        self.setMinimumSize(380, 220)
+        layout = QVBoxLayout(self)
+        view = QTextEdit(self)
+        view.setReadOnly(True)
+        view.setPlainText(self._text)
+        view.setAccessibleName(t("Screenshot translation"))
+        layout.addWidget(view)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        self.copy_button = QPushButton(t("Copy"), self)
+        self.copy_button.setDefault(True)
+        self.copy_button.clicked.connect(self._copy)
+        row.addWidget(self.copy_button)
+        close_button = QPushButton(t("Close"), self)
+        close_button.clicked.connect(self.reject)
+        row.addWidget(close_button)
+        layout.addLayout(row)
+
+    def _copy(self):
+        from PyQt6.QtWidgets import QApplication
+        QApplication.clipboard().setText(self._text)
+        self.accept()
+
+
 class ScreenshotController(QWidget):
     """Owns the capture overlay for WordArc's global hotkey and tab."""
 
@@ -922,6 +1025,7 @@ class ScreenshotController(QWidget):
     preferences_saved = pyqtSignal(str, str)
     ocr_done = pyqtSignal(str)
     speak_done = pyqtSignal(str)
+    translate_done = pyqtSignal(str)
 
     def __init__(self, conf, parent=None):
         super().__init__(None)
@@ -1037,6 +1141,7 @@ class ScreenshotController(QWidget):
                 overlay.save_requested.connect(self._on_overlay_save)
                 overlay.ocr_requested.connect(self._on_overlay_ocr)
                 overlay.speak_requested.connect(self._on_overlay_speak)
+                overlay.translate_requested.connect(self._on_overlay_translate)
                 overlay.cancelled.connect(self._cancel_overlay)
                 if screen is self._screen or self._overlay is None:
                     self._overlay = overlay
@@ -1118,6 +1223,49 @@ class ScreenshotController(QWidget):
         # hidden; reading runs from the tray, stopped from its menu.
         self._speak_next = True
         self._on_overlay_ocr(image, restore_owner=False)
+
+    def _on_overlay_translate(self, image):
+        # Recognition and translation run on a worker thread; the frozen
+        # desktop must stay responsive meanwhile. The overlay closes right
+        # away — the translation arrives in a small result window. The capture
+        # itself never leaves the machine: only the recognised text goes to
+        # Gemini, never the image.
+        if self._ocr_thread is not None and self._ocr_thread.is_alive():
+            return
+        self._close_overlay()
+        self._restore_owner()
+
+        def work():
+            try:
+                text = ocr.extract_text_for_translate(image)
+            except ocr.OcrUnavailable as exc:
+                self.failed.emit(str(exc))
+                return
+            if not text.strip():
+                # Nothing readable: report it the same way OCR does, and never
+                # call Gemini on an empty source.
+                self.translate_done.emit("")
+                return
+            keys = (self.conf.gemini_keys()
+                    if hasattr(self.conf, "gemini_keys") else [])
+            model = str(self.conf.get("gemini_translate_model", "")
+                        or "gemini-3.5-flash-lite")
+            try:
+                client = api.GeminiClient(keys)
+                translated = client.translate(text, model,
+                                              SCREENSHOT_TRANSLATE_PROMPT)
+            except api.ApiError as exc:
+                self.failed.emit(str(exc))
+                return
+            except Exception as exc:  # noqa: BLE001 - surfaced, not hidden
+                logging.getLogger("wordarc.screenshot").warning(
+                    "screenshot translation failed: %s", exc)
+                self.failed.emit(str(exc))
+                return
+            self.translate_done.emit(translated)
+
+        self._ocr_thread = threading.Thread(target=work, daemon=True)
+        self._ocr_thread.start()
 
     def _on_overlay_save(self, image):
         # Parent the native file dialog to the topmost editor. Otherwise it
