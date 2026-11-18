@@ -63,6 +63,7 @@ Varsayılan sekme, tek düğme etrafında kurulu.
 - **Kısayol** alanı — global kısayol, değiştirilebilir.
 - **Transkripti bir modelle temizle** — açıkken ham metin yapıştırılmadan önce temizleme isteminden geçer.
 - **Metni odaktaki pencereye yapıştır** — kapalıyken sonuç WordArc'ta kalır, elle kopyalarsın.
+- **Dikte sırasında arka plan sesini kıs** — açıkken kayıt boyunca hoparlör/kulaklık sesi düşer (ayarlanabilir azaltma, varsayılan %80) ve kayıt biter bitmez geri gelir. Çalma devam eder. Toplantı kaydı sürerken devreye girmez.
 
 **Sağ panel — sonuç**
 - `Gelişmiş` — model, istem dili, çalıştırma bazlı geçersiz kılmalar.

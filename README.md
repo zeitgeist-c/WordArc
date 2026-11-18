@@ -63,6 +63,7 @@ The default tab, built around one button.
 - **Hotkey** field — the global shortcut, editable.
 - **Clean the transcript with a model** — when on, the raw transcript goes through the cleanup prompt before it is pasted.
 - **Paste the text into the focused window** — when off, the result stays in WordArc for you to copy manually.
+- **Lower background audio while dictating** — when on, the speaker/headphone volume drops while you record (adjustable reduction, 80% by default) and returns as soon as recording ends. Playback keeps playing. It stays off while a meeting records.
 
 **Right panel — result**
 - `Advanced` — model, prompt language, per-run overrides.
