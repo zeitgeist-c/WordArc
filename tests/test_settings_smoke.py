@@ -545,6 +545,37 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertEqual(window.save_banner.label.text(), t("Settings saved"))
         applied.assert_called_once_with()
 
+    def test_save_after_deferred_deletions_still_confirms(self):
+        """The layout rebuild parks replaced cards with deleteLater; once the
+        event loop runs, a save must still reach every widget it reads."""
+        window = self.window
+        self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.app.processEvents()
+        applied = mock.Mock()
+        window.applied.connect(applied)
+        with mock.patch.object(settings_ui.startup, "set_enabled"), \
+             mock.patch.object(settings_ui.sounds, "play") as chime, \
+             mock.patch.object(settings_ui, "info_box") as box:
+            self.assertTrue(window._save())
+        box.assert_not_called()
+        chime.assert_called_once_with(settings_ui.sounds.SAVED)
+        self.assertEqual(window.save_banner.label.text(), t("Settings saved"))
+        applied.assert_called_once_with()
+
+    def test_no_live_widget_reference_is_deleted(self):
+        """Every widget the window keeps on self.* must survive the layout
+        rebuild; a dangling reference crashes the next save silently."""
+        from PyQt6 import sip
+        from PyQt6.QtWidgets import QWidget
+
+        window = self.window
+        self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.app.processEvents()
+        dead = sorted(
+            name for name, value in vars(window).items()
+            if isinstance(value, QWidget) and sip.isdeleted(value))
+        self.assertEqual(dead, [])
+
     def test_changing_language_in_settings_marks_it_explicit(self):
         import i18n
         window = self.window

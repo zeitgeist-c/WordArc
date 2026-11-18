@@ -1463,6 +1463,7 @@ class SettingsWindow(QDialog):
                 ("Microphone", self._row(self.mic, self.refresh_audio_devices)),
                 ("Speech language", self.language), ("Shortcut", self.shortcut),
                 self.shortcut_status, self.cleanup_enabled,
+                self.duck_background, ("Reduction", self.duck_reduction),
             ])
             left = self._column([self._record_controls(kind), controls])
             recording = card("Recording", [
