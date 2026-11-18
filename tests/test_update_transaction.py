@@ -174,6 +174,20 @@ def test_restart_environment_is_independent(monkeypatch):
     assert env["PYINSTALLER_RESET_ENVIRONMENT"] == "1"
 
 
+def test_startup_ack_is_published_after_the_full_json_is_written(transaction, tmp_path, monkeypatch):
+    folder, job = transaction
+    replace = protocol.os.replace
+
+    def check_before_publish(source, target):
+        assert not target.exists()
+        assert json.loads(source.read_text(encoding="utf-8"))["version"] == "9.9.9"
+        replace(source, target)
+
+    monkeypatch.setattr(protocol.os, "replace", check_before_publish)
+    assert protocol.confirm_startup(folder / "job.json", "9.9.9", job["new_exe"], tmp_path)
+    assert (folder / "started.json").is_file()
+
+
 def test_startup_ack_is_restricted_to_transaction_storage(transaction, tmp_path):
     folder, job = transaction
     assert protocol.confirm_startup(folder / "job.json", "9.9.9", job["new_exe"], tmp_path)

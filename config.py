@@ -515,6 +515,8 @@ DEFAULTS = {
     "restore_clipboard": False,
     "mic_target": "",
     "max_seconds": 300,
+    "duck_background_audio": True,   # lower speaker/headphone volume while dictating
+    "duck_reduction_percent": 80,    # how much the output level drops (5-95)
     "skip_silent": True,
     "silence_db": -55.0,          # absolute floor; below this it is never speech
     "speech_margin_db": 10.0,     # how far speech must rise above the noise floor
@@ -740,6 +742,11 @@ class Config:
             self.data["theme_mode"] = "dark"
         if self.data.get("local_stt_device") not in ("auto", "cuda", "vulkan", "cpu"):
             self.data["local_stt_device"] = "auto"
+        try:
+            reduction = int(self.data.get("duck_reduction_percent", 80))
+        except (TypeError, ValueError):
+            reduction = 80
+        self.data["duck_reduction_percent"] = min(95, max(5, reduction))
         size = self.data.get("settings_size")
         if (not isinstance(size, list) or len(size) != 2
                 or not all(isinstance(v, int) and v > 0 for v in size)):

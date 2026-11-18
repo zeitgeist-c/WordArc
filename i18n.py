@@ -1196,6 +1196,9 @@ _BR_DE = {
     "until the break": "bis zur Pause",
     "break — walk a little": "Pause – geh ein wenig umher",
     "paused": "angehalten",
+    "Lower background audio while dictating": "Hintergrundaudio während des Diktierens leiser stellen",
+    "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Senkt die Lautsprecher-/Kopfhörerlautstärke während der Aufnahme und stellt sie danach wieder her. Die Wiedergabe läuft weiter.",
+    "Reduction": "Absenkung",
 }
 
 _BR_ES = {
@@ -1230,6 +1233,9 @@ _BR_ES = {
     "until the break": "para la pausa",
     "break — walk a little": "pausa — camina un poco",
     "paused": "en pausa",
+    "Lower background audio while dictating": "Bajar el audio de fondo al dictar",
+    "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Baja el volumen del altavoz/auriculares durante la grabación y luego lo restaura. La reproducción continúa.",
+    "Reduction": "Reducción",
 }
 
 _BR_FR = {
@@ -1264,6 +1270,9 @@ _BR_FR = {
     "until the break": "avant la pause",
     "break — walk a little": "pause — marchez un peu",
     "paused": "en pause",
+    "Lower background audio while dictating": "Réduire l'audio de fond pendant la dictée",
+    "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Réduit le volume du haut-parleur/casque pendant l'enregistrement, puis le restaure. La lecture continue.",
+    "Reduction": "Réduction",
 }
 
 _BR_IT = {
@@ -1298,6 +1307,9 @@ _BR_IT = {
     "until the break": "alla pausa",
     "break — walk a little": "pausa — cammina un po'",
     "paused": "in pausa",
+    "Lower background audio while dictating": "Abbassa l'audio di sottofondo durante la dettatura",
+    "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Abbassa il volume di altoparlanti/cuffie durante la registrazione, poi lo ripristina. La riproduzione continua.",
+    "Reduction": "Riduzione",
 }
 
 _BR_PB = {
@@ -1332,6 +1344,9 @@ _BR_PB = {
     "until the break": "para a pausa",
     "break — walk a little": "pausa — caminhe um pouco",
     "paused": "pausado",
+    "Lower background audio while dictating": "Abaixar o áudio de fundo durante o ditado",
+    "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Abaixa o volume do alto-falante/fone durante a gravação e depois o restaura. A reprodução continua.",
+    "Reduction": "Redução",
 }
 
 _BR_NL = {
@@ -1366,6 +1381,9 @@ _BR_NL = {
     "until the break": "tot de pauze",
     "break — walk a little": "pauze — loop een stukje",
     "paused": "gepauzeerd",
+    "Lower background audio while dictating": "Achtergrondgeluid zachter zetten tijdens het dicteren",
+    "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Verlaagt het luidspreker-/hoofdtelefoonvolume tijdens de opname en herstelt het daarna. Het afspelen gaat door.",
+    "Reduction": "Reductie",
 }
 
 # Pending rollout translation: English source kept, UI falls back to English.
@@ -1401,6 +1419,9 @@ _BR_PENDING = {
     "until the break": "until the break",
     "break — walk a little": "break — walk a little",
     "paused": "paused",
+    "Lower background audio while dictating": "Lower background audio while dictating",
+    "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.",
+    "Reduction": "Reduction",
 }
 
 # Per-language tables. English is the source language: no table needed,
@@ -1452,6 +1473,10 @@ TR.update({
     "break — walk a little": "mola — biraz yürü",
     "paused": "duraklatıldı",
     "Could not read the saved API keys, so nothing was saved. Reopen Settings and try again.": "Kayıtlı API anahtarları okunamadı, hiçbir şey kaydedilmedi. Ayarlar'ı yeniden açıp tekrar deneyin.",
+    # Dictation background ducking.
+    "Lower background audio while dictating": "Dikte sırasında arka plan sesini kıs",
+    "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Kayıt sırasında hoparlör/kulaklık sesini kısar, sonra geri yükler. Çalma devam eder.",
+    "Reduction": "Azaltma",
 })
 
 

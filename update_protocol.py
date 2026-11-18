@@ -93,8 +93,10 @@ def confirm_startup(job_path, current_version, current_exe, data_dir):
         if job["version"] != current_version or Path(job["new_exe"]).resolve() != Path(current_exe).resolve():
             return False
         report = path.parent / "started.json"
-        report.write_text(json.dumps(dict(version=current_version, pid=os.getpid(),
-                                           exe=str(Path(current_exe).resolve()))), encoding="utf-8")
+        temporary = report.with_suffix(".tmp")
+        temporary.write_text(json.dumps(dict(version=current_version, pid=os.getpid(),
+                                              exe=str(Path(current_exe).resolve()))), encoding="utf-8")
+        os.replace(temporary, report)
         return True
     except (OSError, ValueError, KeyError):
         return False

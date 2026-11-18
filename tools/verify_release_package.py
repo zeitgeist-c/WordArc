@@ -1,7 +1,7 @@
 """Verify the setup delivery and the frozen app inside it.
 
 Layout since the Inno Setup migration:
-  dist/WordArc-X.Y.Z.exe  -- the Inno installer (the only release asset)
+  release/WordArc-X.Y.Z.exe  -- the Inno installer (the only release asset)
   dist/inner/WordArc.exe  -- the frozen app, fixed name, packed by Inno
 
 The current setup is the only release asset. Older packages may remain in dist/.
@@ -40,7 +40,7 @@ def normalized(code):
 
 def main():
     root = Path(__file__).resolve().parents[1]
-    setup = root / "dist" / f"{BRAND.name}-{BRAND.version}.exe"
+    setup = root / "release" / f"{BRAND.name}-{BRAND.version}.exe"
     inner = root / "dist" / "inner" / "WordArc.exe"
     assert setup.is_file(), "missing setup delivery"
     assert inner.is_file(), "missing inner frozen app"
