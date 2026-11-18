@@ -148,7 +148,7 @@ def main():
     assert "assets/vulkan/runtime.json" in toc_slashes, "missing pinned Vulkan repair asset"
     pins = json.loads(reader.extract(next(name for name in reader.toc
                       if name.replace('\\', '/') == 'assets/vulkan/runtime.json')))
-    repair = root / 'dist' / pins['file']
+    repair = root / 'release' / pins['file']
     assert repair.stat().st_size == pins['size'], 'wrong Vulkan repair asset size'
     with repair.open('rb') as stream:
         assert hashlib.file_digest(stream, 'sha256').hexdigest() == pins['sha256'], 'wrong Vulkan repair asset hash'
