@@ -2179,6 +2179,17 @@ class SettingsWindow(QDialog):
         for label, code in LANGUAGES:
             self.language.addItem(t(label), code)
         body.addWidget(self._label_row("Speech language", self.language))
+        self.duck_background = QCheckBox(
+            t("Lower background audio while dictating"))
+        self.duck_background.setToolTip(t(
+            "Lowers the speaker/headphone volume while recording, then "
+            "restores it. Playback keeps playing."))
+        body.addWidget(self.duck_background)
+        self.duck_reduction = QSpinBox()
+        self.duck_reduction.setRange(5, 95)
+        self.duck_reduction.setSuffix(" %")
+        self.duck_background.toggled.connect(self.duck_reduction.setEnabled)
+        body.addWidget(self._label_row("Reduction", self.duck_reduction))
         layout.addWidget(sound)
 
         output, body = self._section_card(
@@ -3443,6 +3454,14 @@ class SettingsWindow(QDialog):
         self._refresh_header_lang()
         self._select_data(self.mic, conf["mic_target"])
         self._select_data(self.language, conf["language"])
+        self.duck_background.setChecked(
+            bool(conf.get("duck_background_audio", True)))
+        try:
+            reduction = int(conf.get("duck_reduction_percent", 80))
+        except (TypeError, ValueError):
+            reduction = 80
+        self.duck_reduction.setValue(min(95, max(5, reduction)))
+        self.duck_reduction.setEnabled(self.duck_background.isChecked())
         self.auto_paste.setChecked(conf["auto_paste"])
         self.paste_shortcut.setCurrentText(conf["paste_shortcut"])
         self.restore_clipboard.setChecked(conf["restore_clipboard"])
@@ -3604,6 +3623,8 @@ class SettingsWindow(QDialog):
         conf["ui_language"] = new_ui_language
         conf["mic_target"] = self.mic.currentData() or ""
         conf["language"] = self.language.currentData() or "auto"
+        conf["duck_background_audio"] = self.duck_background.isChecked()
+        conf["duck_reduction_percent"] = self.duck_reduction.value()
         conf["auto_paste"] = self.auto_paste.isChecked()
         conf["paste_shortcut"] = (self.paste_shortcut.currentText().strip()
                                       or "ctrl+v")

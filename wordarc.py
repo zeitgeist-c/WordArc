@@ -45,6 +45,7 @@ from PyQt6.QtWidgets import (QApplication, QMenu, QSplashScreen,
                              QSystemTrayIcon)  # noqa: E402
 
 import audio  # noqa: E402
+import audio_duck  # noqa: E402
 import break_reminder  # noqa: E402
 import config as cfg  # noqa: E402
 import diagnostics  # noqa: E402
@@ -287,6 +288,7 @@ class WordArc:
         self.recorder = audio.Recorder()
         self.pipeline = Pipeline(self.conf)
         self.meeting_recorder = audio.MeetingRecorder()
+        self._ducker = audio_duck.AudioDucker()
         self.meetings = MeetingPipeline(self.conf)
         self.evdev = hotkey.EvdevHotkey()
         self.cancel_hotkey = hotkey.EvdevHotkey()
@@ -779,6 +781,7 @@ class WordArc:
                 self.dictation_operation.transition(operation.State.FAILED)
                 self.dictation_operation.transition(operation.State.IDLE)
             return
+        self._duck_start()
         self._set_state(RECORDING)
 
     def _live_engine(self):
@@ -814,6 +817,7 @@ class WordArc:
                                  self.conf["max_seconds"])
         if not self.live_streamer.active:
             return  # start() has already said what went wrong
+        self._duck_start()
         self.live_timer.start(200)
 
     def _on_live_open_failed(self, message):
@@ -842,6 +846,41 @@ class WordArc:
         if session.limit_hit.is_set():
             self.stop()
 
+    def _duck_start(self):
+        """Lower background audio for dictation; never raises or blocks it.
+
+        Only the dictation paths below call this. While a meeting records,
+        ducking stays off: the meeting captures system audio and must hear
+        it at full level.
+        """
+        ducker = getattr(self, "_ducker", None)
+        if ducker is None:
+            return
+        if getattr(self, "meeting_state", M_IDLE) == M_RECORDING:
+            return
+        try:
+            enabled = self.conf.get("duck_background_audio", True)
+        except Exception:  # noqa: BLE001 - a config hiccup must not block dictation
+            enabled = True
+        if not enabled:
+            return
+        try:
+            reduction = self.conf.get("duck_reduction_percent",
+                                      audio_duck.DEFAULT_REDUCTION)
+        except Exception:  # noqa: BLE001 - same as above
+            reduction = audio_duck.DEFAULT_REDUCTION
+        ducker.start(reduction)
+
+    def _duck_stop(self):
+        """Bring background audio back; never raises."""
+        ducker = getattr(self, "_ducker", None)
+        if ducker is None:
+            return
+        try:
+            ducker.stop()
+        except Exception:  # noqa: BLE001 - the ducker itself never raises
+            pass
+
     def _begin_recording(self):
         self.elapsed.restart()
         self.ticker.start()
@@ -854,6 +893,7 @@ class WordArc:
         if self._live_engine():
             self._stop_live()
             return
+        self._duck_stop()
         self.ticker.stop()
         self.dictation_operation.transition(operation.State.PROCESSING)
         self._set_state(BUSY)
@@ -869,6 +909,7 @@ class WordArc:
         return (self.live_start_slot + index) % total, total
 
     def _stop_live(self):
+        self._duck_stop()
         self.ticker.stop()
         self.live_timer.stop()
         self.dictation_operation.transition(operation.State.PROCESSING)
@@ -926,6 +967,7 @@ class WordArc:
         if self._live_engine():
             self._cancel_live()
             return
+        self._duck_stop()
         self.ticker.stop()
         self.recorder.cancel()
         self.dictation_operation.transition(operation.State.CANCELLED)
@@ -935,6 +977,7 @@ class WordArc:
 
     def _cancel_live(self):
         """Abort a live dictation: session, capture and timers all go."""
+        self._duck_stop()
         self.ticker.stop()
         self.live_timer.stop()
         self._live_opener = None
@@ -974,6 +1017,10 @@ class WordArc:
             return
         if self.meeting_state != M_IDLE:
             return
+        # Dictation may already have ducked the output (both can record at
+        # once): bring the level back first so the meeting hears system audio
+        # untouched. Dictation keeps recording, only the ducking ends.
+        self._duck_stop()
         self.meeting_operation.begin()
         base = meeting.new_base()
         _, wav_path = cfg.meeting_paths(base)
@@ -1166,6 +1213,9 @@ class WordArc:
     def _on_error(self, message, operation_id=""):
         if operation_id and not self.dictation_operation.accepts(operation_id):
             return
+        # Recorder/connection failures end dictation too: bring the volume
+        # back here as well (stop()/cancel() already restore on their paths).
+        self._duck_stop()
         if self.dictation_operation.state in (operation.State.RECORDING,
                                                operation.State.PROCESSING):
             self.dictation_operation.transition(operation.State.FAILED)
@@ -1557,6 +1607,8 @@ class WordArc:
 
     def shutdown(self):
         self._quitting = True
+        # Quitting mid-dictation must not leave the output lowered.
+        self._duck_stop()
         self.screenshot_controller.shutdown()
         selection = getattr(self, "selection_controller", None)
         if selection is not None:

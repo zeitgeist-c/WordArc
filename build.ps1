@@ -104,11 +104,11 @@ while (($VersionNum.Split('.')).Count -lt 4) { $VersionNum += ".0" }
 $env:WORDARC_VERSION_NUM = $VersionNum
 Invoke-Gate { & $Iscc (Join-Path $PSScriptRoot "installer\wordarc.iss") } "Inno Setup build failed."
 $SetupName = "WordArc-$AppVersion.exe"
-$SetupExe = Join-Path $PSScriptRoot "dist\$SetupName"
+$SetupExe = Join-Path $PSScriptRoot "release\$SetupName"
 if (-not (Test-Path -LiteralPath $SetupExe)) {
-    throw "Expected dist\$SetupName was not produced."
+    throw "Expected release\$SetupName was not produced."
 }
 $VerificationArgs = @()
 if (-not $CpuOnly) { $VerificationArgs = @('--cuda') }
 Invoke-Gate { & $Python (Join-Path $PSScriptRoot "tools\verify_release_package.py") @VerificationArgs } "Release package verification failed."
-Write-Host "Build completed: dist\$SetupName (setup)" -ForegroundColor Green
+Write-Host "Build completed: release\$SetupName (setup)" -ForegroundColor Green
