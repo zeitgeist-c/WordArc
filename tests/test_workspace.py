@@ -145,7 +145,8 @@ def test_workspace_reflows_and_settings_remain_accessible(window):
     window.show()
     window.resize(1040, 760)
     QApplication.processEvents()
-    workspace = window.tabs.widget(0).findChild(settings_ui.Workspace)
+    assert window.navigate_to("dictation")
+    workspace = window.pages.currentWidget().findChild(settings_ui.Workspace)
     assert workspace.columns.direction() == settings_ui.QBoxLayout.Direction.LeftToRight
     window.resize(520, 400)
     QApplication.processEvents()
@@ -155,11 +156,11 @@ def test_workspace_reflows_and_settings_remain_accessible(window):
     workspace.selector.setCurrentIndex(1)
     assert workspace.panes[1].isVisibleTo(window)
     assert not workspace.panes[0].isVisibleTo(window)
-    window.tabs.setCurrentIndex(window._tab_index["settings"])
+    assert window.navigate_to("settings")
     QApplication.processEvents()
-    assert window.settings_section_stack.isVisibleTo(window)
-    window.settings_section_stack.setCurrentIndex(3)
-    assert window.settings_section_menu.currentRow() == 3
+    assert window.settings_sections.isVisibleTo(window)
+    assert window.select_section("application")
+    assert window.current_section() == "application"
 
 
 def test_last_result_is_not_persisted_when_history_is_disabled(window):
@@ -168,13 +169,173 @@ def test_last_result_is_not_persisted_when_history_is_disabled(window):
     assert not cfg.HISTORY_FILE.exists()
 
 
-def test_file_cleanup_prompt_is_on_the_page(window):
+def test_file_cleanup_prompt_lives_in_audio_file_section(window):
     window.show()
-    window.tabs.setCurrentIndex(2)
+    assert window.navigate_to("settings", "audio_file")
     QApplication.processEvents()
+    assert window.file_cleanup_prompt.isVisibleTo(window)
     assert window.file_timestamps.isVisibleTo(window)
     assert window.file_cleanup.isVisibleTo(window)
-    assert window.file_cleanup_prompt.isVisibleTo(window)
+    # Not on the tool page anymore: pick, start and read stay there.
+    assert window.navigate_to("audio_file")
+    QApplication.processEvents()
+    assert window.file_label.isVisibleTo(window)
+    assert window.file_run.isVisibleTo(window)
+
+
+def _fully_on_screen(window, widget):
+    """Viewport containment, not just the visible flag: every ancestor
+    scroller viewport must hold the widget's whole rectangle."""
+    from PyQt6.QtCore import QPoint, QRect
+    if not widget.isVisibleTo(window):
+        return False
+    box = QRect(window.mapFrom(widget, QPoint(0, 0)), widget.size())
+    node = widget.parentWidget()
+    while node is not None and node is not window:
+        if isinstance(node, settings_ui.QScrollArea):
+            view = node.viewport()
+            seen = QRect(window.mapFrom(view, QPoint(0, 0)), view.size())
+            if not seen.contains(box):
+                return False
+        node = node.parentWidget()
+    return True
+
+
+def test_tool_first_view_needs_no_scrolling(window):
+    """Action, status and result read at first glance at desktop size."""
+    from PyQt6.QtGui import QFontDatabase
+    for filename in ("segoeui.ttf", "segoeuib.ttf", "seguisb.ttf"):
+        QFontDatabase.addApplicationFont("C:/Windows/Fonts/" + filename)
+    window.resize(1040, 760)
+    window.show()
+    cases = [
+        ("dictation", None, ["dictation_record_button",
+                             "dictation_record_status", "dictation_output",
+                             "history", "mic"]),
+        ("meeting", None, ["meeting_record_button", "meeting_record_status",
+                           "minutes_list"]),
+        ("audio_file", None, ["file_run", "file_label", "file_output",
+                              "file_status"]),
+        ("speak", None, ["speak_read", "speak_input", "speak_status"]),
+    ]
+    for page, section, attrs in cases:
+        assert window.navigate_to(page, section)
+        for _ in range(4):
+            QApplication.processEvents()
+        for attr in attrs:
+            widget = getattr(window, attr)
+            assert _fully_on_screen(window, widget), (page, attr)
+
+
+def test_tool_first_view_at_high_scale_size(window):
+    """1366x768 with high Windows scaling shows ~910x512 logical pixels:
+    the same first glance must hold there."""
+    window.resize(910, 512)
+    window.show()
+    for page, section, attrs in [
+            ("dictation", None, ["dictation_record_button",
+                                 "dictation_output"]),
+            ("audio_file", None, ["file_run", "file_output"])]:
+        assert window.navigate_to(page, section)
+        for _ in range(4):
+            QApplication.processEvents()
+        for attr in attrs:
+            assert _fully_on_screen(window, getattr(window, attr)), (page, attr)
+
+
+def test_narrow_tool_rail_needs_no_scroll(window):
+    """All five tools plus settings stay one tap away at minimum size."""
+    from PyQt6.QtGui import QFontDatabase
+    import theme
+    for filename in ("segoeui.ttf", "segoeuib.ttf"):
+        QFontDatabase.addApplicationFont("C:/Windows/Fonts/" + filename)
+    old_sheet = QApplication.instance().styleSheet()
+    theme.ThemeManager.apply("dark", QApplication.instance())
+    try:
+        window.resize(520, 400)
+        window.show()
+        for page_id, _title, _desc in settings_ui.SettingsWindow.TOOL_PAGES:
+            assert window.navigate_to(page_id)
+            for _ in range(2):
+                QApplication.processEvents()
+        for _ in range(4):
+            QApplication.processEvents()
+        rail = window.nav
+        assert rail.verticalScrollBar().maximum() == 0
+        bad = []
+        for index in range(rail.count()):
+            rect = rail.visualItemRect(rail.item(index))
+            if not rail.viewport().rect().contains(rect):
+                bad.append((rail.item(index).text(), rect.x(), rect.y(),
+                            rect.width(), rect.height()))
+        assert not bad, (rail.viewport().rect(), bad)
+    finally:
+        QApplication.instance().setStyleSheet(old_sheet)
+
+
+def test_narrow_settings_use_a_section_picker(window):
+    """No room for the section rail at minimum width: a picker stands in."""
+    window.resize(520, 600)
+    window.show()
+    assert window.navigate_to("settings")
+    for _ in range(4):
+        QApplication.processEvents()
+    assert not window.settings_section_list.isVisibleTo(window)
+    assert window.settings_section_combo.isVisibleTo(window)
+    seen = set()
+    for index in range(window.settings_section_combo.count()):
+        window.settings_section_combo.setCurrentIndex(index)
+        for _ in range(2):
+            QApplication.processEvents()
+        seen.add(window.current_section())
+    assert seen == {sid for sid, _title in
+                    settings_ui.SettingsWindow.SETTINGS_SECTIONS}
+    window.resize(1040, 760)
+    for _ in range(4):
+        QApplication.processEvents()
+    assert window.settings_section_list.isVisibleTo(window)
+    assert not window.settings_section_combo.isVisibleTo(window)
+
+
+def test_narrow_audio_file_run_reaches_transcriber(window):
+    """Start and result path work at narrow width through the Details pane."""
+    import wave
+    import struct
+    # Narrow width, workable height: the 400 px floor is covered by the
+    # rail test; content checks get room to breathe.
+    window.resize(520, 600)
+    window.show()
+    assert window.navigate_to("audio_file")
+    for _ in range(4):
+        QApplication.processEvents()
+    workspace = window.pages.currentWidget().findChild(settings_ui.Workspace)
+    workspace.selector.setCurrentIndex(1)
+    for _ in range(4):
+        QApplication.processEvents()
+    assert window.file_run.isVisibleTo(window)
+    assert _fully_on_screen(window, window.file_run)
+    # The 200 px transcript cannot fit a 400 px window next to the rail:
+    # it must be reachable by scrolling inside its own pane instead.
+    pane = window.file_output.parentWidget()
+    while pane is not None and not isinstance(pane, settings_ui.QScrollArea):
+        pane = pane.parentWidget()
+    assert pane is not None
+    assert window.file_output.isVisibleTo(window)
+    assert (_fully_on_screen(window, window.file_output)
+            or pane.verticalScrollBar().maximum() > 0)
+    path = cfg.DATA_DIR / "probe.wav"
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(struct.pack("<4h", 0, 0, 0, 0))
+    window.file_path = str(path)
+    window.file_label.setText(str(path))
+    with mock.patch.object(window.transcriber, "start") as start:
+        window.file_run.click()
+    start.assert_called_once_with(str(path),
+                                  window.file_timestamps.isChecked(),
+                                  window.file_cleanup.isChecked())
 
 
 def test_combo_uses_compact_choices_or_search_according_to_content(window):
@@ -235,12 +396,12 @@ def test_editable_model_text_is_a_picker_target(window):
     picker.assert_called_once()
 
 
-def select_editor(window, tab, target):
-    window.tabs.setCurrentIndex(tab)
+def select_editor(window, page, section, target):
+    window.navigate_to(page, section)
     for _ in range(4):
         QApplication.processEvents()
     editor = getattr(window, target)
-    workspace = window.tabs.widget(tab).findChild(settings_ui.Workspace)
+    workspace = window.pages.currentWidget().findChild(settings_ui.Workspace)
     if workspace is not None and not editor.isVisibleTo(window):
         workspace.selector.setCurrentIndex(1)
         for _ in range(4):
@@ -248,12 +409,15 @@ def select_editor(window, tab, target):
     return editor
 
 
-@pytest.mark.parametrize("tab,target", [(0, "history_limit"), (1, "meeting_prompt"), (2, "file_cleanup_prompt")])
+@pytest.mark.parametrize("page,section,target",
+                         [("dictation", None, "history_limit"),
+                          ("settings", "meeting", "meeting_prompt"),
+                          ("settings", "audio_file", "file_cleanup_prompt")])
 @pytest.mark.parametrize("size", [(1040, 760), (520, 400)])
-def test_every_advanced_editor_is_reachable_at_large_and_small_sizes(window, tab, target, size):
+def test_every_advanced_editor_is_reachable_at_large_and_small_sizes(window, page, section, target, size):
     window.resize(*size)
     window.show()
-    editor = select_editor(window, tab, target)
+    editor = select_editor(window, page, section, target)
     # One page per tab now: scroll inside the pane until the editor shows.
     scroll = editor.parentWidget()
     while scroll and not isinstance(scroll, settings_ui.QScrollArea):
@@ -269,13 +433,13 @@ def test_every_advanced_editor_is_reachable_at_large_and_small_sizes(window, tab
 
 
 def test_language_rebuild_preserves_selected_pages(window):
-    window.tabs.setCurrentIndex(2)
+    assert window.navigate_to("audio_file")
     window.model_setup.setCurrentIndex(0)
     view = settings_ui.WindowView(window)
     fresh = settings_ui.SettingsWindow(window.conf, "wordarc toggle")
     try:
         view.apply(fresh)
-        assert fresh.tabs.currentIndex() == 2
+        assert fresh.current_page() == "audio_file"
         assert fresh.model_setup.currentIndex() == 0
     finally:
         fresh.close()
@@ -302,21 +466,19 @@ def test_selected_desktop_forms_fit_without_horizontal_scrolling(window, size, l
         fresh.show()
         for mode in ("dark", "light"):
             theme.ThemeManager.apply(mode, QApplication.instance())
-            for tab in range(4):
-                fresh.tabs.setCurrentIndex(tab)
+            for page_id, _title, _desc in settings_ui.SettingsWindow.TOOL_PAGES:
+                fresh.navigate_to(page_id)
                 for _ in range(4):
                     QApplication.processEvents()
-                for scroll in fresh.tabs.widget(tab).findChildren(settings_ui.QScrollArea):
+                for scroll in fresh.pages.currentWidget().findChildren(settings_ui.QScrollArea):
                     if scroll.isVisibleTo(fresh):
-                        assert scroll.horizontalScrollBar().maximum() == 0, (size, language, tab)
-            fresh.tabs.setCurrentIndex(3)
-            fresh.settings_section_stack.setCurrentIndex(0)
+                        assert scroll.horizontalScrollBar().maximum() == 0, (size, language, page_id)
+            fresh.navigate_to("settings", "audio_models")
             fresh.transcribe_engine.setCurrentIndex(fresh.transcribe_engine.findData("local"))
             fresh.model_setup.setCurrentIndex(0)
             for _ in range(4):
                 QApplication.processEvents()
-            for scroll in fresh.tabs.widget(
-                    fresh._tab_index["settings"]).findChildren(settings_ui.QScrollArea):
+            for scroll in fresh.pages.currentWidget().findChildren(settings_ui.QScrollArea):
                 if scroll.isVisibleTo(fresh):
                     assert scroll.verticalScrollBar().maximum() == 0, (size, language, "local")
     finally:

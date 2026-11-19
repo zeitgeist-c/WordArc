@@ -255,7 +255,7 @@ class SelectionBar(QWidget):
     dismissed = pyqtSignal()
 
     ACTIONS = (("copy", "Copy"),
-               ("translate", "Translate to Turkish"),
+               ("translate", "Translate"),
                ("explain", "Explain"),
                ("summarize", "Summarize"))
 
@@ -364,6 +364,10 @@ class SelectionBarController(QObject):
         self.bar.dismissed.connect(self._on_bar_dismissed)
         self._enabled = False
         self._current: Selection | None = None
+        # A selection the user already acted on: the bar stays hidden for it
+        # until the selection changes or disappears, instead of popping back
+        # up on the next poll while it is still selected.
+        self._consumed: Selection | None = None
         self._gen = 0
         self._polling = False
         self._working = False
@@ -381,6 +385,8 @@ class SelectionBarController(QObject):
         if self._enabled:
             if _backend() is None:
                 log.info("selection bar enabled but UIA backend is missing")
+            # A fresh start re-arms for whatever is selected right now.
+            self._consumed = None
             self._timer.start()
         else:
             self._timer.stop()
@@ -420,8 +426,14 @@ class SelectionBarController(QObject):
             self._hide()
             return
         if selection is None:
+            self._consumed = None
             self._hide()
             return
+        if self._consumed is not None and _match(self._consumed, selection):
+            # Already acted on this exact selection: stay hidden until the
+            # user selects something else or clears it.
+            return
+        self._consumed = None
         if (not _match(self._current, selection)):
             self._current = selection
             self.bar.refresh(selection)
@@ -458,6 +470,12 @@ class SelectionBarController(QObject):
         self._timer.stop()
         gen = self._gen
         shown = self._current
+        if shown is not None:
+            # The job is taken: go away now, and do not come back for this
+            # selection. A plain hide keeps the generation intact so the
+            # worker's answer is still accepted when it lands.
+            self._consumed = shown
+            self.bar.hide()
 
         def work():
             try:
@@ -525,6 +543,7 @@ class SelectionBarController(QObject):
             self._hide()
         else:
             # The selection moved under us: follow it, do not answer the old.
+            self._consumed = None
             self._current = fresh
             self.bar.refresh(fresh)
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
+import queue
 import threading
 from pathlib import Path
 
@@ -1050,6 +1051,12 @@ class ScreenshotController(QWidget):
         self._save_timer.timeout.connect(self._save_preferences)
         self._pending_save_preferences = None
         self._ocr_thread = None
+        # OCR requests wait here in arrival order; the worker drains the
+        # queue one request at a time. A plain Queue makes the handoff
+        # race-free: no request is ever overwritten or read half-written,
+        # and every accepted command runs to its own result.
+        self._ocr_queue = queue.Queue()
+        self._ocr_stop = object()
         self.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
         QGuiApplication.instance().screenRemoved.connect(self._screen_removed)
 
@@ -1185,8 +1192,6 @@ class ScreenshotController(QWidget):
         # the Windows engine busy for a second or two, and the frozen desktop
         # must stay responsive meanwhile. The overlay closes right away —
         # results arrive as a clipboard write plus a tray note.
-        if self._ocr_thread is not None and self._ocr_thread.is_alive():
-            return
         self._close_overlay()
         if restore_owner:
             self._restore_owner()
@@ -1202,20 +1207,7 @@ class ScreenshotController(QWidget):
             pass
         speak = self._speak_next
         self._speak_next = False
-
-        def work():
-            try:
-                text = ocr.extract_text(image, language)
-            except ocr.OcrUnavailable as exc:
-                self.failed.emit(str(exc))
-                return
-            if speak:
-                self.speak_done.emit(text)
-            else:
-                self.ocr_done.emit(text)
-
-        self._ocr_thread = threading.Thread(target=work, daemon=True)
-        self._ocr_thread.start()
+        self._enqueue_ocr(("speak" if speak else "read", image, language))
 
     def _on_overlay_speak(self, image):
         # The toolbar's Read button always reads: flag the OCR result for
@@ -1230,42 +1222,107 @@ class ScreenshotController(QWidget):
         # away — the translation arrives in a small result window. The capture
         # itself never leaves the machine: only the recognised text goes to
         # Gemini, never the image.
-        if self._ocr_thread is not None and self._ocr_thread.is_alive():
-            return
         self._close_overlay()
         self._restore_owner()
+        self._enqueue_ocr(("translate", image, ""))
 
-        def work():
-            try:
-                text = ocr.extract_text_for_translate(image)
-            except ocr.OcrUnavailable as exc:
-                self.failed.emit(str(exc))
-                return
-            if not text.strip():
-                # Nothing readable: report it the same way OCR does, and never
-                # call Gemini on an empty source.
-                self.translate_done.emit("")
-                return
-            keys = (self.conf.gemini_keys()
-                    if hasattr(self.conf, "gemini_keys") else [])
-            model = str(self.conf.get("gemini_translate_model", "")
-                        or "gemini-3.5-flash-lite")
-            try:
-                client = api.GeminiClient(keys)
-                translated = client.translate(text, model,
-                                              SCREENSHOT_TRANSLATE_PROMPT)
-            except api.ApiError as exc:
-                self.failed.emit(str(exc))
-                return
-            except Exception as exc:  # noqa: BLE001 - surfaced, not hidden
-                logging.getLogger("wordarc.screenshot").warning(
-                    "screenshot translation failed: %s", exc)
-                self.failed.emit(str(exc))
-                return
-            self.translate_done.emit(translated)
+    def _enqueue_ocr(self, request):
+        """Run an OCR request now, or queue it behind the busy worker.
 
-        self._ocr_thread = threading.Thread(target=work, daemon=True)
+        Every accepted command runs exactly once, in arrival order, each
+        to its own result. The Queue owns the handoff, so a request that
+        lands while the worker is finishing cannot be lost or half-read.
+        """
+        if self._ocr_thread is None or not self._ocr_thread.is_alive():
+            self._discard_stops()
+        self._ocr_queue.put(request)
+        if self._ocr_thread is not None and self._ocr_thread.is_alive():
+            return
+        self._ocr_thread = threading.Thread(target=self._ocr_worker,
+                                            daemon=True)
         self._ocr_thread.start()
+
+    def _discard_stops(self):
+        """Drop shutdown sentinels left behind so new work is never stranded.
+
+        Only runs when no worker is alive, so nothing is being consumed
+        under us; anything that is not a stop keeps its place in line.
+        """
+        keep = []
+        try:
+            while True:
+                item = self._ocr_queue.get_nowait()
+                self._ocr_queue.task_done()
+                if item is not self._ocr_stop:
+                    keep.append(item)
+        except queue.Empty:
+            pass
+        for item in keep:
+            self._ocr_queue.put(item)
+
+    def _ocr_worker(self):
+        while True:
+            request = self._ocr_queue.get()
+            try:
+                if request is self._ocr_stop:
+                    return
+                kind, image, language = request
+                try:
+                    if kind == "translate":
+                        self._run_translate_request(image)
+                    else:
+                        self._run_read_request(image, language,
+                                               speak=(kind == "speak"))
+                except Exception as exc:  # noqa: BLE001 - one bad request
+                    # must never take down the requests behind it.
+                    logging.getLogger("wordarc.screenshot").warning(
+                        "screenshot OCR request failed: %s", exc)
+                    try:
+                        self.failed.emit(str(exc))
+                    except Exception:
+                        pass
+            finally:
+                self._ocr_queue.task_done()
+
+    def _run_read_request(self, image, language, speak):
+        try:
+            text = ocr.extract_text(image, language)
+        except ocr.OcrUnavailable as exc:
+            self.failed.emit(str(exc))
+            return
+        if speak:
+            self.speak_done.emit(text)
+        else:
+            self.ocr_done.emit(text)
+
+    def _run_translate_request(self, image):
+        try:
+            text = ocr.extract_text_for_translate(image)
+        except ocr.OcrUnavailable as exc:
+            self.failed.emit(str(exc))
+            return
+        if not text.strip():
+            # Nothing readable: report it the same way OCR does, and never
+            # call Gemini on an empty source.
+            self.translate_done.emit("")
+            return
+        keys = (self.conf.gemini_keys()
+                if hasattr(self.conf, "gemini_keys") else [])
+        model = str(self.conf.get("gemini_translate_model", "")
+                    or "gemini-3.5-flash-lite")
+        try:
+            client = api.GeminiClient(keys)
+            translated = client.translate(text, model,
+                                          SCREENSHOT_TRANSLATE_PROMPT)
+        except api.ApiError as exc:
+            self.failed.emit(str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001 - surfaced, not hidden
+            logging.getLogger("wordarc.screenshot").warning(
+                "screenshot translation failed: %s", exc)
+            self.failed.emit(str(exc))
+            return
+        self.translate_done.emit(translated)
 
     def _on_overlay_save(self, image):
         # Parent the native file dialog to the topmost editor. Otherwise it
@@ -1338,6 +1395,15 @@ class ScreenshotController(QWidget):
         self._save_timer.stop()
         self._close_overlay()
         self._hidden_owner = None
+        # Drop whatever never ran: the queue belongs to a dying session,
+        # then wake the worker so it can exit instead of waiting forever.
+        try:
+            while True:
+                self._ocr_queue.get_nowait()
+                self._ocr_queue.task_done()
+        except queue.Empty:
+            pass
+        self._ocr_queue.put(self._ocr_stop)
         self._helper_states = []
 
     def closeEvent(self, event):

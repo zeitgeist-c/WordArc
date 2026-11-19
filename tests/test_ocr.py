@@ -52,6 +52,45 @@ class TestEngineChoice(unittest.TestCase):
         with self.assertRaises(ocr.OcrUnavailable):
             ocr._pick_engine(FakeEngineClass([]), "tr")
 
+    def test_german_ui_skips_english_for_installed_german(self):
+        # The reported bug: en-US first in the list won over installed de-DE.
+        engine = ocr._pick_engine(FakeEngineClass(["en-US", "de-DE"]), "de")
+        self.assertEqual(engine.recognizer_language.language_tag, "de-DE")
+
+    def test_same_language_variant_wins_over_the_fallback(self):
+        engine = ocr._pick_engine(FakeEngineClass(["en-US", "de-AT"]), "de")
+        self.assertEqual(engine.recognizer_language.language_tag, "de-AT")
+
+    def test_region_and_case_do_not_matter(self):
+        engine = ocr._pick_engine(FakeEngineClass(["pt-PT", "en-US"]),
+                                  "pt-BR")
+        self.assertEqual(engine.recognizer_language.language_tag, "pt-PT")
+        engine = ocr._pick_engine(FakeEngineClass(["DE-de"]), "de")
+        self.assertEqual(engine.recognizer_language.language_tag, "DE-de")
+
+    def test_missing_pack_falls_back_to_whatever_is_installed(self):
+        engine = ocr._pick_engine(FakeEngineClass(["fr-FR"]), "de")
+        self.assertEqual(engine.recognizer_language.language_tag, "fr-FR")
+
+    def test_fallback_prefers_en_us_over_en_gb(self):
+        # The tags are lowercased before comparing, so the literal has to
+        # be lowercase too; otherwise en-GB wins by list order.
+        engine = ocr._pick_engine(FakeEngineClass(["en-GB", "en-US"]), "ja")
+        self.assertEqual(engine.recognizer_language.language_tag, "en-US")
+
+    def test_uncreatable_engine_is_skipped_for_the_next_pack(self):
+        class FlakyEngine(FakeEngineClass):
+            @classmethod
+            def try_create_from_language(cls, language, /):
+                if language.language_tag == "de-DE":
+                    return None
+                return fake_engine(language.language_tag)
+
+        FlakyEngine.available_recognizer_languages = [FakeLanguage("de-DE"),
+                                                      FakeLanguage("en-US")]
+        engine = ocr._pick_engine(FlakyEngine, "de")
+        self.assertEqual(engine.recognizer_language.language_tag, "en-US")
+
 
 class TestRecognitionPlumbing(unittest.TestCase):
     def test_lines_join_with_newlines(self):
@@ -167,12 +206,37 @@ class TestMultipassMerge(unittest.TestCase):
         base = [("Tema: Koyu", 1.00, self._box(10, 40, 200, 58)),
                 ("Kaynak: mikrofon", 1.00, self._box(300, 40, 520, 58))]
         extra = [("Kaynak: mikrofon", 0.99, self._box(298, 42, 522, 60)),
-                 ("Tema: Koyu", 0.98, self._box(12, 70, 198, 88))]
+                 ("Tema: Koyu", 0.98, self._box(12, 42, 198, 60))]
         merged = ocr._merge_lines(base, extra)
         texts = [t for t, _s, _b in merged]
         self.assertIn("Tema: Koyu", texts)
         self.assertIn("Kaynak: mikrofon", texts)
         self.assertEqual(len(texts), 2)
+
+    def test_same_word_in_two_places_survives(self):
+        # The reported bug: the second pass used to swallow the second
+        # "Ayarlar". Two different boxes are two lines, same text or not.
+        base = [("Ayarlar", 0.99, self._box(10, 10, 200, 30))]
+        extra = [("Ayarlar", 0.98, self._box(10, 120, 200, 140))]
+        merged = ocr._merge_lines(base, extra)
+        self.assertEqual([t for t, _s, _b in merged],
+                         ["Ayarlar", "Ayarlar"])
+
+    def test_adjacent_similar_numbers_survive(self):
+        # "Sipariş 12345" and "Sipariş 12346" side by side are neighbours,
+        # not a double read: their boxes do not overlap.
+        base = [("Sipariş 12345", 1.00, self._box(10, 40, 150, 58))]
+        extra = [("Sipariş 12346", 0.99, self._box(160, 40, 300, 58))]
+        merged = ocr._merge_lines(base, extra)
+        self.assertEqual([t for t, _s, _b in merged],
+                         ["Sipariş 12345", "Sipariş 12346"])
+
+    def test_same_line_reread_collapses_to_the_best(self):
+        base = [("Ayarlar", 0.90, self._box(10, 10, 200, 30))]
+        extra = [("Ayarlar", 0.97, self._box(11, 11, 199, 29))]
+        merged = ocr._merge_lines(base, extra)
+        self.assertEqual([t for t, _s, _b in merged], ["Ayarlar"])
+        self.assertEqual(merged[0][1], 0.97)
 
     def test_reading_order_is_top_to_bottom(self):
         base = [("ikinci", 0.99, self._box(10, 60, 200, 78))]
@@ -181,12 +245,13 @@ class TestMultipassMerge(unittest.TestCase):
         self.assertEqual([t for t, _s, _b in merged],
                          ["birinci", "ikinci"])
 
-    def test_exact_dupes_collapse(self):
+    def test_same_text_at_two_places_is_two_lines(self):
+        # Geometry decides, not the text: the same reading in two boxes
+        # is two lines.
         base = [("merhaba", 0.90, self._box(10, 10, 200, 30))]
         extra = [("Merhaba", 0.99, self._box(300, 50, 490, 70))]
         merged = ocr._merge_lines(base, extra)
-        self.assertEqual(len(merged), 1)
-        self.assertEqual(merged[0][1], 0.99)
+        self.assertEqual(len(merged), 2)
 
     def test_near_dupes_on_one_row_collapse(self):
         base = [("Genel ayarlar", 1.00, self._box(10, 40, 200, 58))]
@@ -215,11 +280,32 @@ class TestJunkFilter(unittest.TestCase):
 
     def test_icon_hallucinations_dropped(self):
         lines = [("□", 0.96, self._box(16)),
-                 ("田", 1.00, self._box(16)),
+                 ("■", 1.00, self._box(16)),
                  ("×", 0.52, self._box(14)),
                  ("Toplantı notları", 0.97, self._box(300))]
         kept = ocr._drop_junk(lines)
         self.assertEqual([t for t, _s, _b in kept], ["Toplantı notları"])
+
+    def test_valid_single_characters_survive(self):
+        # Small but real: a CJK day mark, a digit, a percent sign and a
+        # capital letter must survive a certain read.
+        lines = [("日", 0.99, self._box(12)),
+                 ("7", 0.98, self._box(10)),
+                 ("%", 0.96, self._box(10)),
+                 ("A", 1.00, self._box(10))]
+        kept = ocr._drop_junk(lines)
+        self.assertEqual([t for t, _s, _b in kept], ["日", "7", "%", "A"])
+
+    def test_symbol_noise_dropped_at_any_score(self):
+        lines = [("■", 1.00, self._box(16)),
+                 ("●", 0.99, self._box(14)),
+                 ("□", 0.90, self._box(16))]
+        self.assertEqual(ocr._drop_junk(lines), [])
+
+    def test_shaky_small_read_dropped_whatever_the_script(self):
+        lines = [("日", 0.50, self._box(10)),
+                 ("A", 0.40, self._box(10))]
+        self.assertEqual(ocr._drop_junk(lines), [])
 
     def test_certain_latin_labels_survive(self):
         lines = [("B", 1.00, self._box(12)),
@@ -314,6 +400,251 @@ class TestUnavailableGracefully(unittest.TestCase):
             image.fill(__import__("PyQt6.QtGui", fromlist=["QColor"]).QColor("white"))
             with self.assertRaisesRegex(ocr.OcrUnavailable, "restart WordArc"):
                 ocr.extract_text(image, "tr")
+
+
+class TestTranslationChoice(unittest.TestCase):
+    """The translate flow sends the right source text, never a stray mark."""
+
+    def test_stray_foreign_character_loses_to_clean_latin(self):
+        self.assertEqual(
+            ocr._choose_translation_source([("Sipariş 12345", None),
+                                            ("日", None)]),
+            "Sipariş 12345")
+
+    def test_confident_single_letter_loses_to_full_foreign_passage(self):
+        # Confidence scales coverage, never replaces it: a 0.99 on one
+        # letter must not outrank a whole scoreless passage.
+        self.assertEqual(
+            ocr._choose_translation_source([("A", 0.99),
+                                            ("Привет мир", None)]),
+            "Привет мир")
+
+    def test_confident_latin_with_cover_beats_scoreless_guess(self):
+        # The reverse: comparable coverage plus confidence wins.
+        self.assertEqual(
+            ocr._choose_translation_source([("Sipariş 12345", 0.95),
+                                            ("設定画面の設定", None)]),
+            "Sipariş 12345")
+
+    def test_real_nonlatin_passage_beats_longer_latin_guess(self):
+        self.assertEqual(
+            ocr._choose_translation_source(
+                [("IIPVlBeT MI/IP, OTO TeCT 123", None),
+                 ("Привет\nмир,", None)]),
+            "Привет\nмир,")
+
+    def test_fuller_consistent_read_wins_without_scores(self):
+        self.assertEqual(
+            ocr._choose_translation_source([("kisa", None),
+                                            ("daha uzun windows metni",
+                                             None)]),
+            "daha uzun windows metni")
+
+    def test_empty_candidates_choose_nothing(self):
+        self.assertEqual(ocr._choose_translation_source([]), "")
+        self.assertEqual(ocr._choose_translation_source([("  ", None)]), "")
+
+    def test_windows_chooser_ignores_a_stray_char_pack(self):
+        import asyncio
+
+        class FakeLanguage:
+            def __init__(self, tag):
+                self.language_tag = tag
+
+        class FakeEngine:
+            available_recognizer_languages = [FakeLanguage("ja"),
+                                              FakeLanguage("en-US")]
+
+            @classmethod
+            def try_create_from_language(cls, language, /):
+                engine = mock.Mock()
+                engine.recognizer_language = language
+
+                async def recognize_async(_bitmap):
+                    if language.language_tag == "ja":
+                        return mock.Mock(lines=[mock.Mock(text="日")])
+                    return mock.Mock(
+                        lines=[mock.Mock(text="Settings panel")])
+
+                engine.recognize_async = recognize_async
+                return engine
+
+        class FakeDecoder:
+            async def get_software_bitmap_async(self):
+                return "bitmap"
+
+            @staticmethod
+            async def create_async(_stream):
+                return FakeDecoder()
+
+        class FakeStream:
+            async def write_async(self, _data):
+                return None
+
+            def seek(self, _pos):
+                pass
+
+        with mock.patch.object(
+                ocr, "_imports",
+                return_value=(FakeDecoder, FakeEngine, FakeStream)):
+            self.assertEqual(asyncio.run(ocr._recognize_all(b"png")),
+                             "Settings panel")
+
+
+class TestExtractFallback(unittest.TestCase):
+    """RapidOCR empty is a missed read (try Windows), not a verdict."""
+
+    def _white_image(self):
+        from PyQt6.QtGui import QColor
+        image = QImage(4, 4, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        return image
+
+    def test_empty_rapid_falls_through_to_windows(self):
+        windows = mock.AsyncMock(return_value="windows metni")
+        with mock.patch.object(ocr, "_recognize_rapid", return_value="  "), \
+             mock.patch.object(ocr, "_recognize", windows):
+            self.assertEqual(
+                ocr.extract_text(self._white_image(), "tr"), "windows metni")
+        self.assertEqual(windows.call_count, 1)
+
+    def test_empty_rapid_and_empty_windows_means_no_text(self):
+        windows = mock.AsyncMock(return_value="")
+        with mock.patch.object(ocr, "_recognize_rapid", return_value=""), \
+             mock.patch.object(ocr, "_recognize", windows):
+            self.assertEqual(ocr.extract_text(self._white_image(), "tr"),
+                             "")
+
+    def test_empty_rapid_with_missing_windows_means_no_text(self):
+        with mock.patch.object(ocr, "_recognize_rapid", return_value=""), \
+             mock.patch.object(ocr, "_recognize",
+                               side_effect=ocr.OcrUnavailable("yok")):
+            self.assertEqual(ocr.extract_text(self._white_image(), "tr"),
+                             "")
+
+
+class TestEnginePackLogging(unittest.TestCase):
+    def test_pick_logs_the_installed_pack_it_uses(self):
+        with self.assertLogs("wordarc.ocr", level="INFO") as captured:
+            ocr._pick_engine(FakeEngineClass(["en-US", "tr"]), "tr")
+        self.assertTrue(any("tr" in line and "2 installed" in line
+                            for line in captured.output))
+
+
+class TestTiling(unittest.TestCase):
+    """Very wide captures are read in overlapping tiles, never squeezed."""
+
+    def _stub_engine(self, calls):
+        import numpy as np
+
+        def read(image):
+            calls.append(image.shape[1])
+            _h, w = image.shape[:2]
+            result = mock.Mock()
+            result.txts = ["kısım"]
+            result.boxes = np.array([[[0, 0], [w, 0], [w, 20], [0, 20]]],
+                                    dtype=float)
+            result.scores = [0.9]
+            return result
+
+        return read
+
+    def test_tile_spans_cover_with_overlap(self):
+        self.assertEqual(ocr._tile_spans(3840, 1920, 480),
+                         [(0, 1920), (1440, 3360), (2880, 3840)])
+        self.assertEqual(ocr._tile_spans(1000, 1920, 480), [(0, 1000)])
+
+    def test_wide_image_read_per_tile_with_offset_boxes(self):
+        import numpy as np
+        calls = []
+        image = np.zeros((60, 3840, 3), dtype=np.uint8)
+        lines = ocr._recognize_multipass(self._stub_engine(calls), image)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual([t for t, _s, _b in lines], ["kısım"] * 3)
+        lefts = sorted(ocr._bbox(bb)[0] for _t, _s, bb in lines)
+        self.assertEqual(lefts, [0, 1440, 2880])
+
+    def test_narrow_image_keeps_the_single_fast_path(self):
+        import numpy as np
+        calls = []
+        image = np.zeros((60, 1000, 3), dtype=np.uint8)
+        lines = ocr._recognize_multipass(self._stub_engine(calls), image)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual([t for t, _s, _b in lines], ["kısım"])
+
+    def test_seam_split_line_stitches_once(self):
+        import numpy as np
+
+        def box(x0, y0, x1, y1):
+            return np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]],
+                            dtype=float)
+
+        head = ("A long line starts here and continues", 0.9,
+                box(0, 10, 1900, 30))
+        repeated = (head[0], head[1], box(0, 0, 400, 8))
+        tail = ("here and continues past the boundary", 0.88,
+                box(1500, 12, 3400, 32))
+        done, carry = ocr._stitch_pair([repeated, head], [tail])
+        self.assertEqual(len(done), 1)
+        self.assertIs(done[0], repeated)
+        self.assertEqual(len(carry), 1)
+        self.assertEqual(carry[0][0],
+                         "A long line starts here and continues "
+                         "past the boundary")
+        x0, _y0, x1, _y1 = ocr._bbox(carry[0][2])
+        self.assertEqual((x0, x1), (0, 3400))
+
+    def test_columns_neighbour_rows_and_repeats_survive(self):
+        import numpy as np
+
+        def box(x0, y0, x1, y1):
+            return np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]],
+                            dtype=float)
+
+        left = [("Toplam 20 geldi", 0.9, box(0, 10, 900, 30)),
+                ("Toplam 20", 0.9, box(0, 50, 400, 70)),
+                ("Ayarlar", 0.9, box(0, 100, 300, 120))]
+        right = [("Toplam 20 gitti", 0.9, box(1000, 10, 1900, 30)),
+                 ("Toplam 20", 0.9, box(420, 50, 820, 70)),
+                 ("Ayarlar", 0.88, box(2000, 100, 2300, 120))]
+        done, carry = ocr._stitch_pair(left, right)
+        self.assertEqual(len(done) + len(carry), 6)
+
+    def test_same_tile_boxes_never_stitch_through_tiled_path(self):
+        # Repro: two boxes from the SAME tile, one row, 6 px apart, with
+        # shared words ("Flights to San Francisco" / "San Francisco
+        # weather") used to fuse into one line. Through _recognize_tiled
+        # they stay two lines: provenance limits fusing to neighbours.
+        import numpy as np
+
+        def box(x0, y0, x1, y1):
+            return np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]],
+                            dtype=float)
+
+        first = ("Flights to San Francisco", 0.9, box(100, 40, 700, 64))
+        second = ("San Francisco weather", 0.9, box(706, 40, 1200, 64))
+        calls = []
+
+        def read(image):
+            result = mock.Mock()
+            if image.shape[1] > 2000:
+                self.fail("tiles must stay under the wide-image gate")
+            calls.append(1)
+            if len(calls) == 1:
+                result.txts = [first[0], second[0]]
+                result.boxes = np.array([first[2], second[2]])
+                result.scores = [0.9, 0.9]
+            else:
+                result.txts = []
+                result.boxes = np.zeros((0, 4, 2))
+                result.scores = []
+            return result
+
+        image = np.zeros((80, 2100, 3), dtype=np.uint8)
+        lines = ocr._recognize_tiled(read, image)
+        self.assertEqual([t for t, _s, _b in lines],
+                         ["Flights to San Francisco",
+                          "San Francisco weather"])
 
 
 if __name__ == "__main__":

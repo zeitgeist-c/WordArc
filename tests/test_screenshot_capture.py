@@ -602,6 +602,127 @@ class TestOcrExtraction(unittest.TestCase):
             self.app.processEvents()
         self.assertEqual(done, ["merhaba"])
 
+    def test_overlapping_capture_is_queued_not_dropped(self):
+        import threading as threading_module
+
+        controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        done = []
+        controller.ocr_done.connect(done.append)
+        image = QImage(20, 10, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        gate = threading_module.Event()
+        entered = threading_module.Event()
+
+        def blocking_extract(_image, _language=""):
+            entered.set()
+            self.assertTrue(gate.wait(10))
+            return "merhaba"
+
+        with mock.patch.object(screenshot_capture.ocr, "extract_text",
+                               side_effect=blocking_extract):
+            controller._on_overlay_ocr(image)
+            self.assertTrue(entered.wait(10))
+            # The worker is still busy: this second capture used to vanish
+            # silently. Now it waits its turn and its result still arrives.
+            controller._on_overlay_ocr(image)
+            gate.set()
+            controller._ocr_queue.join()
+            self.app.processEvents()
+        self.assertEqual(done, ["merhaba", "merhaba"])
+
+    def test_three_rapid_captures_all_arrive_in_order(self):
+        import threading as threading_module
+
+        controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        done = []
+        controller.ocr_done.connect(done.append)
+        image = QImage(20, 10, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        gate = threading_module.Event()
+        entered = threading_module.Event()
+        calls = []
+
+        def blocking_extract(_image, _language=""):
+            calls.append(1)
+            if len(calls) == 1:
+                entered.set()
+                self.assertTrue(gate.wait(10))
+            return f"metin-{len(calls)}"
+
+        with mock.patch.object(screenshot_capture.ocr, "extract_text",
+                               side_effect=blocking_extract):
+            controller._on_overlay_ocr(image)
+            self.assertTrue(entered.wait(10))
+            controller._on_overlay_ocr(image)
+            controller._on_overlay_ocr(image)
+            gate.set()
+            controller._ocr_queue.join()
+            self.app.processEvents()
+        self.assertEqual(done, ["metin-1", "metin-2", "metin-3"])
+
+    def test_a_failing_request_does_not_drop_the_next_one(self):
+        import threading as threading_module
+
+        controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        done, errors = [], []
+        controller.ocr_done.connect(done.append)
+        controller.failed.connect(errors.append)
+        image = QImage(20, 10, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        gate = threading_module.Event()
+        entered = threading_module.Event()
+        calls = []
+
+        def flaky_extract(_image, _language=""):
+            calls.append(1)
+            if len(calls) == 1:
+                entered.set()
+                self.assertTrue(gate.wait(10))
+                raise RuntimeError("motor patladı")
+            return "sonraki metin"
+
+        with mock.patch.object(screenshot_capture.ocr, "extract_text",
+                               side_effect=flaky_extract):
+            controller._on_overlay_ocr(image)
+            self.assertTrue(entered.wait(10))
+            controller._on_overlay_ocr(image)
+            gate.set()
+            controller._ocr_queue.join()
+            self.app.processEvents()
+        self.assertEqual(errors, ["motor patladı"])
+        self.assertEqual(done, ["sonraki metin"])
+
+    def test_shutdown_does_not_hang_on_a_busy_worker(self):
+        import threading as threading_module
+
+        controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
+        self.addCleanup(controller.deleteLater)
+        image = QImage(20, 10, QImage.Format.Format_RGB32)
+        image.fill(QColor("white"))
+        gate = threading_module.Event()
+        entered = threading_module.Event()
+
+        def blocking_extract(_image, _language=""):
+            entered.set()
+            self.assertTrue(gate.wait(10))
+            return "merhaba"
+
+        with mock.patch.object(screenshot_capture.ocr, "extract_text",
+                               side_effect=blocking_extract):
+            controller._on_overlay_ocr(image)
+            self.assertTrue(entered.wait(10))
+            controller.shutdown()  # must return while the worker is busy
+            gate.set()
+            controller._ocr_thread.join(10)
+            self.app.processEvents()
+        self.assertFalse(controller._ocr_thread.is_alive())
+
     def test_ocr_failure_travels_the_failed_signal(self):
         controller = screenshot_capture.ScreenshotController(ScreenshotConfig())
         self.addCleanup(controller.shutdown)
@@ -728,8 +849,8 @@ class TestOcrExtraction(unittest.TestCase):
                                track_start):
             controller._speak_next = True
             controller._on_overlay_ocr(image)
-            # These are two distinct captures. An overlapping second request
-            # is correctly ignored while the first OCR worker is still busy.
+            # The first call already finished (joined above); a request that
+            # lands on a busy worker is queued and processed afterwards.
             joined[-1].join(5)
             controller._on_overlay_ocr(image)
             for thread in joined:

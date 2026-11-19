@@ -85,6 +85,7 @@ WRAPPING_HELPERS = {
     "_wrap_page": (1,),
     "_prompt_gemini_key": (0,),
     "_key_dialog": (0,),
+    "_card": (0,),
 }
 
 
@@ -172,21 +173,23 @@ class TestTranslationCoverage(unittest.TestCase):
         self.assertFalse(leftovers, f"untranslated TR entry: {leftovers}")
 
     def test_tab_titles_and_descriptions_are_translated(self):
-        """The specs list is the one place a literal reaches t() unseen."""
-        tree = ast.parse((_root() / "settings_ui.py").read_text(encoding="utf-8"))
-        specs = None
-        for node in ast.walk(tree):
-            if (isinstance(node, ast.Assign)
-                    and any(isinstance(target, ast.Name) and target.id == "specs"
-                            for target in node.targets)):
-                specs = node.value
-        self.assertIsNotNone(specs, "specs list not found")
-        self.assertEqual(len(specs.elts), 6)
-        for element in specs.elts:
-            for index in (2, 3):
-                text = element.elts[index]
-                self.assertIsInstance(text, ast.Constant)
-                self.assertIn(text.value, i18n.TR, text.value)
+        """TOOL_PAGES is the one place a literal reaches t() unseen."""
+        import settings_ui
+        pages = settings_ui.SettingsWindow.TOOL_PAGES
+        self.assertEqual(len(pages), 6)
+        for _page_id, title, description in pages:
+            self.assertIn(title, i18n.TR, title)
+            self.assertIn(description, i18n.TR, description)
+
+    def test_settings_section_titles_and_book_panels_are_translated(self):
+        """Section rails and book panels pass plain ids/titles around; the
+        runtime table is the only place their words meet t()."""
+        import settings_ui
+        self.assertEqual(len(settings_ui.SettingsWindow.SETTINGS_SECTIONS), 9)
+        for _section_id, title in settings_ui.SettingsWindow.SETTINGS_SECTIONS:
+            self.assertIn(title, i18n.TR, title)
+        for title in ("Model", "Download"):
+            self.assertIn(title, i18n.TR, title)
 
     def test_combo_label_lists_are_translated(self):
         import settings_ui

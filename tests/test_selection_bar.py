@@ -256,6 +256,39 @@ class TestSelectionBarWidget(unittest.TestCase):
         self.assertEqual(dismissed, [True])
 
 
+class TestSelectionTooltips(unittest.TestCase):
+    """Hover hints stay one word in every language."""
+
+    def test_bar_tooltips_are_single_words_everywhere(self):
+        import i18n
+
+        previous = i18n.language()
+        try:
+            for code, _name in i18n.LANGUAGES:
+                i18n.set_language(code)
+                for kind, label in selection_bar.SelectionBar.ACTIONS:
+                    text = i18n.t(label)
+                    self.assertTrue(text.strip(), (code, kind))
+                    self.assertNotIn(" ", text.strip(), (code, kind, text))
+        finally:
+            i18n.set_language(previous)
+
+    def test_translate_tooltip_key(self):
+        import i18n
+
+        self.assertEqual(
+            [label for kind, label in selection_bar.SelectionBar.ACTIONS
+             if kind == "translate"], ["Translate"])
+        previous = i18n.language()
+        try:
+            i18n.set_language("tr")
+            bar = selection_bar.SelectionBar()
+            self.addCleanup(bar.close)
+            self.assertEqual(bar.buttons["translate"].toolTip(), "Çevir")
+        finally:
+            i18n.set_language(previous)
+
+
 class TestSelectionController(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -604,6 +637,87 @@ class TestSelectionController(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("API key", errors[0])
 
+    def test_enable_rearms_for_current_selection(self):
+        controller = self._controller()
+        controller.set_enabled(True)
+        controller._on_polled(_sel("metin"))
+        self.assertTrue(controller.bar.isVisible())
+        controller._consumed = _sel("metin")  # as if just acted on
+        controller.bar.hide()
+        controller.set_enabled(False)
+        controller.set_enabled(True)
+        controller._on_polled(_sel("metin"))
+        self.assertTrue(controller.bar.isVisible())
+
+    def test_acted_selection_stays_hidden_until_it_changes(self):
+        from PyQt6.QtWidgets import QApplication as QA
+        QA.clipboard().setText("sentinel")
+        controller = self._controller()
+        controller.set_enabled(True)
+        controller._on_polled(_sel("secili metin"))
+        self.assertTrue(controller.bar.isVisible())
+        real_start = selection_bar.threading.Thread.start
+        joined = []
+
+        def track_start(thread):
+            joined.append(thread)
+            real_start(thread)
+
+        with mock.patch.object(selection_bar, "read_selection",
+                               return_value=_sel("secili metin")), \
+             mock.patch.object(selection_bar.threading.Thread, "start",
+                               track_start):
+            controller._on_copy("secili metin")
+            for thread in joined:
+                thread.join(5)
+            self.app.processEvents()
+            self.app.processEvents()
+        self.assertEqual(QA.clipboard().text(), "secili metin")
+        # Acted on: gone at once, and the same selection must not bring
+        # the bar back on the next polls.
+        self.assertFalse(controller.bar.isVisible())
+        controller._on_polled(_sel("secili metin"))
+        self.assertFalse(controller.bar.isVisible())
+        # A new selection re-arms the bar; clearing it hides again.
+        controller._on_polled(_sel("baska metin"))
+        self.assertTrue(controller.bar.isVisible())
+        controller._on_polled(None)
+        self.assertFalse(controller.bar.isVisible())
+
+    def test_action_answer_leaves_bar_hidden_for_same_selection(self):
+        controller = self._controller()
+        controller.set_enabled(True)
+        done = []
+        controller.result_ready.connect(lambda kind, text: done.append((kind, text)))
+        client = mock.Mock()
+        client.translate.return_value = "ceviri"
+        real_start = selection_bar.threading.Thread.start
+        joined = []
+
+        def track_start(thread):
+            joined.append(thread)
+            real_start(thread)
+
+        with mock.patch.object(selection_bar, "read_selection",
+                               return_value=_sel("metin")), \
+             mock.patch.object(selection_bar.api, "GeminiClient",
+                               return_value=client), \
+             mock.patch.object(selection_bar.threading.Thread, "start",
+                               track_start):
+            controller._on_polled(_sel("metin"))
+            self.assertTrue(controller.bar.isVisible())
+            controller._on_action("translate", "metin")
+            # Gone the moment the button is taken, before the answer lands.
+            self.assertFalse(controller.bar.isVisible())
+            for thread in joined:
+                thread.join(5)
+            self.app.processEvents()
+            self.app.processEvents()
+        self.assertEqual(done, [("translate", "ceviri")])
+        self.assertFalse(controller.bar.isVisible())
+        controller._on_polled(_sel("metin"))
+        self.assertFalse(controller.bar.isVisible())
+
 
 class TestSelectionApi(unittest.TestCase):
     def test_explain_and_summarize_wrap_source(self):
@@ -671,7 +785,8 @@ class TestSelectionI18n(unittest.TestCase):
         keys = ("Text selection bar",
                 "Show a small toolbar next to selected text.",
                 "Off by default. Applies as soon as you save; no restart needed.",
-                "Explain", "Summarize", "The selection is too long.")
+                "Explain", "Summarize", "Translate",
+                "The selection is too long.")
         for key in keys:
             self.assertIn(key, i18n.TR)
         for code, table in i18n.TABLES.items():
@@ -683,7 +798,9 @@ class TestSelectionI18n(unittest.TestCase):
         try:
             self.assertEqual(i18n.t("Text selection bar"), "Metin seçim çubuğu")
             self.assertEqual(i18n.t("Explain"), "Açıkla")
-            self.assertEqual(i18n.t("Summarize"), "Özetle")
+            self.assertEqual(i18n.t("Summarize"), "Özet")
+            self.assertEqual(i18n.t("Translate"), "Çevir")
+            self.assertEqual(i18n.t("Copy"), "Kopyala")
         finally:
             i18n.set_language("en")
 
