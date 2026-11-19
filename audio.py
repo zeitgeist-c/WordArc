@@ -288,16 +288,43 @@ class LiveStreamer(QObject, _CaptureBase):
         _CaptureBase.__init__(self)
         self._pending = bytearray()
         self._error_reported = False
+        self._wav = None
+        self.wav_path = ""
+        self._wav_broken = False
+        self._epoch = 0
 
     def start(self, target="", max_seconds=480):
         if self.active:
-            return
+            return None
         self._device = _match_input_device(target)
         self._buffer = bytearray()
         self._pending = bytearray()
         self._rms = []
         self._cancelled = False
         self._error_reported = False
+        self._wav_broken = False
+        self._close_local()
+        self.wav_path = ""
+        try:
+            fd, self.wav_path = tempfile.mkstemp(prefix="wordarc-live-",
+                                                  suffix=".wav")
+            try:
+                # Prove the file is really writable before any audio flows:
+                # a take that cannot be rescued must not start as if safe.
+                os.write(fd, b"\x00" * 4096)
+            finally:
+                os.close(fd)
+            self._wav = wave.open(self.wav_path, "wb")
+            self._wav.setnchannels(CHANNELS)
+            self._wav.setsampwidth(SAMPLE_WIDTH)
+            self._wav.setframerate(RATE)
+        except (OSError, wave.Error) as exc:
+            self._close_local()
+            self._drop_local_file()
+            _log.warning("live local recording unavailable (%s)", exc)
+            self.failed.emit(t("Could not save the live audio: {error}",
+                               error=_short_error(exc)))
+            return
         self._max_bytes = int(max_seconds * RATE * SAMPLE_WIDTH * CHANNELS)
         try:
             self._open_stream()
@@ -319,14 +346,52 @@ class LiveStreamer(QObject, _CaptureBase):
             else:
                 _log.warning("default microphone did not open (%s)", reason)
             if self._stream is None:
+                # No audio will flow, so there is nothing to rescue: close
+                # the WAV and drop the empty file instead of orphaning it.
+                self._close_local()
+                self._drop_local_file()
                 self.failed.emit(
                     t("Could not open the microphone: {error}", error=reason))
+                return None
+        self._epoch += 1
+        return self._epoch
 
     def _open_stream(self):
         self._stream = _open_portaudio_stream(
             samplerate=RATE, channels=CHANNELS, dtype="int16",
             blocksize=CHUNK_FRAMES, device=self._device,
             callback=self._callback)
+
+    def _write_local(self, chunk):
+        """Mirror captured PCM to the rescue WAV; a write failure ends the take.
+
+        The file stays a valid prefix of what was captured so far, and the
+        failure is reported — never silently continued.
+        """
+        if self._wav is None or self._wav_broken or not chunk:
+            return
+        try:
+            with self._lock:
+                if self._wav is not None:
+                    self._wav.writeframes(chunk)
+        except (OSError, wave.Error) as exc:
+            self._wav_broken = True
+            try:
+                with self._lock:
+                    self._close_local()
+            except Exception:
+                pass
+            _log.warning("live local recording stopped (%s)", exc)
+            self.failed.emit(t("Could not save the live audio: {error}",
+                               error=_short_error(exc)))
+
+    def _close_local(self):
+        if self._wav is not None:
+            try:
+                self._wav.close()
+            except Exception:
+                pass
+            self._wav = None
 
     def _callback(self, indata, frames, time_info, status):
         if status and not self._error_reported:
@@ -336,6 +401,7 @@ class LiveStreamer(QObject, _CaptureBase):
         _chunk, peak, _rms = self._on_data(indata, frames, time_info, status)
         self.level.emit(peak)
         self._pending.extend(_chunk)
+        self._write_local(_chunk)
         while len(self._pending) >= self.PIECE_BYTES:
             self.chunk.emit(bytes(self._pending[:self.PIECE_BYTES]))
             del self._pending[:self.PIECE_BYTES]
@@ -354,27 +420,50 @@ class LiveStreamer(QObject, _CaptureBase):
         with self._lock:
             self._buffer = bytearray()
             self._pending = bytearray()
+            self._close_local()
+        self._drop_local_file()
+
+    def _drop_local_file(self):
+        """Forget the rescue WAV (cancelled or too short to keep)."""
+        path, self.wav_path = self.wav_path, ""
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+    def drop_local_file(self):
+        """Public twin of the cancel/too-short cleanup for the controller."""
+        self._drop_local_file()
 
     def stop(self):
-        """End capture; (duration_seconds, rms) or None when unusable."""
+        """End capture; (duration_seconds, rms, tail_pcm) or None.
+
+        The leftover partial piece is returned instead of emitted, so the
+        caller can push it to the session synchronously before finishing:
+        a queued emit could land after the session already ended and the
+        last second of speech would never reach the server.
+        """
         if self._stream is None:
             return None
         self._stop_stream()
         with self._lock:
             pcm = bytes(self._buffer)
             rms = list(self._rms)
+            tail = bytes(self._pending)
             self._buffer = bytearray()
             self._rms = []
+            self._pending = bytearray()
+            self._close_local()
         if self._cancelled:
+            self._drop_local_file()
             return None
         frames = len(pcm) // (SAMPLE_WIDTH * CHANNELS)
         if frames < MIN_FRAMES:
+            self._drop_local_file()
             self.failed.emit(t("Recording too short, speak for at least 0.3 s"))
             return None
-        if self._pending:
-            self.chunk.emit(bytes(self._pending))
-            self._pending = bytearray()
-        return frames / RATE, rms
+        return frames / RATE, rms, tail
 
 
 class MeetingRecorder(QObject, _CaptureBase):
@@ -398,11 +487,13 @@ class MeetingRecorder(QObject, _CaptureBase):
         self._writer_thread = None
         self._q = queue.Queue(maxsize=256)  # tuples (which_channel, bytes, peak)
         self._stopped_evt = threading.Event()
+        self._stop_complete = threading.Event()
+        self._stop_complete.set()
         self._error_reported = False
         self._error_lock = threading.Lock()
 
     def start(self, path, mic_target="", system_target="", max_seconds=14400):
-        if self.active:
+        if self.active or not self._stop_complete.is_set():
             return
         self._path = path
         self._frames = 0
@@ -526,11 +617,24 @@ class MeetingRecorder(QObject, _CaptureBase):
         pending_m, pending_s = b"", b""
         last_m_peak, last_s_peak = 0.0, 0.0
         unmatched_since = None
+        # This take's own file: a newer recording may replace self._wav
+        # while an overrunning writer still drains — never write into it.
+        wav = self._wav
         try:
-            while not self._stopped_evt.is_set():
+            # After stop() the streams are gone, so no new audio can arrive:
+            # keep looping until the queued last blocks are written. The WAV
+            # is only closed in stop() after this thread is joined, never
+            # while the writer is still running.
+            while not self._stopped_evt.is_set() or not self._q.empty():
+                draining = self._stopped_evt.is_set()
                 try:
-                    which, b, peak = self._q.get(timeout=0.2)
+                    if draining:
+                        which, b, peak = self._q.get_nowait()
+                    else:
+                        which, b, peak = self._q.get(timeout=0.2)
                 except queue.Empty:
+                    if draining:
+                        break
                     if (unmatched_since is not None
                             and time.monotonic() - unmatched_since
                             > CHANNEL_STALL_SECONDS):
@@ -546,7 +650,8 @@ class MeetingRecorder(QObject, _CaptureBase):
                     unmatched_since = None
                 elif pending_m or pending_s:
                     unmatched_since = unmatched_since or time.monotonic()
-                    if time.monotonic() - unmatched_since > CHANNEL_STALL_SECONDS:
+                    if (not draining and time.monotonic() - unmatched_since
+                            > CHANNEL_STALL_SECONDS):
                         raise OSError("one audio source stopped producing data")
                 n = min(len(pending_m), len(pending_s)) & ~1
                 if n:
@@ -559,7 +664,7 @@ class MeetingRecorder(QObject, _CaptureBase):
                     stereo = array.array("h", bytes(len(left) * 4))
                     stereo[0::2] = left
                     stereo[1::2] = right
-                    self._wav.writeframes(stereo.tobytes())
+                    wav.writeframes(stereo.tobytes())
                     self._frames += n // 2
                     pending_m = pending_m[n:]
                     pending_s = pending_s[n:]
@@ -587,9 +692,13 @@ class MeetingRecorder(QObject, _CaptureBase):
     def cancel(self):
         self._cancelled = True
         self.stop()
-        self._remove_partial()
 
-    def stop(self):
+    def stop(self, *, wait=False):
+        if self._stopped_evt.is_set():
+            if wait:
+                self._stop_complete.wait()
+            return
+        self._stop_complete.clear()
         if self._mic_stream is not None:
             try:
                 self._mic_stream.stop()
@@ -604,18 +713,40 @@ class MeetingRecorder(QObject, _CaptureBase):
             except Exception:
                 pass
         self._stopped_evt.set()
-        if self._writer_thread is not None:
-            self._writer_thread.join(timeout=3)
-        self._writer_thread = None
+        writer = self._writer_thread
         self._mic_stream = None
         self._sys_stream = None
+        if writer is not None:
+            # A fast drain can complete immediately. A delayed disk write
+            # must not hold up the UI. Only application shutdown waits.
+            writer.join(timeout=None if wait else 0.05)
+            if writer.is_alive():
+                threading.Thread(
+                    target=self._finish_after_writer,
+                    args=(writer,),
+                    daemon=True,
+                ).start()
+                return
+        self._complete_stop()
+
+    def _complete_stop(self):
+        """Close and report only after the writer has finished."""
         self._cleanup_file()
-        if self._cancelled:
+        cancelled, path, frames = self._cancelled, self._path, self._frames
+        if cancelled:
+            self._remove_partial()
+        self._writer_thread = None
+        self._stop_complete.set()
+        if cancelled:
             return
-        if self._frames < MIN_FRAMES:
+        if frames < MIN_FRAMES:
             self.failed.emit(t("Recording too short, speak for at least 0.3 s"))
             return
-        self.stopped.emit(self._path, self._frames / RATE)
+        self.stopped.emit(path, frames / RATE)
+
+    def _finish_after_writer(self, writer):
+        writer.join()
+        self._complete_stop()
 
 
 def _peak_only(chunk):

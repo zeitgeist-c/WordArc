@@ -151,15 +151,16 @@ M_IDLE, M_RECORDING, M_WORKING = "idle", "recording", "working"
 
 
 class _LiveOpener(QObject):
-    """Open a live session off the GUI thread; report back through signals."""
+    """Open a live session off the GUI thread; report via signals."""
 
     opened = pyqtSignal(object)
     failed = pyqtSignal(str)
 
-    def __init__(self, keys, mode, parent=None):
+    def __init__(self, keys, mode, generation=0, parent=None):
         super().__init__(parent)
         self._keys = list(keys)
         self._mode = mode
+        self._generation = generation
 
     def run(self):
         try:
@@ -168,30 +169,40 @@ class _LiveOpener(QObject):
         except livespeech.LiveError as exc:
             self.failed.emit(str(exc))
             return
+        session.generation = self._generation
         self.opened.emit(session)
 
 
 class _LiveFinisher(QObject):
-    """Finish a live session off the GUI thread; hand over the transcript."""
+    """Finish a live session off the GUI thread; hand over the transcript.
 
-    ready = pyqtSignal(str, float, object, str)
-    failed = pyqtSignal(str, str)
+    The rescue WAV travels with the finisher, not with the shared
+    streamer: by the time this runs the streamer may already belong to a
+    newer take. The path rides the signal so a stale result can only ever
+    touch its own file.
+    """
+
+    ready = pyqtSignal(str, float, object, str, str)
+    failed = pyqtSignal(str, str, str)
 
     def __init__(self, session, duration, rms_values, operation_id,
-                 parent=None):
+                 wav_path="", parent=None):
         super().__init__(parent)
         self._session = session
         self._duration = duration
         self._rms = list(rms_values)
         self._operation_id = operation_id
+        # The signal is typed str: only ever carry a real path string.
+        self._wav_path = wav_path if isinstance(wav_path, str) else ""
 
     def run(self):
         try:
             text = self._session.finish()
         except livespeech.LiveError as exc:
-            self.failed.emit(str(exc), self._operation_id)
+            self.failed.emit(str(exc), self._operation_id, self._wav_path)
             return
-        self.ready.emit(text, self._duration, self._rms, self._operation_id)
+        self.ready.emit(text, self._duration, self._rms, self._operation_id,
+                        self._wav_path)
 
 
 class _UpdateWorker(QObject):
@@ -307,6 +318,8 @@ class WordArc:
         self.live_session = None
         self.live_keys = []
         self.live_start_slot = 0
+        self._live_generation = 0
+        self._live_stream_epoch = 0
         self._live_opener = None
         self._live_finisher = None
         self._finishing_session = None
@@ -775,12 +788,15 @@ class WordArc:
         if self._live_engine():
             self._start_live()
             return
-        self.overlay.show_recording()
+        self.overlay.show_busy(t("Preparing…"))
         if not self._begin_recording():
             if self.dictation_operation.state == operation.State.RECORDING:
                 self.dictation_operation.transition(operation.State.FAILED)
                 self.dictation_operation.transition(operation.State.IDLE)
             return
+        self.elapsed.restart()
+        self.ticker.start()
+        self.overlay.show_recording()
         self._duck_start()
         self._set_state(RECORDING)
 
@@ -792,19 +808,26 @@ class WordArc:
             return False
 
     def _start_live(self):
-        """Open the live session off the GUI thread, then stream the mic."""
-        self.overlay.show_recording()
-        self.elapsed.restart()
-        self.ticker.start()
+        """Open the live session off the GUI thread, then stream the mic.
+
+        The ribbon says "preparing" until the session is accepted AND the
+        microphone is really capturing: the counter must not run while the
+        connection is still being set up.
+        """
+        self._live_generation += 1
+        self.overlay.show_busy(t("Preparing…"))
         keys = self.conf.gemini_keys()
         start = self.conf.claim_api_slot(len(keys))
         ordered = keys[start:] + keys[:start] if keys else []
         self.live_keys = list(keys)
         self.live_start_slot = start
         mode = self.conf.get("live_transcription_mode", "smart") or "smart"
-        self._live_opener = _LiveOpener(ordered, mode)
+        self._live_opener = _LiveOpener(ordered, mode,
+                                        generation=self._live_generation)
         self._live_opener.opened.connect(self._on_live_opened)
-        self._live_opener.failed.connect(self._on_live_open_failed)
+        gen = self._live_generation
+        self._live_opener.failed.connect(
+            lambda message: self._on_live_open_failed(message, gen))
         self._set_state(RECORDING)
         threading.Thread(target=self._live_opener.run, daemon=True).start()
 
@@ -812,15 +835,28 @@ class WordArc:
         if self.state != RECORDING:
             session.cancel()
             return
+        if getattr(session, "generation", None) != self._live_generation:
+            # A late session from a previous start: never let it take over
+            # the new recording.
+            session.cancel()
+            return
         self.live_session = session
-        self.live_streamer.start(self.conf["mic_target"],
-                                 self.conf["max_seconds"])
+        epoch = self.live_streamer.start(self.conf["mic_target"],
+                                         self.conf["max_seconds"])
         if not self.live_streamer.active:
             return  # start() has already said what went wrong
+        self._live_stream_epoch = epoch
         self._duck_start()
+        self.elapsed.restart()
+        self.ticker.start()
+        self.overlay.show_recording()
         self.live_timer.start(200)
 
-    def _on_live_open_failed(self, message):
+    def _on_live_open_failed(self, message, generation=None):
+        if (generation is not None
+                and generation != self._live_generation):
+            # A stale opener failing after a new start: not this recording.
+            return
         self._live_opener = None
         self.ticker.stop()
         self._on_error(message, self.dictation_operation.operation_id)
@@ -830,7 +866,22 @@ class WordArc:
         if session is not None:
             session.push(pcm)
 
+    def _rescue_note(self, path):
+        """Second message line pointing at kept audio, or '' when nothing."""
+        if not path:
+            return ""
+        return t("Audio kept: {path}. Reprocess it from {tab}.",
+                 path=path, tab=t("Audio file"))
+
     def _on_live_stream_error(self, message):
+        self.live_streamer.stop()
+        rescued = cfg.rescue_recording(self.live_streamer.wav_path
+                                       if hasattr(self.live_streamer, "wav_path")
+                                       else "", "live")
+        self.live_streamer.wav_path = ""
+        note = self._rescue_note(rescued)
+        if note:
+            message = f"{message}\n{note}"
         session, self.live_session = self.live_session, None
         if session is not None:
             session.cancel()
@@ -841,6 +892,13 @@ class WordArc:
     def _live_poll(self):
         session = self.live_session
         if session is None or self.state != RECORDING:
+            return
+        if session.error:
+            # The server killed the session mid-recording (or the socket
+            # died): stop now instead of capturing into a dead session
+            # until the length limit. stop() finishes through the normal
+            # failure path, which rescues the audio captured so far.
+            self.stop()
             return
         self.overlay.show_live_text(session.preview())
         if session.limit_hit.is_set():
@@ -882,8 +940,6 @@ class WordArc:
             pass
 
     def _begin_recording(self):
-        self.elapsed.restart()
-        self.ticker.start()
         self.recorder.start(self.conf["mic_target"], self.conf["max_seconds"])
         return self.recorder.active
 
@@ -914,6 +970,7 @@ class WordArc:
         self.live_timer.stop()
         self.dictation_operation.transition(operation.State.PROCESSING)
         self._set_state(BUSY)
+        self._live_generation += 1
         session, self.live_session = self.live_session, None
         self._live_opener = None
         operation_id = self.dictation_operation.operation_id
@@ -927,6 +984,11 @@ class WordArc:
             return
         self.overlay.show_busy(t("Finishing live transcription…"))
         result = self.live_streamer.stop()
+        # The WAV belongs to this take, not to the shared streamer: snapshot
+        # it here so a newer recording can never be touched through it, and
+        # hand it to the finisher — the path rides the signal.
+        wav_path = self.live_streamer.wav_path or ""
+        self.live_streamer.wav_path = ""
         if result is None:
             # Too short or already cancelled: the streamer has said so
             # through its failed signal; only settle the API rotation here.
@@ -935,26 +997,70 @@ class WordArc:
             if total:
                 self.conf.record_api_attempt(slot, total)
             return
-        duration, rms_values = result
+        duration, rms_values, tail = result
+        if tail:
+            # The final partial piece goes to the session synchronously,
+            # before finish() sends the end marker: through the queued chunk
+            # signal it could land after the session already ended and the
+            # last second of speech would never reach the server.
+            session.push(tail)
         self._finishing_session = session
         self._live_finisher = _LiveFinisher(session, duration, rms_values,
-                                           operation_id)
+                                           operation_id, wav_path)
         self._live_finisher.ready.connect(self._on_live_ready)
         self._live_finisher.failed.connect(self._on_live_failed)
         threading.Thread(target=self._live_finisher.run, daemon=True).start()
 
-    def _on_live_ready(self, text, duration, rms_values, operation_id):
+    @staticmethod
+    def _drop_path(path):
+        """Delete one finished take's own file; never the shared streamer."""
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+    def _on_live_ready(self, text, duration, rms_values, operation_id,
+                       wav_path=""):
+        if not self.dictation_operation.accepts(operation_id):
+            # Stale result while a newer take is finishing: its finisher and
+            # session belong to the new take — touch neither. Only this
+            # take's own file, carried by the signal, is deleted.
+            self._drop_path(wav_path)
+            return
         self._live_finisher = None
         session, self._finishing_session = self._finishing_session, None
         slot, total = self._live_slot(session)
         if total:
             self.conf.record_api_success(slot, total)
+        # The capture stays bound to this job until cleanup/translation and
+        # delivery resolve: the pipeline files it away (keep_audio) or drops
+        # it, and on a processing failure keeps the readable WAV and reports
+        # where it is.
         self.pipeline.run_transcript(text, duration, rms_values, operation_id,
-                                     start_slot=self.live_start_slot)
+                                     start_slot=self.live_start_slot,
+                                     wav_path=wav_path or None)
 
-    def _on_live_failed(self, message, operation_id):
+    def _on_live_failed(self, message, operation_id, wav_path=""):
+        if not self.dictation_operation.accepts(operation_id):
+            # Stale failure while a newer take is finishing: same rule —
+            # the new take's finisher and session stay untouched.
+            self._drop_path(wav_path)
+            return
         self._live_finisher = None
         session, self._finishing_session = self._finishing_session, None
+        # The capture was already stopped (and the WAV closed, so it is
+        # movable on Windows) in _stop_live before the finisher ran. The
+        # streamer may belong to a newer take now — only this take's own
+        # file, carried by the signal, is filed away here.
+        rescued = cfg.rescue_recording(wav_path, "live") if wav_path else None
+        if rescued is None and wav_path and os.path.exists(wav_path):
+            # Filing away failed (full disk, permissions): the only copy
+            # must not be deleted — keep it where it is and report it.
+            rescued = wav_path
+        note = self._rescue_note(rescued or "")
+        if note:
+            message = f"{message}\n{note}"
         slot, total = self._live_slot(session)
         if total:
             self.conf.record_api_attempt(slot, total)
@@ -980,6 +1086,7 @@ class WordArc:
         self._duck_stop()
         self.ticker.stop()
         self.live_timer.stop()
+        self._live_generation += 1
         self._live_opener = None
         self._live_finisher = None
         session, self.live_session = self.live_session, None
@@ -1022,6 +1129,7 @@ class WordArc:
         # untouched. Dictation keeps recording, only the ducking ends.
         self._duck_stop()
         self.meeting_operation.begin()
+        self.overlay.show_busy(t("Preparing…"))
         base = meeting.new_base()
         _, wav_path = cfg.meeting_paths(base)
         self.meeting_recorder.start(
@@ -1031,6 +1139,7 @@ class WordArc:
             self.conf["meeting_max_seconds"],
         )
         if not self.meeting_recorder.active:
+            self.overlay.dismiss()
             if self.meeting_operation.state == operation.State.RECORDING:
                 self.meeting_operation.transition(operation.State.FAILED)
                 self.meeting_operation.transition(operation.State.IDLE)
@@ -1635,9 +1744,9 @@ class WordArc:
                 self.live_timer.stop()
         # A meeting in progress is closed properly rather than thrown away: the
         # WAV ends up valid and listed, ready to be written up after the restart.
-        if self.meeting_state == M_RECORDING:
+        if self.meeting_state in (M_RECORDING, M_WORKING):
             self.meeting_ticker.stop()
-            self.meeting_recorder.stop()
+            self.meeting_recorder.stop(wait=True)
         self.overlay.dismiss()
         self.tray.hide()
 

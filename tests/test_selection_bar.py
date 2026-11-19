@@ -2,10 +2,11 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import threading
+import time
 import unittest
 from unittest import mock
 
-from PyQt6.QtCore import QRect, Qt
+from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication
 
@@ -44,25 +45,39 @@ class FakePattern:
 class FakeControl:
     IS_PASSWORD = 30019
     PROCESS_ID = 30002
+    TEXT_PATTERN = 10014
 
     def __init__(self, pid=1234, password=False, pattern=None, parent=None,
-                 bounds=None, hwnd=777):
+                 bounds=None, hwnd=777, children=(), fail_password=False,
+                 raise_pattern=False):
         self._pid = pid
         self._password = password
         self._pattern = pattern
         self._parent = parent
         self._bounds = bounds
         self._hwnd = hwnd
+        self._children = list(children)
+        self._fail_password = fail_password
+        self._raise_pattern = raise_pattern
 
     def GetPropertyValue(self, prop):
         if prop == self.IS_PASSWORD:
+            if self._fail_password:
+                raise OSError("unreadable wrapper")
             return True if self._password else False
         if prop == self.PROCESS_ID:
             return self._pid
         raise ValueError(prop)
 
-    def GetTextPattern(self):
-        return self._pattern
+    def GetPattern(self, pattern_id):
+        if self._raise_pattern:
+            raise AttributeError("no GetPattern on this backend")
+        if pattern_id == self.TEXT_PATTERN:
+            return self._pattern
+        return None
+
+    def GetChildren(self):
+        return list(self._children)
 
     def GetParentControl(self):
         return self._parent
@@ -81,12 +96,14 @@ def _focused(control):
     return lambda: control
 
 
-def _sel(text="hello", rect=None, pid=1234, hwnd=777):
+def _sel(text="hello", rect=None, pid=1234, hwnd=777, lines=(), anchor=None):
     return Selection(
         text=text,
         rect=rect or QRect(100, 200, 300, 40),
         pid=pid,
-        hwnd=hwnd)
+        hwnd=hwnd,
+        lines=tuple(lines),
+        anchor=anchor)
 
 
 class TestSelectionMatch(unittest.TestCase):
@@ -183,6 +200,257 @@ class TestSelectionReader(unittest.TestCase):
         control.GetTopLevelControl = lambda: None
         found = selection_bar.read_selection(_focused(control))
         self.assertEqual(found.hwnd, 0)
+
+    def test_broken_pattern_call_climbs_to_parent(self):
+        # The real backend answers None for unsupported patterns; an older
+        # one raises instead. Either way the walk continues upward.
+        parent = FakeControl(
+            pattern=FakePattern([FakeRange("hi", [FakeRect(1, 2, 9, 6)])]))
+        child = FakeControl(pattern=None, parent=parent, raise_pattern=True)
+        found = selection_bar.read_selection(_focused(child))
+        self.assertIsNotNone(found)
+        self.assertEqual(found.text, "hi")
+
+    def test_unreadable_ancestor_password_does_not_veto(self):
+        grand = FakeControl(
+            pattern=FakePattern([FakeRange("hi", [FakeRect(1, 2, 9, 6)])]))
+        middle = FakeControl(pattern=None, parent=grand,
+                             fail_password=True)
+        leaf = FakeControl(pattern=None, parent=middle)
+        found = selection_bar.read_selection(_focused(leaf))
+        self.assertIsNotNone(found)
+        self.assertEqual(found.text, "hi")
+
+    def test_focused_password_refusal_is_strict(self):
+        leaf = FakeControl(pattern=None, fail_password=True)
+        self.assertIsNone(selection_bar.read_selection(_focused(leaf)))
+
+    def test_selection_without_geometry_stays_hidden(self):
+        # No line rects and no fallback: the bar must not park on an
+        # unrelated spot (the old whole-control fallback is gone).
+        control = FakeControl(pattern=FakePattern([FakeRange("hi", [])]))
+        self.assertIsNone(selection_bar.read_selection(_focused(control)))
+
+    def test_window_scan_finds_the_document_selection(self):
+        doc = FakeControl(
+            pattern=FakePattern([FakeRange("pane text",
+                                           [FakeRect(10, 10, 100, 30)])]))
+        doc_top = FakeControl(pattern=None, children=[doc])
+        doc_top.GetTopLevelControl = lambda: doc_top
+        # A top level without the document yields nothing, even though the
+        # walk itself is empty.
+        bare = FakeControl(pattern=None)
+        bare.GetTopLevelControl = lambda: bare
+        lonely = FakeControl(pattern=None)
+        lonely.GetTopLevelControl = bare.GetTopLevelControl
+        self.assertIsNone(selection_bar.read_selection(_focused(lonely)))
+        gate = FakeControl(pattern=None, parent=None)
+        gate.GetTopLevelControl = doc_top.GetTopLevelControl
+        found = selection_bar.read_selection(_focused(gate))
+        self.assertIsNotNone(found)
+        self.assertEqual(found.text, "pane text")
+
+    def test_window_scan_skips_password_fields(self):
+        secret = FakeControl(
+            password=True,
+            pattern=FakePattern([FakeRange("hunter2",
+                                           [FakeRect(10, 10, 100, 30)])]))
+        plain = FakeControl(
+            pattern=FakePattern([FakeRange("open note",
+                                           [FakeRect(10, 50, 100, 70)])]))
+        top = FakeControl(pattern=None, children=[secret, plain])
+        top.GetTopLevelControl = lambda: top
+        gate = FakeControl(pattern=None)
+        gate.GetTopLevelControl = top.GetTopLevelControl
+        found = selection_bar.read_selection(_focused(gate))
+        self.assertIsNotNone(found)
+        self.assertEqual(found.text, "open note")
+
+    def test_line_rects_are_kept_per_line(self):
+        control = FakeControl(pattern=FakePattern(
+            [FakeRange("two lines", [FakeRect(0, 0, 90, 12),
+                                     FakeRect(0, 12, 70, 24)])]))
+        found = selection_bar.read_selection(_focused(control))
+        self.assertEqual(len(found.lines), 2)
+        self.assertEqual((found.lines[1].x(), found.lines[1].width()),
+                         (0, 70))
+
+    def test_deep_document_found_by_window_scan(self):
+        inner = FakeControl(pattern=FakePattern(
+            [FakeRange("derin satir", [FakeRect(0, 0, 100, 20)])]))
+        top = inner
+        for _ in range(11):
+            top = FakeControl(children=[top])
+        found = selection_bar._read_window_selection(top, 7, 8)
+        self.assertIsNotNone(found)
+        self.assertEqual(found.text, "derin satir")
+
+    def test_window_scan_respects_node_budget(self):
+        top = FakeControl(children=[FakeControl() for _ in range(1600)])
+        started = time.time()
+        found = selection_bar._read_window_selection(top, 7, 8)
+        self.assertIsNone(found)
+        self.assertLess(time.time() - started, 5.0)
+
+    def test_anchor_prefers_caret_then_cursor(self):
+        from PyQt6.QtCore import QPoint
+        control = FakeControl(pattern=FakePattern(
+            [FakeRange("hi", [FakeRect(100, 100, 300, 140)])]))
+        with mock.patch.object(selection_bar, "_caret_pos",
+                               return_value=QPoint(150, 120)), \
+             mock.patch.object(selection_bar, "_cursor_pos",
+                               return_value=QPoint(250, 120)):
+            found = selection_bar.read_selection(_focused(control))
+        self.assertEqual((found.anchor.x(), found.anchor.y()), (150, 120))
+        with mock.patch.object(selection_bar, "_caret_pos",
+                               return_value=None), \
+             mock.patch.object(selection_bar, "_cursor_pos",
+                               return_value=QPoint(250, 120)):
+            found = selection_bar.read_selection(_focused(control))
+        self.assertEqual((found.anchor.x(), found.anchor.y()), (250, 120))
+        with mock.patch.object(selection_bar, "_caret_pos",
+                               return_value=QPoint(900, 900)), \
+             mock.patch.object(selection_bar, "_cursor_pos",
+                               return_value=QPoint(5, 5)):
+            found = selection_bar.read_selection(_focused(control))
+        self.assertIsNone(found.anchor)
+
+    def test_anchor_forwards_hwnd_to_caret(self):
+        from PyQt6.QtCore import QRect
+        with mock.patch.object(selection_bar, "_caret_pos",
+                               return_value=None) as caret, \
+             mock.patch.object(selection_bar, "_cursor_pos",
+                               return_value=None):
+            selection_bar._anchor_for(QRect(0, 0, 100, 20), 123)
+        caret.assert_called_once_with(123)
+
+
+class TestCaretOwnership(unittest.TestCase):
+    """The caret counts only when owned by the source window on screen."""
+
+    def test_no_source_window_means_no_caret(self):
+        with mock.patch.object(selection_bar, "_caret_raw",
+                               return_value=(500, QPoint(10, 20))):
+            self.assertIsNone(selection_bar._caret_pos())
+            self.assertIsNone(selection_bar._caret_pos(0))
+
+    def _owned(self, root=700, screen=None, frame=None):
+        screen = QPoint(110, 220) if screen is None else screen
+        frame = QRect(0, 0, 800, 600) if frame is None else frame
+        return (mock.patch.object(selection_bar, "_caret_raw",
+                                   return_value=(500, QPoint(10, 20))),
+                mock.patch.object(selection_bar, "_root_window",
+                                   return_value=root),
+                mock.patch.object(selection_bar, "_client_to_screen",
+                                   return_value=screen),
+                mock.patch.object(selection_bar, "_window_frame",
+                                   return_value=frame))
+
+    def test_owned_caret_resolves_to_screen(self):
+        patches = self._owned()
+        for patch in patches:
+            patch.start()
+        self.addCleanup(lambda: [patch.stop() for patch in patches])
+        self.assertEqual(selection_bar._caret_pos(700), QPoint(110, 220))
+
+    def test_foreign_caret_rejected(self):
+        patches = self._owned(root=999)
+        for patch in patches:
+            patch.start()
+        self.addCleanup(lambda: [patch.stop() for patch in patches])
+        self.assertIsNone(selection_bar._caret_pos(700))
+
+    def test_caret_outside_frame_rejected(self):
+        patches = self._owned(screen=QPoint(5000, 5000))
+        for patch in patches:
+            patch.start()
+        self.addCleanup(lambda: [patch.stop() for patch in patches])
+        self.assertIsNone(selection_bar._caret_pos(700))
+
+    def test_unresolvable_caret_rejected(self):
+        with mock.patch.object(selection_bar, "_caret_raw",
+                               return_value=None):
+            self.assertIsNone(selection_bar._caret_pos(700))
+        patches = self._owned()
+        for patch in patches:
+            patch.start()
+        self.addCleanup(lambda: [patch.stop() for patch in patches])
+        with mock.patch.object(selection_bar, "_client_to_screen",
+                               return_value=None):
+            self.assertIsNone(selection_bar._caret_pos(700))
+
+
+class TestLogicalMapping(unittest.TestCase):
+    """Physical UIA pixels become Qt logical pixels per owning screen."""
+
+    def test_single_scaled_screen(self):
+        from PyQt6.QtCore import QRect
+        out = selection_bar._to_logical_on_screens(
+            QRect(125, 125, 100, 50), [(QRect(0, 0, 1920, 1080), 1.25)])
+        self.assertEqual((out.x(), out.y(), out.width(), out.height()),
+                         (100, 100, 80, 40))
+
+    def test_second_monitor_offset_and_scale(self):
+        from PyQt6.QtCore import QRect
+        screens = [(QRect(0, 0, 1920, 1080), 1.0),
+                   (QRect(1920, 0, 1280, 1024), 1.5)]
+        out = selection_bar._to_logical_on_screens(
+            QRect(3000, 150, 150, 60), screens)
+        self.assertEqual((out.x(), out.y(), out.width(), out.height()),
+                         (2640, 100, 100, 40))
+
+    def test_left_monitor_negative_origin_scaled(self):
+        # Regression: left monitor x=-1920 at 125%; physical x=-1700 must
+        # map to Qt x=-1744, not -1360.
+        from PyQt6.QtCore import QRect
+        screens = [(QRect(-1920, 0, 1536, 864), 1.25),
+                   (QRect(0, 0, 1920, 1080), 1.0)]
+        out = selection_bar._to_logical_on_screens(
+            QRect(-1700, 100, 250, 40), screens)
+        self.assertEqual((out.x(), out.y(), out.width(), out.height()),
+                         (-1744, 80, 200, 32))
+
+    def test_right_monitor_positive_origin_scaled(self):
+        from PyQt6.QtCore import QRect
+        screens = [(QRect(0, 0, 1920, 1080), 1.0),
+                   (QRect(1920, 0, 800, 600), 1.5)]
+        out = selection_bar._to_logical_on_screens(
+            QRect(2000, 300, 150, 40), screens)
+        self.assertEqual((out.x(), out.y(), out.width(), out.height()),
+                         (1973, 200, 100, 27))
+
+    def test_unknown_layout_falls_back_to_first_scale(self):
+        from PyQt6.QtCore import QRect
+        out = selection_bar._to_logical_on_screens(
+            QRect(-5000, -5000, 100, 50),
+            [(QRect(0, 0, 1920, 1080), 1.25)])
+        self.assertEqual((out.x(), out.y()), (-4000, -4000))
+
+
+class TestAnchorRow(unittest.TestCase):
+    def test_containing_row_wins(self):
+        from PyQt6.QtCore import QRect, QPoint
+        rows = [QRect(0, 0, 200, 20), QRect(0, 20, 200, 40)]
+        self.assertIs(selection_bar.SelectionBar._anchor_row(
+            rows, QRect(0, 0, 200, 40), QPoint(50, 30)), rows[1])
+
+    def test_nearest_row_when_outside(self):
+        from PyQt6.QtCore import QRect, QPoint
+        rows = [QRect(0, 0, 200, 20), QRect(0, 100, 200, 120)]
+        self.assertIs(selection_bar.SelectionBar._anchor_row(
+            rows, QRect(0, 0, 200, 120), QPoint(50, 90)), rows[1])
+
+    def test_no_anchor_means_first_row(self):
+        from PyQt6.QtCore import QRect
+        rows = [QRect(0, 0, 200, 20), QRect(0, 20, 200, 40)]
+        self.assertIs(selection_bar.SelectionBar._anchor_row(
+            rows, QRect(0, 0, 200, 40), None), rows[0])
+
+    def test_no_rows_means_fallback(self):
+        from PyQt6.QtCore import QRect
+        box = QRect(0, 0, 200, 40)
+        self.assertIs(selection_bar.SelectionBar._anchor_row(
+            [], box, None), box)
 
 
 class SelectionConf(dict):
@@ -822,6 +1090,78 @@ class TestSelectionResultDialog(unittest.TestCase):
         QTest.mouseClick(dialog.copy_button, Qt.MouseButton.LeftButton)
         self.app.processEvents()
         self.assertEqual(QA.clipboard().text(), "cevap metni")
+
+
+class TestBarPlacement(unittest.TestCase):
+    """The bar parks by the row the user acted on, inside the screen."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_multi_line_anchor_uses_release_row(self):
+        bar = SelectionBar()
+        self.addCleanup(bar.close)
+        rows = [QRect(400, 200, 200, 20), QRect(400, 220, 200, 20),
+                QRect(400, 240, 200, 20)]
+        bar.show_for(_sel("üç satır", QRect(400, 200, 200, 60),
+                          lines=rows, anchor=QPoint(450, 250)))
+        self.app.processEvents()
+        # By the last row, above it: not by the first row, not below all.
+        self.assertLessEqual(bar.y() + bar.height(), 240 + 8)
+        self.assertGreater(bar.y() + bar.height(), 220)
+
+    def test_top_edge_drops_below(self):
+        bar = SelectionBar()
+        self.addCleanup(bar.close)
+        bar.show_for(_sel("üstte", QRect(400, 0, 200, 20)))
+        self.app.processEvents()
+        self.assertGreaterEqual(bar.y(), 20)
+
+    def test_scaled_screen_uses_logical_pixels(self):
+        bar = SelectionBar()
+        self.addCleanup(bar.close)
+        for ratio in (1.25, 1.5):
+            fake = mock.Mock()
+            fake.geometry.return_value = QRect(0, 0, 1920, 1080)
+            fake.devicePixelRatio.return_value = ratio
+            fake.availableGeometry.return_value = QRect(0, 0, 1920, 1040)
+            gui = selection_bar.QGuiApplication
+            with mock.patch.object(gui, "screens", return_value=[fake]), \
+                 mock.patch.object(gui, "screenAt", return_value=fake):
+                # Physical (1000 * ratio, 500 * ratio) is logical (1000, 500).
+                bar.show_for(_sel("ölçekli", QRect(int(1000 * ratio),
+                                                   int(500 * ratio), 250, 50)))
+                self.app.processEvents()
+            self.assertLess(bar.x() + bar.width(), 1000 * ratio)
+            self.assertLessEqual(bar.y() + bar.height(), 500 + 8)
+
+    def test_scrolled_selection_moves_the_bar(self):
+        controller = SelectionBarController(SelectionConf())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        controller.set_enabled(True)
+        controller._on_polled(_sel("metin", rect=QRect(100, 200, 300, 40)))
+        first = (controller.bar.x(), controller.bar.y())
+        self.assertTrue(controller.bar.isVisible())
+        controller._on_polled(_sel("metin", rect=QRect(100, 300, 300, 40)))
+        second = (controller.bar.x(), controller.bar.y())
+        self.assertTrue(controller.bar.isVisible())
+        self.assertNotEqual(first, second)
+        self.assertEqual(controller.bar._text, "metin")
+
+    def test_window_change_repositions(self):
+        controller = SelectionBarController(SelectionConf())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        controller.set_enabled(True)
+        controller._on_polled(_sel("metin", rect=QRect(100, 200, 300, 40),
+                                   hwnd=111))
+        first = (controller.bar.x(), controller.bar.y())
+        controller._on_polled(_sel("metin", rect=QRect(500, 200, 300, 40),
+                                   hwnd=222))
+        second = (controller.bar.x(), controller.bar.y())
+        self.assertNotEqual(first, second)
 
 
 if __name__ == "__main__":

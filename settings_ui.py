@@ -14,7 +14,7 @@ from PyQt6 import sip
 from PyQt6.QtWidgets import (
     QAbstractItemView, QAbstractScrollArea, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QFormLayout, QFrame, QGraphicsOpacityEffect, QGroupBox,
-    QHBoxLayout, QLabel, QLineEdit,
+    QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
     QPushButton, QScrollArea, QSizePolicy, QSpinBox, QStackedWidget,
     QStyle, QProgressBar,
@@ -1214,8 +1214,8 @@ class SettingsWindow(QDialog):
         buttons.accepted.connect(self._save)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(22, 18, 22, 18)
-        layout.setSpacing(12)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(10)
         layout.addWidget(header)
         layout.addWidget(rule)
         layout.addWidget(content, 1)
@@ -1477,8 +1477,8 @@ class SettingsWindow(QDialog):
         container = QWidget()
         container.setObjectName("page")
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(4, 18, 4, 8)
-        layout.setSpacing(12)
+        layout.setContentsMargins(4, 14, 4, 8)
+        layout.setSpacing(10)
         if settings is None:
             detail = QLabel(t(description))
             detail.setObjectName("pageDescription")
@@ -3020,11 +3020,8 @@ class SettingsWindow(QDialog):
         row.addWidget(self.minutes_retry)
         row.addStretch(1)
         layout.addLayout(row)
-        more = QHBoxLayout()
-        more.addWidget(folder)
-        more.addWidget(delete)
-        more.addWidget(reload_)
-        layout.addLayout(more)
+        more = self._button_grid(folder, delete, reload_)
+        layout.addWidget(more)
         return box
 
     def _file_tab(self):
@@ -3387,13 +3384,8 @@ class SettingsWindow(QDialog):
         window = QPushButton(t("Capture active window"))
         window.clicked.connect(
             lambda _checked=False: self.screenshot_requested.emit("window"))
-        actions = QHBoxLayout()
-        actions.addWidget(region)
-        actions.addWidget(speak_capture)
-        actions.addWidget(full)
-        actions.addWidget(window)
-        actions.addStretch(1)
-        body.addLayout(actions)
+        actions = self._button_grid(region, speak_capture, full, window)
+        body.addWidget(actions)
         self.screenshot_shortcut = self._shortcut_box()
         body.addWidget(self._label_row("Capture shortcut", self.screenshot_shortcut))
         self.screenshot_status = QLabel("")
@@ -3473,6 +3465,8 @@ class SettingsWindow(QDialog):
         ))
         self.history_enabled.toggled.connect(self.history_limit.setEnabled)
         limit_row = QHBoxLayout()
+        limit_row.setContentsMargins(0, 0, 0, 0)
+        limit_row.setSpacing(8)
         limit_row.addWidget(QLabel(t("Keep at most")))
         limit_row.addWidget(self.history_limit)
         limit_row.addStretch(1)
@@ -3488,13 +3482,8 @@ class SettingsWindow(QDialog):
         clear.clicked.connect(self._clear_history)
         reload_ = QPushButton(t("Reload"))
         reload_.clicked.connect(self._load_history)
-        row = QHBoxLayout()
-        row.addWidget(copy)
-        row.addWidget(delete)
-        row.addWidget(clear)
-        row.addWidget(reload_)
-        row.addStretch(1)
-        layout.addLayout(row)
+        row = self._button_grid(copy, delete, clear, reload_)
+        layout.addWidget(row)
         return box
 
     def _shortcut_box(self, placeholder=""):
@@ -3515,6 +3504,38 @@ class SettingsWindow(QDialog):
             layout.addWidget(widget, 1 if index == 0 else 0)
         holder = QWidget()
         holder.setLayout(layout)
+        return holder
+
+    @staticmethod
+    def _button_grid(*buttons, columns=2, single_below=400):
+        """Action buttons in a reflowing grid.
+
+        Neighbours that do not fit side by side share the row width instead
+        of squeezing each other; below ``single_below`` pixels the grid
+        drops to one column so even the longest label keeps its width.
+        """
+        holder = QWidget()
+        grid = QGridLayout(holder)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(8)
+        state = {"columns": 0}
+
+        def reflow():
+            width = holder.width() or holder.sizeHint().width()
+            want = 1 if width < single_below else columns
+            if want == state["columns"]:
+                return
+            state["columns"] = want
+            while grid.count():
+                grid.takeAt(0)
+            for index, button in enumerate(buttons):
+                grid.addWidget(button, index // want, index % want)
+            for column in range(want):
+                grid.setColumnStretch(column, 1)
+
+        holder.resizeEvent = lambda event: (reflow(), QWidget.resizeEvent(holder, event))[1]
+        reflow()
         return holder
 
     @staticmethod

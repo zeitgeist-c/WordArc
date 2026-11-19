@@ -18,7 +18,7 @@ def _live_controller(**conf_overrides):
     controller = wordarc.WordArc.__new__(wordarc.WordArc)
     conf = {"transcribe_engine": "live", "mic_target": "",
             "max_seconds": 300, "live_transcription_mode": "smart",
-            "auto_paste": True}
+            "auto_paste": True, "keep_audio": False}
     conf.update(conf_overrides)
     controller.conf = mock.MagicMock()
     controller.conf.get.side_effect = lambda key, default=None: conf.get(key, default)
@@ -48,6 +48,7 @@ def _live_controller(**conf_overrides):
     controller._finishing_session = None
     controller.live_keys = []
     controller.live_start_slot = 0
+    controller._live_generation = 0
     return controller
 
 
@@ -84,6 +85,7 @@ def test_live_start_opens_session_and_streams():
     import livespeech
     controller = _live_controller()
     session = mock.Mock()
+    session.generation = 1
     session.preview.return_value = ""
     session.limit_hit.is_set.return_value = False
     with mock.patch.object(livespeech.LiveSession, "open_with_keys",
@@ -96,6 +98,7 @@ def test_live_start_opens_session_and_streams():
     assert controller.live_session is session
     controller.live_streamer.start.assert_called_once_with("", 300)
     controller.live_timer.start.assert_called_once_with(200)
+    controller.overlay.show_busy.assert_called_once_with("Preparing…")
     controller.overlay.show_recording.assert_called_once_with()
     assert controller.state == wordarc.RECORDING
 
@@ -117,6 +120,7 @@ def test_live_poll_shows_preview_and_auto_stops_at_limit():
     controller.state = wordarc.RECORDING
     controller.dictation_operation.begin()
     session = mock.Mock()
+    session.error = ""
     session.preview.return_value = "merhaba"
     session.limit_hit.is_set.return_value = False
     controller.live_session = session
@@ -138,13 +142,20 @@ def test_live_stop_finishes_and_delivers_transcript():
     controller.live_session = session
     controller.live_keys = ["k1", "k2"]
     controller.live_start_slot = 0
-    controller.live_streamer.stop.return_value = (2.0, [0.1, 0.2])
+    controller.live_streamer.stop.return_value = (2.0, [0.1, 0.2],
+                                                      b"tail-pcm")
+    controller.live_streamer.wav_path = "take-live.wav"
     with mock.patch.object(wordarc.threading, "Thread", _InlineThread):
         controller.stop()
     session.finish.assert_called_once_with()
+    session.push.assert_called_once_with(b"tail-pcm")
     controller.pipeline.run_transcript.assert_called_once_with(
         "canlı yazı", 2.0, [0.1, 0.2],
-        controller.dictation_operation.operation_id, start_slot=0)
+        controller.dictation_operation.operation_id, start_slot=0,
+        wav_path="take-live.wav")
+    # The take's own file travels with the finisher: the shared streamer
+    # must be left empty so a later recording is never touched through it.
+    assert controller.live_streamer.wav_path == ""
     controller.conf.record_api_success.assert_called_once_with(1, 2)
     assert controller.live_session is None
 

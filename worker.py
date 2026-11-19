@@ -63,13 +63,14 @@ class Pipeline(QObject):
         self._stop.set()
 
     def run_transcript(self, raw, duration, rms_values=(), operation_id="",
-                       auto_paste=None, start_slot=None):
+                       auto_paste=None, start_slot=None, wav_path=None):
         """Deliver already-transcribed text through cleanup → paste → history.
 
         The live engine hands over text, not a recording, so transcription
         is skipped; everything after it runs exactly as for a file job.
         ``start_slot`` lets the caller keep one rotation claim across the
-        live session and the cleanup that follows it.
+        live session and the cleanup that follows it. ``wav_path`` binds the
+        live capture to this job: it is only dropped once the job resolves.
         """
         if self.busy:
             return
@@ -77,21 +78,27 @@ class Pipeline(QObject):
         self._thread = threading.Thread(
             target=self._work_text,
             args=(raw, duration, list(rms_values), operation_id, auto_paste,
-                  start_slot),
+                  start_slot, wav_path),
             daemon=True,
         )
         self._thread.start()
 
     def _work_text(self, raw, duration, rms_values, operation_id,
-                   auto_paste=None, start_slot=None):
+                   auto_paste=None, start_slot=None, wav_path=None):
         client, keys, uses_cloud = None, [], False
+        kept = None
         try:
             client, keys, uses_cloud, started = self._begin_job(
                 operation_id, t("Cleaning up…"), start_slot=start_slot)
-            self._deliver(raw, None, duration, rms_values, operation_id,
-                          auto_paste, client, keys, uses_cloud, started)
+            kept = self._deliver(raw, wav_path, duration, rms_values,
+                                 operation_id, auto_paste, client, keys,
+                                 uses_cloud, started)
         except Exception as exc:
-            self._fail(exc, uses_cloud, client, keys, operation_id)
+            kept = self._fail(exc, uses_cloud, client, keys, operation_id,
+                              wav_path=wav_path)
+        finally:
+            if kept != wav_path:
+                self._discard(wav_path)
 
     def _begin_job(self, operation_id, stage_message, start_slot=None):
         """Claim an API slot and build the failover client for one job."""
@@ -118,12 +125,22 @@ class Pipeline(QObject):
         )
         return client, keys, uses_cloud, started
 
-    def _fail(self, exc, uses_cloud, client, keys, operation_id):
+    def _fail(self, exc, uses_cloud, client, keys, operation_id,
+              wav_path=None):
+        """Report a pipeline failure; return the path now owning the audio.
+
+        A processing failure keeps the take: first tried in the rescue
+        folder, and in place when filing away fails. The caller must not
+        discard a path this returns. Cancellation returns None (the take is
+        thrown away on purpose); silence and hallucination skips never reach
+        here.
+        """
         conf = self.conf
         if isinstance(exc, (api.Cancelled, localspeech.Cancelled)):
             self.cancelled.emit(operation_id)
-        elif isinstance(exc, (api.ApiError, localspeech.LocalSpeechError,
-                              paste.PasteError)):
+            return None
+        if isinstance(exc, (api.ApiError, localspeech.LocalSpeechError,
+                            paste.PasteError)):
             _log.warning("pipeline failed (%s)", type(exc).__name__)
             print(f"wordarc: {exc}", file=sys.stderr)
             # Only an API error advances the order: a clipboard or local engine
@@ -132,14 +149,44 @@ class Pipeline(QObject):
             if (uses_cloud and client is not None
                     and isinstance(exc, api.ApiError)):
                 conf.record_api_attempt(client.active_slot, len(keys))
-            self.failed.emit(str(exc), operation_id)
-        else:  # never fail silently
-            _log.exception("unexpected pipeline error")
-            traceback.print_exc()
-            self.failed.emit(t("Unexpected error: {error}", error=exc), operation_id)
+            message = str(exc)
+            if wav_path and isinstance(exc, (api.ApiError,
+                                            localspeech.LocalSpeechError)):
+                # The take was captured but could not be processed: keep the
+                # audio so it can be reprocessed, and say where it is. A
+                # silence or hallucination skip is not a processing failure,
+                # so those keep discarding the take as before.
+                kept = cfg.rescue_recording(wav_path, "dictation")
+                if kept is None and os.path.exists(wav_path):
+                    # Filing away failed (full disk, permissions): the only
+                    # copy must not be deleted — keep it where it is.
+                    kept = wav_path
+                if kept:
+                    message = (f"{message}\n{t('Audio kept: {path}. '
+                                             'Reprocess it from {tab}.',
+                                             path=kept,
+                                             tab=t('Audio file'))}")
+                    self.failed.emit(message, operation_id)
+                    return kept
+            self.failed.emit(message, operation_id)
+            return None
+        _log.exception("unexpected pipeline error")
+        traceback.print_exc()
+        message = t("Unexpected error: {error}", error=exc)
+        if wav_path and os.path.exists(wav_path):
+            # An unexpected failure must not delete the only copy either.
+            message = (f"{message}\n{t('Audio kept: {path}. '
+                                     'Reprocess it from {tab}.',
+                                     path=wav_path,
+                                     tab=t('Audio file'))}")
+            self.failed.emit(message, operation_id)
+            return wav_path
+        self.failed.emit(message, operation_id)
+        return None
 
     def _work(self, wav_path, duration, rms_values, operation_id, auto_paste=None):
         client, keys, uses_cloud = None, [], False
+        kept = None
         try:
             client, keys, uses_cloud, started = self._begin_job(
                 operation_id, t("Transcribing…"))
@@ -153,12 +200,15 @@ class Pipeline(QObject):
             )
             _log.info("transcribe took %.1fs for %.1fs of audio",
                       time.monotonic() - transcribe_started, duration)
-            self._deliver(raw, wav_path, duration, rms_values, operation_id,
-                          auto_paste, client, keys, uses_cloud, started)
+            kept = self._deliver(raw, wav_path, duration, rms_values,
+                                 operation_id, auto_paste, client, keys,
+                                 uses_cloud, started)
         except Exception as exc:
-            self._fail(exc, uses_cloud, client, keys, operation_id)
+            kept = self._fail(exc, uses_cloud, client, keys, operation_id,
+                              wav_path=wav_path)
         finally:
-            self._discard(wav_path)
+            if kept != wav_path:
+                self._discard(wav_path)
 
     def _deliver(self, raw, wav_path, duration, rms_values, operation_id,
                  auto_paste, client, keys, uses_cloud, started):
@@ -166,9 +216,14 @@ class Pipeline(QObject):
 
         ``wav_path`` may be None (live engine): then there is no recording to
         delete and the text is delivered directly.
+
+        Returns the path now owning the audio when it must be preserved in
+        place (rescue move failed), otherwise None: the caller discards the
+        take unless the returned path says it is already kept.
         """
         conf = self.conf
         should_paste = conf["auto_paste"] if auto_paste is None else auto_paste
+        kept_here = None
 
         # Room tone only: don't spend an API call, and don't invite a
         # hallucinated sentence back.
@@ -222,11 +277,27 @@ class Pipeline(QObject):
             except api.ApiError as exc:
                 # Keep the transcript, but never let the failure pass unseen:
                 # a rejected key would otherwise look like working dictation.
+                # The raw text is still copied exactly once below; only the
+                # warning records the failure. The take itself is rescued
+                # even when keep_audio is off: it is the only copy, so it
+                # must survive a translation failure — and if filing it away
+                # fails it stays where it is and that path is reported.
                 text = raw
                 warning = str(exc)
                 _log.warning("cleanup request failed (status=%s, category=%s)",
                              exc.status, exc.category)
                 print(f"wordarc: cleanup failed: {exc}", file=sys.stderr)
+                if wav_path and os.path.exists(wav_path):
+                    rescued = cfg.rescue_recording(wav_path, "dictation")
+                    if rescued is None:
+                        rescued = wav_path
+                    if rescued:
+                        warning = (f"{warning}\n{t('Audio kept: {path}. '\
+                                                 'Reprocess it from {tab}.',\
+                                                 path=rescued,\
+                                                 tab=t('Audio file'))}")
+                        if rescued == wav_path:
+                            kept_here = wav_path
             _log.info("cleanup took %.1fs for %d chars",
                       time.monotonic() - cleanup_started, len(raw))
 
@@ -276,6 +347,7 @@ class Pipeline(QObject):
         if uses_cloud:
             conf.record_api_success(client.active_slot, len(keys))
         self.finished.emit(raw, text, warning, operation_id)
+        return kept_here
 
     def _discard(self, wav_path):
         """Delete the temporary recording, or file it away when keep_audio is on."""
