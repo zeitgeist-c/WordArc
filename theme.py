@@ -30,17 +30,24 @@ class Palette:
     danger: str
     warning: str
     success: str
+    primary: str
+    primary_hover: str
+    primary_pressed: str
+    danger_fill: str
+    chip_bg: str
 
 
 DARK = Palette(
-    "dark", "#141416", "#1C1C20", "#26262C", "#34343C", "#F3F3F5",
-    "#A1A1AD", "#9475EC", "#AD93F2", "#2C2C33", "#343044",
+    "dark", "#141419", "#202029", "#2D2D3A", "#3E3E4C", "#F3F3F5",
+    "#A1A1AD", "#9475EC", "#AD93F2", "#32323E", "#3A3550",
     "#FF6B7A", "#F5B84B", "#48D597",
+    "#6545E8", "#6D4AFF", "#4E36C8", "#C9334E", "#211F2D",
 )
 LIGHT = Palette(
     "light", "#F4F6FA", "#FFFFFF", "#EDF1F7", "#D9DFEA", "#18202D",
-    "#667085", "#6D4AFF", "#087E99", "#E8ECF4", "#EDE9FE",
+    "#5D6675", "#6D4AFF", "#087E99", "#E8ECF4", "#EDE9FE",
     "#D83A52", "#A86600", "#16835B",
+    "#6D4AFF", "#087E99", "#6D4AFF", "#D83A52", "#F0F1FA",
 )
 
 
@@ -105,8 +112,8 @@ def stylesheet(colors: Palette) -> str:
         border: 0;
         border-bottom: 1px solid {colors.border};
         border-radius: 0;
-        margin-top: 12px;
-        padding: 8px 4px 12px 4px;
+        margin-top: 10px;
+        padding: 6px 4px 10px 4px;
         font-weight: 600;
     }}
     QGroupBox::title {{
@@ -134,8 +141,8 @@ def stylesheet(colors: Palette) -> str:
         background: transparent;
         border: 0;
         border-radius: 9px;
-        padding: 10px 16px;
-        margin: 0 6px 10px 0;
+        padding: 9px 16px;
+        margin: 0 6px 8px 0;
         color: {colors.muted};
         font-weight: 500;
     }}
@@ -148,7 +155,7 @@ def stylesheet(colors: Palette) -> str:
         font-weight: 600;
     }}
     QTabWidget#panelTabs QTabBar::tab {{
-        padding: 7px 12px;
+        padding: 6px 12px;
         margin: 0 4px 6px 0;
         font-weight: 500;
     }}
@@ -156,8 +163,8 @@ def stylesheet(colors: Palette) -> str:
         background: {colors.surface_alt};
         border: 1px solid {colors.border};
         border-radius: 8px;
-        padding: 7px 10px;
-        selection-background-color: {colors.violet};
+        padding: 6px 10px;
+        selection-background-color: {colors.primary};
         selection-color: white;
     }}
     QLineEdit:hover, QPlainTextEdit:hover, QComboBox:hover,
@@ -166,7 +173,7 @@ def stylesheet(colors: Palette) -> str:
     }}
     QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus,
     QSpinBox:focus, QDoubleSpinBox:focus {{
-        border: 2px solid {colors.violet}; padding: 6px 9px;
+        border: 2px solid {colors.violet}; padding: 5px 9px;
     }}
     QComboBox, QSpinBox, QDoubleSpinBox {{ min-height: 22px; }}
     QComboBox::drop-down {{ border: 0; width: 24px; }}
@@ -204,7 +211,7 @@ def stylesheet(colors: Palette) -> str:
         background: {colors.hover}; border-radius: 4px;
     }}
     QListWidget {{ padding: 4px; }}
-    QListWidget::item {{ padding: 7px 9px; margin: 2px 0; border-radius: 6px; }}
+    QListWidget::item {{ padding: 6px 8px; margin: 2px 0; border-radius: 6px; }}
     QListWidget::item:selected {{ background: {colors.selected}; color: {colors.text}; }}
     QListWidget::item:hover {{ background: {colors.hover}; }}
     QPushButton {{
@@ -212,38 +219,48 @@ def stylesheet(colors: Palette) -> str:
         background: {colors.surface_alt};
         border: 1px solid {colors.border};
         border-radius: 8px;
-        padding: 7px 12px;
+        padding: 6px 12px;
         font-weight: 600;
         color: {colors.text};
     }}
     QPushButton:hover {{ background: {colors.selected}; border-color: {colors.violet}; }}
     QPushButton:pressed {{
-        background: {colors.violet}; border-color: {colors.violet}; color: white;
-    }}
-    QPushButton:disabled {{
-        color: {colors.muted}; background: {colors.window}; border-color: {colors.border};
+        background: {colors.primary_pressed}; border-color: {colors.primary_pressed}; color: white;
     }}
     QPushButton#primaryButton {{
         color: white;
-        background: {colors.violet};
-        border: 1px solid {colors.violet};
-        padding: 6px 16px;
+        background: {colors.primary};
+        border: 1px solid {colors.primary};
+        padding: 5px 16px;
         font-weight: 700;
     }}
     QPushButton#primaryButton:hover {{
-        background: {colors.cyan}; border-color: {colors.cyan};
+        background: {colors.primary_hover}; border-color: {colors.primary_hover};
+    }}
+    QPushButton#primaryButton:pressed {{
+        background: {colors.primary_pressed}; border-color: {colors.primary_pressed};
     }}
     QPushButton#accentButton {{
         background: transparent; border: 1px solid {colors.violet}; color: {colors.text};
     }}
     QPushButton#accentButton:hover {{
-        background: {colors.violet}; border-color: {colors.violet}; color: white;
+        background: {colors.primary}; border-color: {colors.primary}; color: white;
     }}
     QPushButton#dangerButton {{
         background: transparent; border: 1px solid {colors.border}; color: {colors.danger};
     }}
     QPushButton#dangerButton:hover {{
-        background: {colors.danger}; border-color: {colors.danger}; color: white;
+        background: {colors.danger_fill}; border-color: {colors.danger_fill}; color: white;
+    }}
+    QPushButton:focus, QPushButton#accentButton:focus, QPushButton#dangerButton:focus {{
+        border: 2px solid {colors.violet}; padding: 5px 11px;
+    }}
+    QPushButton#primaryButton:focus {{
+        border: 2px solid {colors.violet}; padding: 4px 15px;
+    }}
+    QPushButton:disabled, QPushButton#primaryButton:disabled,
+    QPushButton#accentButton:disabled, QPushButton#dangerButton:disabled {{
+        color: {colors.muted}; background: {colors.window}; border-color: {colors.border};
     }}
     QCheckBox {{ spacing: 10px; padding: 2px 0; }}
     QCheckBox::indicator {{ width: 18px; height: 18px; }}
@@ -253,7 +270,7 @@ def stylesheet(colors: Palette) -> str:
     }}
     QCheckBox::indicator:unchecked:hover {{ border-color: {colors.violet}; }}
     QCheckBox::indicator:checked {{
-        background: {colors.violet}; border: 1px solid {colors.violet};
+        background: {colors.primary}; border: 1px solid {colors.primary};
         border-radius: 5px;
     }}
     QScrollBar:vertical {{
@@ -294,7 +311,7 @@ def stylesheet(colors: Palette) -> str:
     QTabBar {{ qproperty-drawBase: 0; }}
     QTabBar::tab {{
         background: transparent; color: {colors.muted}; border: 0;
-        border-bottom: 2px solid transparent; padding: 11px 14px;
+        border-bottom: 2px solid transparent; padding: 9px 14px;
         margin-right: 2px; font-weight: 600;
     }}
     QTabBar::tab:hover {{ color: {colors.text}; background: {colors.hover}; }}
@@ -304,7 +321,7 @@ def stylesheet(colors: Palette) -> str:
     QListWidget#sectionMenu {{ background: transparent; border: 0; }}
     QProgressBar {{ border: 1px solid {colors.border}; border-radius: 6px;
         background: {colors.surface_alt}; min-height: 18px; text-align: center; }}
-    QProgressBar::chunk {{ background: {colors.violet}; border-radius: 5px; }}
+    QProgressBar::chunk {{ background: {colors.primary}; border-radius: 5px; }}
     QMessageBox {{ background: {colors.surface}; }}
     QFrame#saveBanner {{
         background: {_mix(colors.window, colors.success, 0.10)};
@@ -321,7 +338,7 @@ def stylesheet(colors: Palette) -> str:
     }}
     QLabel#saveBannerText {{ color: {colors.text}; font-weight: 600; }}
     QLabel#keyChip {{
-        color: {colors.violet}; background: {_mix(colors.window, colors.violet, 0.22)};
+        color: {colors.violet}; background: {colors.chip_bg};
         border: 1px solid {_mix(colors.window, colors.violet, 0.55)};
         border-radius: 9px; padding: 1px 10px; font-weight: 700;
     }}
@@ -340,7 +357,7 @@ def qt_palette(colors: Palette) -> QPalette:
         QPalette.ColorRole.Button: colors.surface_alt,
         QPalette.ColorRole.ButtonText: colors.text,
         QPalette.ColorRole.BrightText: colors.danger,
-        QPalette.ColorRole.Highlight: colors.violet,
+        QPalette.ColorRole.Highlight: colors.primary,
         QPalette.ColorRole.HighlightedText: "#FFFFFF",
         QPalette.ColorRole.PlaceholderText: colors.muted,
     }

@@ -7,6 +7,7 @@ import os
 import pathlib
 import shutil
 import threading
+import time
 import unicodedata
 
 from brand import BRAND
@@ -1215,6 +1216,32 @@ class HistoryStore:
 
 def meeting_paths(base):
     return MEETINGS_DIR / f"{base}.md", MEETINGS_DIR / f"{base}.wav"
+
+
+def rescue_recording(src, tag="live"):
+    """File a rescued recording away collision-free; return the path or None.
+
+    Failed takes are kept even when "keep audio" is off: the file is the
+    only copy of the user's speech. Successful takes keep using the
+    existing keep-audio behaviour. Never touches the user's own files —
+    only the given temp path is moved.
+    """
+    try:
+        src = pathlib.Path(src)
+        if not src.is_file():
+            return None
+        RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+        stem = time.strftime("%Y%m%d-%H%M%S")
+        for suffix in ("", "-2", "-3", "-4", "-5"):
+            dest = RECORDINGS_DIR / f"{stem}-{tag}{suffix}.wav"
+            if not dest.exists():
+                break
+        else:
+            dest = RECORDINGS_DIR / f"{stem}-{tag}-{os.getpid()}.wav"
+        shutil.move(str(src), str(dest))
+        return str(dest)
+    except (OSError, TypeError, ValueError):
+        return None
 
 
 def read_meetings():

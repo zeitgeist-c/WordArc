@@ -273,6 +273,56 @@ def test_narrow_tool_rail_needs_no_scroll(window):
         QApplication.instance().setStyleSheet(old_sheet)
 
 
+def test_action_buttons_fit_at_compact_sizes(window):
+    """Neighbouring buttons reflow instead of squeezing at compact sizes.
+
+    The probe that caught this: at 940x620 and 620x540 the dictation,
+    meeting and screenshot action rows squeezed buttons below their text
+    width. Grids give each button its column now; nothing may clip.
+    """
+    from PyQt6.QtGui import QFontDatabase
+    from PyQt6.QtWidgets import QPushButton, QScrollArea, QStyle, QStyleOptionButton
+    import theme
+    for filename in ("segoeui.ttf", "segoeuib.ttf"):
+        QFontDatabase.addApplicationFont("C:/Windows/Fonts/" + filename)
+    old_sheet = QApplication.instance().styleSheet()
+    saved_cache = (theme.ThemeManager._applied_app,
+                   theme.ThemeManager._applied_mode)
+    theme.ThemeManager.apply("dark", QApplication.instance())
+    try:
+        for width, height in ((940, 620), (620, 540)):
+            window.resize(width, height)
+            window.show()
+            for page in ("dictation", "meeting", "screenshot"):
+                assert window.navigate_to(page)
+                for _ in range(4):
+                    QApplication.processEvents()
+                node = window.pages.currentWidget()
+                bad = []
+                for button in node.findChildren(QPushButton):
+                    if not button.isVisibleTo(node) or not button.text().strip():
+                        continue
+                    option = QStyleOptionButton()
+                    option.initFrom(button)
+                    content = button.style().subElementRect(
+                        QStyle.SubElement.SE_PushButtonContents, option, button)
+                    text_width = button.fontMetrics().size(
+                        Qt.TextFlag.TextShowMnemonic, button.text()).width()
+                    if text_width > content.width() + 1:
+                        bad.append((page, button.text(),
+                                    text_width, content.width()))
+                for area in node.findChildren(QScrollArea):
+                    if area.isVisibleTo(node):
+                        assert area.horizontalScrollBar().maximum() == 0, (
+                            width, height, page,
+                            area.objectName() or type(area).__name__)
+                assert not bad, (width, height, bad)
+    finally:
+        QApplication.instance().setStyleSheet(old_sheet)
+        (theme.ThemeManager._applied_app,
+         theme.ThemeManager._applied_mode) = saved_cache
+
+
 def test_narrow_settings_use_a_section_picker(window):
     """No room for the section rail at minimum width: a picker stands in."""
     window.resize(520, 600)

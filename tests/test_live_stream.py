@@ -47,7 +47,10 @@ def test_emits_100ms_chunks_covering_all_bytes():
     assert all(len(part) == 3200 for part in emitted)
     result = streamer.stop()
     assert result is not None
-    assert sum(len(part) for part in emitted) == 10 * audio.CHUNK_FRAMES * 2
+    duration, rms, tail = result
+    assert tail == b"\x00\x00" * (10 * audio.CHUNK_FRAMES - 6 * 1600)
+    assert sum(len(part) for part in emitted) == 6 * 3200
+    assert duration == 10 * audio.CHUNK_FRAMES / audio.RATE
 
 
 def test_stop_flushes_remainder_and_reports_duration():
@@ -56,14 +59,14 @@ def test_stop_flushes_remainder_and_reports_duration():
     streamer.chunk.connect(emitted.append)
     levels = []
     streamer.level.connect(levels.append)
-    _feed(streamer, 4)  # 8192 bytes -> 2 x 3200 + 1792 bekleyen
+    _feed(streamer, 4)  # 8192 bytes -> 2 x 3200 + 1792 pending
     assert sum(len(part) for part in emitted) == 2 * 3200
     result = streamer.stop()
     assert result is not None
-    duration, rms = result
+    duration, rms, tail = result
     assert duration == 4 * audio.CHUNK_FRAMES / audio.RATE
     assert len(rms) == 4
-    assert sum(len(part) for part in emitted) == 4 * audio.CHUNK_FRAMES * 2
+    assert tail == b"\x00\x00" * (4 * audio.CHUNK_FRAMES - 2 * 1600)
     assert len(levels) == 4
     assert not streamer.active
 

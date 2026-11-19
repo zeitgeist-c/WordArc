@@ -331,7 +331,9 @@ class TestController(unittest.TestCase):
         self.assertTrue(window.isVisible())
         window._cancel_button.click()
         self.assertEqual(engine.phase, br.BreakPhase.WORKING)
-        self.assertEqual(engine.remaining(), engine.work_s)
+        # Fresh full period: int() truncation against the live clock may
+        # legitimately read one second under on a coarse timer tick.
+        self.assertAlmostEqual(engine.remaining(), engine.work_s, delta=1)
         self.assertFalse(window.isVisible())
 
     def test_break_done_shows_zero_then_hides(self):
