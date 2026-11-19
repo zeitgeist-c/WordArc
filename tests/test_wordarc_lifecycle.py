@@ -128,6 +128,58 @@ def test_ocr_result_lands_in_the_clipboard_or_the_warning_tray():
     assert len(messages) == 1, "an empty result must be reported as a warning"
 
 
+def _speak_controller(**overrides):
+    controller = _controller(True)
+    messages = []
+    controller.tray = mock.Mock()
+    controller.tray.isVisible.return_value = True
+    controller.tray.showMessage.side_effect = \
+        lambda *_a, **_k: messages.append(_a[1])
+    controller.conf = {"tts_speed": 0.9}
+    controller.conf.update(overrides)
+    controller.tts = mock.Mock()
+    controller.tts.busy = False
+    clipboard = mock.Mock()
+    return controller, messages, clipboard
+
+
+def test_speak_empty_result_warns_without_calling_tts():
+    from PyQt6.QtWidgets import QApplication
+
+    controller, messages, clipboard = _speak_controller()
+    with mock.patch.object(wordarc.QApplication, "clipboard",
+                           return_value=clipboard):
+        controller._on_screenshot_speak("")
+    clipboard.setText.assert_not_called()
+    controller.tts.speak.assert_not_called()
+    assert len(messages) == 1
+
+
+def test_speak_result_reads_when_tts_is_free():
+    from PyQt6.QtWidgets import QApplication
+
+    controller, messages, clipboard = _speak_controller()
+    with mock.patch.object(wordarc.QApplication, "clipboard",
+                           return_value=clipboard):
+        controller._on_screenshot_speak("okunacak metin")
+    clipboard.setText.assert_called_once_with("okunacak metin")
+    controller.tts.speak.assert_called_once_with("okunacak metin", 0.9)
+    assert len(messages) == 1
+
+
+def test_speak_result_waits_when_tts_is_busy():
+    from PyQt6.QtWidgets import QApplication
+
+    controller, messages, clipboard = _speak_controller()
+    controller.tts.busy = True
+    with mock.patch.object(wordarc.QApplication, "clipboard",
+                           return_value=clipboard):
+        controller._on_screenshot_speak("okunacak metin")
+    clipboard.setText.assert_called_once_with("okunacak metin")
+    controller.tts.speak.assert_not_called()
+    assert len(messages) == 1
+
+
 def test_startup_registration_runs_once_and_respects_the_switch():
     with mock.patch.object(wordarc.startup, "is_enabled", return_value=False), \
          mock.patch.object(wordarc.startup, "set_enabled") as set_enabled:

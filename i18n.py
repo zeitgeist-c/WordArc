@@ -455,7 +455,7 @@ TR = {
         "Varsayılan olarak kapalı. Kaydedince hemen uygulanır; "
         "yeniden başlatma gerekmez.",
     "Explain": "Açıkla",
-    "Summarize": "Özetle",
+    "Summarize": "Özet",
     "The selection is too long.": "Seçim çok uzun.",
     "Screenshot translation": "Ekran görüntüsü çevirisi",
     "Translation copied to the clipboard.":
@@ -553,7 +553,7 @@ TR = {
         "Sessiz kayıtları atla (API'ye gönderme)",
     "Silence threshold": "Sessizlik eşiği",
     "Keep audio files (%LOCALAPPDATA%\\WordArc\\recordings)":
-        "Ses kayıtlarını sakla (%LOCALAPPDATA%\\WordArc\\recordings)",
+        "Ses kaydını sakla (%LOCALAPPDATA%\\WordArc\\recordings)",
 
     # --- settings: api --------------------------------------------------
     "Keys": "Anahtarlar",
@@ -642,7 +642,7 @@ TR = {
     "Transcribe": "Yazıya çevir",
     "Stop": "Durdur",
     "Stop reading": "Okumayı durdur",
-    "Copy": "Panoya kopyala",
+    "Copy": "Kopyala",
     "Save as .txt": "'.txt' olarak kaydet",
     "Save as .srt": "'.srt' olarak kaydet",
     "Subtitles, timed from the segments. Needs the timestamps option.":
@@ -1199,6 +1199,13 @@ _BR_DE = {
     "Lower background audio while dictating": "Hintergrundaudio während des Diktierens leiser stellen",
     "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Senkt die Lautsprecher-/Kopfhörerlautstärke während der Aufnahme und stellt sie danach wieder her. Die Wiedergabe läuft weiter.",
     "Reduction": "Absenkung",
+    "Translate": "Übersetzen",
+    "Dictation settings": "Diktiereinstellungen",
+    "Meeting settings": "Besprechungseinstellungen",
+    "Audio file settings": "Audiodatei-Einstellungen",
+    "Speak settings": "Vorlese-Einstellungen",
+    "Screenshot settings": "Screenshot-Einstellungen",
+    "Audio file cleanup": "Audiobereinigung",
 }
 
 _BR_ES = {
@@ -1236,6 +1243,13 @@ _BR_ES = {
     "Lower background audio while dictating": "Bajar el audio de fondo al dictar",
     "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Baja el volumen del altavoz/auriculares durante la grabación y luego lo restaura. La reproducción continúa.",
     "Reduction": "Reducción",
+    "Translate": "Traducir",
+    "Dictation settings": "Ajustes de dictado",
+    "Meeting settings": "Ajustes de reunión",
+    "Audio file settings": "Ajustes de archivo de audio",
+    "Speak settings": "Ajustes de lectura",
+    "Screenshot settings": "Ajustes de captura",
+    "Audio file cleanup": "Limpieza de audio",
 }
 
 _BR_FR = {
@@ -1273,6 +1287,13 @@ _BR_FR = {
     "Lower background audio while dictating": "Réduire l'audio de fond pendant la dictée",
     "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Réduit le volume du haut-parleur/casque pendant l'enregistrement, puis le restaure. La lecture continue.",
     "Reduction": "Réduction",
+    "Translate": "Traduire",
+    "Dictation settings": "Réglages de dictée",
+    "Meeting settings": "Réglages de réunion",
+    "Audio file settings": "Réglages du fichier audio",
+    "Speak settings": "Réglages de lecture",
+    "Screenshot settings": "Réglages de capture",
+    "Audio file cleanup": "Nettoyage audio",
 }
 
 _BR_IT = {
@@ -1310,6 +1331,13 @@ _BR_IT = {
     "Lower background audio while dictating": "Abbassa l'audio di sottofondo durante la dettatura",
     "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Abbassa il volume di altoparlanti/cuffie durante la registrazione, poi lo ripristina. La riproduzione continua.",
     "Reduction": "Riduzione",
+    "Translate": "Traduci",
+    "Dictation settings": "Impostazioni dettatura",
+    "Meeting settings": "Impostazioni riunione",
+    "Audio file settings": "Impostazioni file audio",
+    "Speak settings": "Impostazioni lettura",
+    "Screenshot settings": "Impostazioni screenshot",
+    "Audio file cleanup": "Pulizia audio",
 }
 
 _BR_PB = {
@@ -1347,6 +1375,13 @@ _BR_PB = {
     "Lower background audio while dictating": "Abaixar o áudio de fundo durante o ditado",
     "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Abaixa o volume do alto-falante/fone durante a gravação e depois o restaura. A reprodução continua.",
     "Reduction": "Redução",
+    "Translate": "Traduzir",
+    "Dictation settings": "Ajustes de ditado",
+    "Meeting settings": "Ajustes de reunião",
+    "Audio file settings": "Ajustes de arquivo de áudio",
+    "Speak settings": "Ajustes de leitura",
+    "Screenshot settings": "Ajustes de captura de tela",
+    "Audio file cleanup": "Limpeza de áudio",
 }
 
 _BR_NL = {
@@ -1384,6 +1419,13 @@ _BR_NL = {
     "Lower background audio while dictating": "Achtergrondgeluid zachter zetten tijdens het dicteren",
     "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Verlaagt het luidspreker-/hoofdtelefoonvolume tijdens de opname en herstelt het daarna. Het afspelen gaat door.",
     "Reduction": "Reductie",
+    "Translate": "Vertalen",
+    "Dictation settings": "Dicteerinstellingen",
+    "Meeting settings": "Vergaderinstellingen",
+    "Audio file settings": "Audiobestandsinstellingen",
+    "Speak settings": "Voorleesinstellingen",
+    "Screenshot settings": "Schermopname-instellingen",
+    "Audio file cleanup": "Audio-opschoning",
 }
 
 # Pending rollout translation: English source kept, UI falls back to English.
@@ -1422,6 +1464,13 @@ _BR_PENDING = {
     "Lower background audio while dictating": "Lower background audio while dictating",
     "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.",
     "Reduction": "Reduction",
+    "Translate": "Translate",
+    "Dictation settings": "Dictation settings",
+    "Meeting settings": "Meeting settings",
+    "Audio file settings": "Audio file settings",
+    "Speak settings": "Speak settings",
+    "Screenshot settings": "Screenshot settings",
+    "Audio file cleanup": "Audio file cleanup",
 }
 
 # Per-language tables. English is the source language: no table needed,
@@ -1477,6 +1526,15 @@ TR.update({
     "Lower background audio while dictating": "Dikte sırasında arka plan sesini kıs",
     "Lowers the speaker/headphone volume while recording, then restores it. Playback keeps playing.": "Kayıt sırasında hoparlör/kulaklık sesini kısar, sonra geri yükler. Çalma devam eder.",
     "Reduction": "Azaltma",
+    # Selection bar single-word tooltips (also used on small buttons/titles).
+    "Translate": "Çevir",
+    # Tool workspace settings entries (each opens related settings sections).
+    "Dictation settings": "Dikte ayarları",
+    "Meeting settings": "Toplantı ayarları",
+    "Audio file settings": "Ses dosyası ayarları",
+    "Speak settings": "Seslendirme ayarları",
+    "Screenshot settings": "Ekran görüntüsü ayarları",
+    "Audio file cleanup": "Ses dosyası temizliği",
 })
 
 

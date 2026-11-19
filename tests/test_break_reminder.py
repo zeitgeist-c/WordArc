@@ -694,10 +694,13 @@ class TestBreakSettingsLocation(unittest.TestCase):
 
     def test_no_separate_break_tab(self):
         import settings_ui
+        pages = settings_ui.SettingsWindow.TOOL_PAGES
+        self.assertNotIn("break_reminder",
+                         [page_id for page_id, _t, _d in pages])
+        self.assertNotIn("break_reminder",
+                         settings_ui.SettingsWindow.PAGE_ALIASES)
         import inspect
-        nav = inspect.getsource(settings_ui.SettingsWindow._build_navigation)
-        self.assertNotIn("break_reminder", nav)
-        general = inspect.getsource(settings_ui.SettingsWindow._general_tab)
+        general = inspect.getsource(settings_ui.SettingsWindow._general_cards)
         self.assertIn("break_enabled", general)
 
 
@@ -760,7 +763,7 @@ class TestBreakSettingsHardening(unittest.TestCase):
 
     def test_break_card_saves_and_reloads(self):
         window = self.window
-        self.assertIn("settings", window._tab_index)
+        self.assertTrue(window.navigate_to("settings", "application"))
         window.break_work.setValue(45)
         window.break_corner.setCurrentIndex(
             window.break_corner.findData("bottom-left"))

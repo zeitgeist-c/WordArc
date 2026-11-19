@@ -203,6 +203,60 @@ class TestTranslateController(unittest.TestCase):
             self._run(controller, self._image())
         self.assertEqual(errors, ["HTTP 503"])
 
+    def test_overlapping_translate_is_queued_not_dropped(self):
+        import threading as threading_module
+
+        controller = screenshot_capture.ScreenshotController(TranslateConfig())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        done = []
+        controller.translate_done.connect(done.append)
+        gate = threading_module.Event()
+        entered = threading_module.Event()
+
+        def blocking_extract(_image):
+            entered.set()
+            self.assertTrue(gate.wait(10))
+            return "hello"
+
+        client = mock.Mock()
+        client.translate.return_value = "merhaba"
+        with mock.patch.object(screenshot_capture.ocr,
+                               "extract_text_for_translate",
+                               side_effect=blocking_extract), \
+             mock.patch.object(screenshot_capture.api, "GeminiClient",
+                               return_value=client):
+            controller._on_overlay_translate(self._image())
+            self.assertTrue(entered.wait(10))
+            # The worker is still busy: this second request used to vanish
+            # silently. Now it waits its turn and its result still arrives.
+            controller._on_overlay_translate(self._image())
+            gate.set()
+            controller._ocr_queue.join()
+            self.app.processEvents()
+        self.assertEqual(done, ["merhaba", "merhaba"])
+
+    def test_gemini_receives_the_chosen_source_not_a_stray_mark(self):
+        controller = screenshot_capture.ScreenshotController(TranslateConfig())
+        self.addCleanup(controller.shutdown)
+        self.addCleanup(controller.deleteLater)
+        done = []
+        controller.translate_done.connect(done.append)
+        client = mock.Mock()
+        client.translate.return_value = "merhaba dünya"
+        with mock.patch.object(screenshot_capture.ocr, "_recognize_rapid",
+                               return_value="A"), \
+             mock.patch.object(screenshot_capture.ocr, "_recognize_all",
+                               return_value=""), \
+             mock.patch.object(screenshot_capture.ocr, "_recognize_script",
+                               side_effect=["", "Привет мир"]), \
+             mock.patch.object(screenshot_capture.api, "GeminiClient",
+                               return_value=client):
+            self._run(controller, self._image())
+        args, _kwargs = client.translate.call_args
+        self.assertEqual(args[0], "Привет мир")
+        self.assertEqual(done, ["merhaba dünya"])
+
     def test_ocr_unavailable_travels_the_failed_signal(self):
         controller = screenshot_capture.ScreenshotController(TranslateConfig())
         self.addCleanup(controller.shutdown)

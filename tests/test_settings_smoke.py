@@ -14,10 +14,29 @@ from PyQt6.QtWidgets import QApplication, QComboBox
 
 import audio
 import config as cfg
+import i18n
 import localspeech
 import settings_ui
 import screenshot_capture
 from i18n import t
+
+
+def _fully_on_screen(window, widget):
+    """The widget's whole rectangle shows without scrolling, not just its
+    visible flag: every ancestor scroller viewport must contain it."""
+    if not widget.isVisibleTo(window):
+        return False
+    from PyQt6.QtCore import QPoint, QRect
+    box = QRect(window.mapFrom(widget, QPoint(0, 0)), widget.size())
+    node = widget.parentWidget()
+    while node is not None and node is not window:
+        if isinstance(node, settings_ui.QScrollArea):
+            view = node.viewport()
+            seen = QRect(window.mapFrom(view, QPoint(0, 0)), view.size())
+            if not seen.contains(box):
+                return False
+        node = node.parentWidget()
+    return True
 
 
 def _gemini_card_texts(window):
@@ -84,13 +103,11 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertTrue(window.windowTitle().startswith("WordArc"))
         self.assertGreaterEqual(window.width(), 920)
         self.assertGreaterEqual(window.height(), 700)
-        self.assertEqual(window.tabs.count(), 6)
-        self.assertEqual(tuple(window._tab_index), (
-            "dictation", "history", "meeting", "minutes",
-            "audio_file", "speak", "screenshot", "settings", "shared_ai", "application",
-        ))
-
-        self.assertEqual(window.tabs.currentIndex(), 0)
+        self.assertEqual([window.nav.item(index).data(Qt.ItemDataRole.UserRole)
+                          for index in range(window.nav.count())],
+                         ["dictation", "meeting", "audio_file",
+                          "speak", "screenshot", "settings"])
+        self.assertEqual(window.current_page(), "dictation")
         self.assertFalse(window.history_enabled.isChecked())
         self.assertTrue(window.start_with_windows.isChecked())
         flags = window.windowFlags()
@@ -135,25 +152,116 @@ class TestSettingsSmoke(unittest.TestCase):
                 release.set()
                 self.wait_local_inspection()
 
+    def test_active_work_survives_navigation(self):
+        """Recording state and results live in the window, not the visible
+        page: walking every page and section mid-recording must lose nothing."""
+        window = self.window
+        window.set_recording_state("dictation", "recording")
+        window.set_recording_state("meeting", "recording")
+        window.set_dictation_result("partial take")
+        for page_id, _title, _desc in settings_ui.SettingsWindow.TOOL_PAGES:
+            self.assertTrue(window.navigate_to(page_id))
+            self.app.processEvents()
+        for section_id, _title in settings_ui.SettingsWindow.SETTINGS_SECTIONS:
+            self.assertTrue(window.navigate_to("settings", section_id))
+            self.app.processEvents()
+        self.assertEqual(window.dictation_runtime_state, "recording")
+        self.assertEqual(window.meeting_runtime_state, "recording")
+        self.assertEqual(window.dictation_output.toPlainText(), "partial take")
+        window.navigate_to("dictation")
+        self.app.processEvents()
+        self.assertTrue(window.dictation_cancel_button.isVisibleTo(window))
+        self.assertEqual(window.dictation_record_button.text(),
+                         t("Stop and transcribe"))
+
+    def test_every_language_opens_every_page_with_known_keys(self):
+        """All 13 UI languages walk all pages and sections; every key the
+        walk touches must already sit in the translation table."""
+        from tests.test_i18n import UNTRANSLATED
+        used = {}  # language code -> set of keys the walk rendered in it
+        real_t = settings_ui.t
+
+        def spy(text, **kwargs):
+            used.setdefault(i18n.language(), set()).add(text)
+            return real_t(text, **kwargs)
+
+        with mock.patch.object(settings_ui, "t", spy):
+            for code, _code_label in i18n.LANGUAGES:
+                # Fresh configs default to English and reset the global on
+                # load, so the language must be set after the config exists.
+                conf = cfg.Config()
+                conf["ui_language"] = code
+                i18n.set_language(code)
+                window = settings_ui.SettingsWindow(conf, "wordarc toggle")
+                try:
+                    # The walk really runs in this language, not in a
+                    # reset-to-English window.
+                    self.assertEqual(i18n.language(), code)
+                    self.assertEqual(window.nav.item(0).text(), t("Dictation"))
+                    for page_id, _t, _d in settings_ui.SettingsWindow.TOOL_PAGES:
+                        self.assertTrue(window.navigate_to(page_id), (code, page_id))
+                        self.app.processEvents()
+                    for section_id, _t in settings_ui.SettingsWindow.SETTINGS_SECTIONS:
+                        self.assertTrue(window.navigate_to("settings", section_id),
+                                        (code, section_id))
+                        self.app.processEvents()
+                    # Both rails fit every title in this language.
+                    for rail in (window.nav, window.settings_section_list):
+                        metrics = rail.fontMetrics()
+                        for row in range(rail.count()):
+                            text = rail.item(row).text()
+                            self.assertLessEqual(
+                                metrics.horizontalAdvance(text),
+                                rail.viewport().width(), (code, text))
+                    window.model_setup.setCurrentIndex(1)
+                    self.app.processEvents()
+                    window.model_setup.setCurrentIndex(0)
+                    self.app.processEvents()
+                finally:
+                    window.close()
+                    window.deleteLater()
+                    self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        i18n.set_language("en")
+        self.assertEqual(set(used), {code for code, _ in i18n.LANGUAGES})
+        # Language-picker rows wear each language's own name on purpose.
+        own_names = {label for label, _code in settings_ui.UI_LANGUAGES}
+        unknown = []
+        for code, keys in used.items():
+            if code == "en":
+                continue  # English is the source; untranslated is correct.
+            table = i18n.TABLES.get(code, {})
+            for key in keys:
+                if key in table or key in UNTRANSLATED or key in own_names:
+                    continue
+                # Every table carries the full TR-sourced key set; a miss
+                # here renders English inside a non-English window.
+                unknown.append(f"{code}: {key!r}")
+        self.assertFalse(unknown,
+                         f"keys missing from their language table: {unknown}")
+
     def test_navigation_selects_exact_page(self):
         window = self.window
         self.assertTrue(window.navigate_to("meeting"))
-        self.assertEqual(window.tabs.currentIndex(), 1)
-        # Absorbed pages land on the tab that holds them.
+        self.assertEqual(window.current_page(), "meeting")
+        # Absorbed pages land on the tool that holds them.
         self.assertTrue(window.navigate_to("minutes"))
-        self.assertEqual(window.tabs.currentIndex(), 1)
+        self.assertEqual(window.current_page(), "meeting")
         self.assertTrue(window.navigate_to("history"))
-        self.assertEqual(window.tabs.currentIndex(), 0)
+        self.assertEqual(window.current_page(), "dictation")
         self.assertTrue(window.navigate_to("shared_ai"))
-        self.assertEqual(window.tabs.currentIndex(), 5)
+        self.assertEqual(window.current_page(), "settings")
+        self.assertEqual(window.current_section(), "audio_models")
+        self.assertTrue(window.navigate_to("application"))
+        self.assertEqual(window.current_page(), "settings")
+        self.assertEqual(window.current_section(), "application")
         self.assertFalse(window.navigate_to("agent"))
         self.assertEqual(
-            [window.tabs.tabText(index) for index in range(window.tabs.count())],
+            [window.nav.item(index).text() for index in range(window.nav.count())],
             [t("Dictation"), t("Meeting"), t("Audio file"), t("Speak"),
              t("Screenshot"), t("Settings")],
         )
         self.assertTrue(window.navigate_to("screenshot"))
-        self.assertEqual(window.tabs.currentIndex(), 4)
+        self.assertEqual(window.current_page(), "screenshot")
         self.assertEqual(window.screenshot_shortcut.currentText(), "Ctrl+Alt+S")
 
     def test_noop_save_preserves_every_config_key_and_emits_once(self):
@@ -215,7 +323,7 @@ class TestSettingsSmoke(unittest.TestCase):
         window = self.window
         window.conf["assistant_provider"] = "codex"
         window.conf["assistant_prompt"] = "legacy custom prompt"
-        self.assertNotIn("agent", window._tab_index)
+        self.assertFalse(window.navigate_to("agent"))
         with mock.patch.object(settings_ui.startup, "set_enabled"), \
              mock.patch.object(settings_ui, "info_box"):
             window._save()
@@ -224,7 +332,8 @@ class TestSettingsSmoke(unittest.TestCase):
 
     def test_screenshot_preferences_round_trip_and_own_tab(self):
         window = self.window
-        self.assertEqual(window._tab_index["screenshot"], 4)
+        self.assertTrue(window.navigate_to("screenshot"))
+        self.assertEqual(window.current_page(), "screenshot")
         window.screenshot_shortcut.setCurrentText("Ctrl+Alt+S")
         window.screenshot_directory.setText("C:/Screenshots")
         window.screenshot_format.setCurrentIndex(
@@ -402,32 +511,58 @@ class TestSettingsSmoke(unittest.TestCase):
         self.assertLessEqual(window.minimumHeight(), 400)
         window.resize(520, 400)
         window.show()
-        for page_id in window._tab_index:
+        for page_id, _title, _desc in settings_ui.SettingsWindow.TOOL_PAGES:
             window.navigate_to(page_id)
             self.app.processEvents()
-        for index in range(window.tabs.count()):
-            for scroller in window.tabs.widget(index).findChildren(
+        for index in range(window.pages.count()):
+            for scroller in window.pages.widget(index).findChildren(
                     settings_ui.QScrollArea):
                 self.assertEqual(
                     scroller.horizontalScrollBar().maximum(), 0, index
                 )
 
-    def test_dictation_frequent_controls_are_visible_and_advanced_is_closed(self):
+    def test_dictation_first_view_holds_action_status_and_result(self):
+        window = self.window
+        window.resize(1040, 760)
+        window.show()
+        window.navigate_to("dictation")
+        self.app.processEvents()
+        # Daily controls stay on the page: action, status, result, history.
+        for control in (window.dictation_record_button,
+                        window.dictation_record_status,
+                        window.mic, window.language, window.shortcut,
+                        window.cleanup_enabled,
+                        window.dictation_output, window.history):
+            self.assertTrue(control.isVisibleTo(window), control)
+            self.assertTrue(_fully_on_screen(window, control), control)
+        # Rare controls moved to the tool's own settings section.
+        self.assertFalse(window.max_seconds.isVisibleTo(window))
+        self.assertFalse(window.auto_paste.isVisibleTo(window))
+        window.navigate_to("settings", "dictation")
+        self.app.processEvents()
+        for control in (window.max_seconds, window.auto_paste,
+                        window.translate_enabled, window.translate_mode):
+            self.assertTrue(control.isVisibleTo(window), control)
+
+    def test_every_tool_page_has_one_header_settings_entry(self):
         window = self.window
         window.show()
-        self.app.processEvents()
-        for control in (window.mic, window.language, window.shortcut,
-                        window.cleanup_enabled,
-                        window.dictation_output):
-            self.assertTrue(control.isVisibleTo(window), control)
-        # Mockup A: no sub-tabs; recording and paste controls share the page.
-        self.assertTrue(window.max_seconds.isVisibleTo(window))
-        self.assertTrue(window.auto_paste.isVisibleTo(window), window.auto_paste)
-        cards = window.tabs.widget(0).findChildren(settings_ui.QGroupBox)
-        output_cards = [card for card in cards if card.title() == t("Output")]
-        self.assertEqual(len(output_cards), 1)
-        self.assertIn(window.auto_paste,
-                      output_cards[0].findChildren(settings_ui.QCheckBox))
+        for page_id, section_id, button_key in (
+                ("dictation", "dictation", "Dictation settings"),
+                ("meeting", "meeting", "Meeting settings"),
+                ("audio_file", "audio_file", "Audio file settings"),
+                ("speak", "speak", "Speak settings"),
+                ("screenshot", "screenshot", "Screenshot settings")):
+            window.navigate_to(page_id)
+            self.app.processEvents()
+            entries = window.pages.currentWidget().findChildren(
+                settings_ui.QPushButton, "pageSettingsButton")
+            self.assertEqual(len(entries), 1, page_id)
+            self.assertEqual(entries[0].text(), t(button_key))
+            self.assertTrue(_fully_on_screen(window, entries[0]), page_id)
+            entries[0].click()
+            self.assertEqual(window.current_page(), "settings")
+            self.assertEqual(window.current_section(), section_id)
 
     def test_header_buttons_toggle_and_persist(self):
         # QMenu.exec() stays modal offscreen; the same flow (_apply_lang) is
@@ -457,22 +592,43 @@ class TestSettingsSmoke(unittest.TestCase):
         window.header_theme.click()
         self.assertEqual(window.conf["theme_mode"], "light")
         self.assertEqual(window.header_theme.text(), t("Light"))
+        # The theme applies app-wide: leave the default behind, or every
+        # later window in the session inherits light metrics.
+        window.header_theme.click()
+        self.assertEqual(window.conf["theme_mode"], "dark")
 
-    def test_file_tab_uses_section_cards(self):
+    def test_file_tab_holds_pick_and_transcript_only(self):
         window = self.window
         window.navigate_to("audio_file")
-        cards = window.tabs.widget(2).findChildren(settings_ui.QGroupBox)
+        cards = window.pages.currentWidget().findChildren(settings_ui.QGroupBox)
         titles = [card.title() for card in cards]
-        for expected in ("File", "Options", "Transcript"):
+        for expected in ("File", "Transcript"):
+            self.assertIn(t(expected), titles)
+        for moved in ("Options", "Audio file cleanup"):
+            self.assertNotIn(t(moved), titles)
+        window.navigate_to("settings", "audio_file")
+        self.app.processEvents()
+        section = window.settings_sections.currentWidget()
+        titles = [card.title() for card in
+                  section.findChildren(settings_ui.QGroupBox)]
+        for expected in ("Options", "Audio file cleanup"):
             self.assertIn(t(expected), titles)
 
-    def test_meeting_uses_section_cards(self):
+    def test_meeting_tab_holds_sources_names_and_minutes_only(self):
         window = self.window
         window.navigate_to("meeting")
-        cards = window.tabs.widget(1).findChildren(settings_ui.QGroupBox)
+        cards = window.pages.currentWidget().findChildren(settings_ui.QGroupBox)
         titles = [card.title() for card in cards]
-        for expected in ("Sound", "Who is talking", "Minutes", "Recording",
-                         "Minutes instruction", "Minutes"):
+        for expected in ("Sound", "Who is talking", "Minutes"):
+            self.assertIn(t(expected), titles)
+        for moved in ("Recording", "Minutes instruction"):
+            self.assertNotIn(t(moved), titles)
+        window.navigate_to("settings", "meeting")
+        self.app.processEvents()
+        section = window.settings_sections.currentWidget()
+        titles = [card.title() for card in
+                  section.findChildren(settings_ui.QGroupBox)]
+        for expected in ("Recording", "Minutes", "Minutes instruction"):
             self.assertIn(t(expected), titles)
 
     def test_device_names_are_listed_whole(self):
@@ -646,13 +802,35 @@ class TestSettingsSmoke(unittest.TestCase):
         self.app.processEvents()
         window.navigate_to("settings")
         self.app.processEvents()
-        page = window.tabs.widget(window._tab_index["settings"])
-        titles = [box.title() for box in page.findChildren(settings_ui.QGroupBox)]
-        for expected in ("Keys", "Speech to text", "Transcript cleanup",
-                         "Names and terms", "Interface", "Startup", "Support"):
-            self.assertIn(t(expected), titles)
+        sections = {}
+        for section_id, _title in settings_ui.SettingsWindow.SETTINGS_SECTIONS:
+            self.assertTrue(window.select_section(section_id), section_id)
+            self.app.processEvents()
+            sections[section_id] = [
+                box.title() for box in
+                window.settings_sections.currentWidget().findChildren(
+                    settings_ui.QGroupBox)]
+        for expected in ("Speech to text", "Transcript cleanup"):
+            self.assertIn(t(expected), sections["audio_models"])
+        for expected in ("Cleanup rules", "Names and terms"):
+            self.assertIn(t(expected), sections["text_rules"])
+        self.assertNotIn(t("Audio file cleanup"), sections["text_rules"])
+        self.assertIn(t("Keys"), sections["api_keys"])
+        for expected in ("Interface", "Startup", "Support"):
+            self.assertIn(t(expected), sections["application"])
+        self.assertNotIn(t("Reading aloud"), sections["application"])
+        for expected in ("Recording", "Output", "Cleanup"):
+            self.assertIn(t(expected), sections["dictation"])
+        for expected in ("Recording", "Minutes", "Minutes instruction"):
+            self.assertIn(t(expected), sections["meeting"])
+        for expected in ("Options", "Audio file cleanup"):
+            self.assertIn(t(expected), sections["audio_file"])
+        self.assertIn(t("Reading aloud"), sections["speak"])
+        self.assertIn(t("Screenshot options"), sections["screenshot"])
+        window.select_section("audio_models")
+        self.app.processEvents()
         self.assertFalse(window.ui_language.isVisibleTo(window))
-        window.settings_section_menu.setCurrentRow(3)
+        window.select_section("application")
         self.app.processEvents()
         for control in (window.ui_language, window.corner,
                         window.start_with_windows, window.close_to_tray):
@@ -1020,9 +1198,9 @@ class TestSettingsSmoke(unittest.TestCase):
         fresh = settings_ui.SettingsWindow(window.conf, "wordarc toggle")
         try:
             view.apply(fresh)
-            self.assertEqual(fresh.tabs.currentIndex(), window.tabs.currentIndex())
+            self.assertEqual(fresh.current_page(), window.current_page())
             self.assertEqual((fresh.width(), fresh.height()), (900, 620))
-            self.assertEqual(fresh.settings_section_menu.currentRow(), 3)
+            self.assertEqual(fresh.current_section(), "application")
         finally:
             fresh.close()
             fresh.deleteLater()
@@ -1086,7 +1264,7 @@ class TestSettingsSmoke(unittest.TestCase):
             fresh.show()
             self.app.processEvents()
             self.assertTrue(fresh.isMaximized())
-            self.assertEqual(fresh.tabs.currentIndex(), window.tabs.currentIndex())
+            self.assertEqual(fresh.current_page(), window.current_page())
         finally:
             fresh.close()
             fresh.deleteLater()
@@ -1095,11 +1273,13 @@ class TestSettingsSmoke(unittest.TestCase):
     def test_scrolled_tabs_shrink_below_short_screens(self):
         from PyQt6.QtWidgets import QScrollArea
         window = self.window
-        for tab_id in ("dictation", "meeting", "audio_file", "speak",
-                       "screenshot"):
-            page = window.tabs.widget(window._tab_index[tab_id])
+        for page_id, _title, _desc in settings_ui.SettingsWindow.TOOL_PAGES:
+            if page_id == "speak":
+                continue  # its panels scroll inside themselves
+            window.navigate_to(page_id)
+            page = window.pages.currentWidget()
             self.assertTrue(page.findChild(QScrollArea) is not None,
-                            f"{tab_id} tab does not scroll")
+                            f"{page_id} page does not scroll")
         self.assertLess(window.minimumSizeHint().height(), 500,
                         "window cannot shrink onto a 1080p screen")
 
@@ -1161,7 +1341,7 @@ class TestTheWindowSurvivesABadAudioLibrary(unittest.TestCase):
              mock.patch.object(settings_ui.startup, "is_enabled", return_value=True):
             window = settings_ui.SettingsWindow(cfg.Config(), "wordarc toggle")
         try:
-            self.assertEqual(window.tabs.count(), 6)
+            self.assertEqual(window.nav.count(), 6)
             self.assertEqual(window.mic.count(), 1)
             self.assertEqual(window.mic.currentData(), "")
             self.assertTrue(window.dictation_output.isReadOnly())

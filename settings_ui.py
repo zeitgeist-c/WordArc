@@ -16,7 +16,8 @@ from PyQt6.QtWidgets import (
     QFileDialog, QFormLayout, QFrame, QGraphicsOpacityEffect, QGroupBox,
     QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMenu, QMessageBox, QPlainTextEdit,
-    QPushButton, QScrollArea, QSizePolicy, QSpinBox, QStyle, QProgressBar,
+    QPushButton, QScrollArea, QSizePolicy, QSpinBox, QStackedWidget,
+    QStyle, QProgressBar,
     QStyledItemDelegate, QStyleOptionViewItem, QTabWidget, QTabBar, QVBoxLayout, QWidget, QBoxLayout,
 )
 
@@ -256,7 +257,10 @@ class Workspace(QWidget):
         self.selector.currentChanged.connect(self._reflow)
 
     def _reflow(self, *_):
-        narrow = self.width() < 780
+        # The panes sit beside the navigation rail now, so they get ~200 px
+        # less than the full window: a full-window breakpoint would collapse
+        # them on ordinary desktop sizes.
+        narrow = self.width() < 560
         self.selector.setVisible(narrow)
         for index, pane in enumerate(self.panes):
             pane.setVisible(not narrow or self.selector.currentIndex() == index)
@@ -1049,8 +1053,6 @@ class WindowView:
     onto the first.
     """
 
-    PAGES = ("dictation", "meeting", "audio_file", "screenshot", "settings")
-
     def __init__(self, window):
         self.maximized = window.isMaximized()
         rect = window.normalGeometry() if self.maximized else window.geometry()
@@ -1060,11 +1062,10 @@ class WindowView:
         self.screen = next(
             (screen for screen in QGuiApplication.screens()
              if screen.availableGeometry().intersects(self.rect)), None)
-        self.page = next((name for name in self.PAGES
-                          if window._tab_index.get(name) == window.tabs.currentIndex()),
-                         "dictation")
-        menu = getattr(window, "settings_section_menu", None)
-        self.section = menu.currentRow() if menu is not None else 0
+        # Stable ids, not row numbers: adding a page or a settings section
+        # must not move the ones that are already there.
+        self.page = window.current_page()
+        self.section = window.current_section()
         self.panels = {name: getattr(window, name).currentIndex() for name in (
             "model_setup",)}
 
@@ -1073,10 +1074,7 @@ class WindowView:
         if self.screen is not None:
             window.setScreen(self.screen)
             window.setGeometry(self.rect)
-        window.navigate_to(self.page)
-        menu = getattr(window, "settings_section_menu", None)
-        if menu is not None:
-            menu.setCurrentRow(max(0, min(self.section, menu.count() - 1)))
+        window.navigate_to(self.page, self.section)
         for name, index in self.panels.items():
             getattr(window, name).setCurrentIndex(index)
         if self.maximized:
@@ -1251,56 +1249,129 @@ class SettingsWindow(QDialog):
             box.toggled.connect(self._refresh_cleanup_all)
         self.navigate_to("dictation")
 
+    # Stable tool pages in rail order. Appending a page needs no other
+    # layout change; navigate with current_page()/navigate_to(), never rows.
+    TOOL_PAGES = [
+        ("dictation", "Dictation",
+         "Record, transcribe and paste spoken text."),
+        ("meeting", "Meeting",
+         "Capture microphone and system audio reliably."),
+        ("audio_file", "Audio file",
+         "Transcribe an existing recording."),
+        ("speak", "Speak",
+         "Read Turkish text aloud with a small local voice."),
+        ("screenshot", "Screenshot",
+         "Capture a region, write on it, then copy or save it."),
+        ("settings", "Settings",
+         "Models, language, startup and appearance."),
+    ]
+    # Old logical page ids keep working: aliases point at the page (and the
+    # settings section) that absorbed them.
+    PAGE_ALIASES = {"history": "dictation", "minutes": "meeting",
+                    "shared_ai": "settings", "application": "settings"}
+    # Stable settings sections in list order. The first four hold settings
+    # shared by several tools; each tool also owns one section with its
+    # rarely-touched cards, so the tool pages stay lean.
+    SETTINGS_SECTIONS = [
+        ("audio_models", "Audio and models"),
+        ("text_rules", "Text and terms"),
+        ("api_keys", "API keys"),
+        ("application", "Application"),
+        ("dictation", "Dictation"),
+        ("meeting", "Meeting"),
+        ("audio_file", "Audio file"),
+        ("speak", "Speak"),
+        ("screenshot", "Screenshot"),
+    ]
+    # Each tool page header links to the section holding that tool's own
+    # settings: one entry per tool, straight where it points.
+    PAGE_SETTINGS = {
+        "dictation": ("dictation", "Dictation settings"),
+        "meeting": ("meeting", "Meeting settings"),
+        "audio_file": ("audio_file", "Audio file settings"),
+        "speak": ("speak", "Speak settings"),
+        "screenshot": ("screenshot", "Screenshot settings"),
+    }
+    SECTION_ALIASES = {"shared_ai": "audio_models",
+                       "application": "application"}
+
     def _build_navigation(self):
         self._shared_ai_labels = []
-        self.tabs = QTabWidget()
-        self.tabs.setObjectName("settingsTabs")
-        tab_font = QFont()
-        tab_font.setPointSize(11)
-        self.tabs.setFont(tab_font)
-        self.tabs.tabBar().setIconSize(QSize(22, 22))
-        # Old logical page ids keep working: aliases point at the tab that
-        # absorbed them (history lives in dictation, minutes in meeting).
-        self._tab_index = {}
         style = self.style()
-        specs = [
-            ("dictation", ("history",), "Dictation",
-             "Record, transcribe and paste spoken text.",
-             style.standardIcon(QStyle.StandardPixmap.SP_MediaVolume),
-             self._dictation_tab(), True),
-            ("meeting", ("minutes",), "Meeting",
-             "Capture microphone and system audio reliably.",
-             style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay),
-             self._meeting_tab(), True),
-            ("audio_file", (), "Audio file",
-             "Transcribe an existing recording.",
-             style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton),
-             self._file_tab(), True),
-            ("speak", (), "Speak",
-             "Read Turkish text aloud with a small local voice.",
-             style.standardIcon(QStyle.StandardPixmap.SP_ArrowForward),
-             self._speak_tab(), False),
-            ("screenshot", (), "Screenshot",
-             "Capture and save a screenshot from the active screen.",
-             style.standardIcon(QStyle.StandardPixmap.SP_DesktopIcon),
-             self._screenshot_tab(), True),
-            ("settings", ("shared_ai", "application"), "Settings",
-             "Models, language, startup and appearance.",
-             style.standardIcon(QStyle.StandardPixmap.SP_ComputerIcon),
-             self._settings_tab(), False),
-        ]
-        for main_id, aliases, title, description, icon, body, scroll in specs:
-            body = self._workspace_page(main_id, body)
-            wrapped, _scroller = self._wrap_page(body, description, scroll)
-            index = self.tabs.addTab(wrapped, t(title))
-            self._tab_index[main_id] = index
-            for alias in aliases:
-                self._tab_index[alias] = index
+        icons = {
+            "dictation": style.standardIcon(QStyle.StandardPixmap.SP_MediaVolume),
+            "meeting": style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay),
+            "audio_file": style.standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton),
+            "speak": style.standardIcon(QStyle.StandardPixmap.SP_ArrowForward),
+            "screenshot": style.standardIcon(QStyle.StandardPixmap.SP_DesktopIcon),
+            "settings": style.standardIcon(QStyle.StandardPixmap.SP_ComputerIcon),
+        }
+        builders = {
+            "dictation": (self._dictation_tab, True),
+            "meeting": (self._meeting_tab, True),
+            "audio_file": (self._file_tab, True),
+            "speak": (self._speak_tab, False),
+            "screenshot": (self._screenshot_tab, True),
+            "settings": (self._settings_page, True),
+        }
+        self.nav = QListWidget()
+        self.nav.setObjectName("navRail")
+        self.pages = QStackedWidget()
+        self._page_index = {}
+        self._rail_icons = icons
+        for page_id, title, description in self.TOOL_PAGES:
+            entry = QListWidgetItem(icons[page_id], t(title))
+            entry.setData(Qt.ItemDataRole.UserRole, page_id)
+            entry.setToolTip(t(description))
+            self.nav.addItem(entry)
+            build, scroll = builders[page_id]
+            body = build()
+            wrapped, _scroller = self._wrap_page(
+                body, description, scroll, self.PAGE_SETTINGS.get(page_id))
+            self._page_index[page_id] = self.pages.addWidget(wrapped)
+        self.nav.setCurrentRow(0)
+        self.nav.currentItemChanged.connect(self._on_nav_changed)
+        self.nav.setMaximumWidth(190)
+        self._nav_icon_size = self.nav.iconSize()
+        self.nav.setMinimumWidth(self._rail_width(self.nav))
         content = QWidget()
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.addWidget(self.tabs)
+        self._nav_layout = QHBoxLayout(content)
+        self._nav_layout.setContentsMargins(0, 0, 0, 0)
+        self._nav_layout.setSpacing(12)
+        self._nav_layout.addWidget(self.nav)
+        self._nav_layout.addWidget(self.pages, 1)
         return content
+
+    def _on_nav_changed(self, current, _previous):
+        if current is None:
+            return
+        page_id = current.data(Qt.ItemDataRole.UserRole)
+        index = self._page_index.get(page_id)
+        if index is None:
+            return
+        self.pages.setCurrentIndex(index)
+        # A page is a different amount of content: re-fit so a later
+        # dropdown never opens below the screen edge.
+        self._fit_on_screen()
+
+    def current_page(self):
+        """Stable id of the visible tool page."""
+        item = self.nav.currentItem() if hasattr(self, "nav") else None
+        if item is not None:
+            page_id = item.data(Qt.ItemDataRole.UserRole)
+            if page_id in self._page_index:
+                return page_id
+        return "dictation"
+
+    def current_section(self):
+        """Stable id of the visible settings section, else None."""
+        selector = getattr(self, "settings_section_list", None)
+        if selector is None or self.current_page() != "settings":
+            return None
+        item = selector.currentItem()
+        if item is None:
+            return self.SETTINGS_SECTIONS[0][0]
+        return item.data(Qt.ItemDataRole.UserRole)
 
     @staticmethod
     def _column(widgets):
@@ -1316,6 +1387,33 @@ class SettingsWindow(QDialog):
         if not expands:
             layout.addStretch()
         return panel
+
+    @staticmethod
+    def _card(title, controls):
+        """A titled card holding controls directly; no teardown involved."""
+        box, body = SettingsWindow._section_card(title, title)
+        for control in controls:
+            if isinstance(control, tuple):
+                body.addWidget(SettingsWindow._label_row(*control))
+            else:
+                body.addWidget(control)
+        return box
+
+    @staticmethod
+    def _book(groups):
+        """Local Model/Download-style tabs inside one card area."""
+        tabs = PanelTabs()
+        for title, items in groups:
+            tabs.add_panel(title, SettingsWindow._column(items))
+        return tabs
+
+    @staticmethod
+    def _editor(widget, minimum=90):
+        widget.setMinimumHeight(minimum)
+        widget.setMaximumHeight(16777215)
+        widget.setSizePolicy(QSizePolicy.Policy.Expanding,
+                             QSizePolicy.Policy.Expanding)
+        return widget
 
     def _record_controls(self, kind):
         panel = QWidget()
@@ -1366,161 +1464,13 @@ class SettingsWindow(QDialog):
         self.dictation_output.setPlainText(text)
         self._load_history()
 
-    def _workspace_page(self, kind, original):
-        """Move existing controls into fixed local pages, preserving callbacks."""
-        if kind in ("screenshot", "speak"):
-            return original
-        old = original.layout()
-        widgets = []
-        while old.count():
-            item = old.takeAt(0)
-            if item.widget():
-                widget = item.widget()
-                widget.setParent(None)
-                widgets.append(widget)
+    def _wrap_page(self, page, description, scroll=True, settings=None):
+        """A tool page under its description, with its own settings entry.
 
-        def card(title, controls):
-            box, body = self._section_card(title, title)
-            for control in controls:
-                if isinstance(control, tuple):
-                    body.addWidget(self._label_row(*control))
-                else:
-                    body.addWidget(control)
-            return box
-
-        def book(groups):
-            tabs = PanelTabs()
-            for title, items in groups:
-                tabs.add_panel(title, self._column(items))
-            return tabs
-
-        def editor(widget, minimum=90):
-            widget.setMinimumHeight(minimum)
-            widget.setMaximumHeight(16777215)
-            widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-            return widget
-
-        # Long explanations belong in help, not between every form control.
-        for widget in widgets:
-            for label in widget.findChildren(QLabel):
-                if len(label.text()) > 150:
-                    widget.setToolTip(widget.toolTip() + "\n" + label.text())
-                    label.hide()
-            for row in widget.findChildren(QHBoxLayout):
-                children = [row.itemAt(i).widget() for i in range(row.count()) if row.itemAt(i).widget()]
-                if len(children) > 1 and all(isinstance(child, QPushButton) for child in children):
-                    parent = row.parent()
-                    if isinstance(parent, QVBoxLayout):
-                        index = parent.indexOf(row)
-                        parent.removeItem(row)
-                        parent.insertWidget(index, ActionRow(row))
-
-        if kind == "settings":
-            # The model card stays compact; its large instruction editor gets
-            # a dedicated text page. Default-reset uses the existing callback.
-            cleanup_card = widgets[2]
-            body = cleanup_card.layout().itemAt(0).layout()
-            body.removeWidget(self.cleanup_prompt)
-            reset_item = body.takeAt(body.count() - 1)
-            reset_holder = QWidget()
-            reset_holder.setLayout(reset_item.layout())
-            rules = card("Cleanup rules", [editor(self.cleanup_prompt, 180), reset_holder])
-            # Speech glossary has its own editor; it does not compete vertically
-            # with cleanup instructions.
-            editor(self.transcribe_prompt, 140)
-            editor(self.gemini_keys_list, 120)
-            widgets[1].layout().itemAt(0).layout().removeWidget(self.download_panel)
-            self.model_setup = book([
-                ("Model", [widgets[1]]), ("Download", [self.download_panel]),
-            ])
-            widgets[1].layout().itemAt(0).layout().setSpacing(6)
-            self.model_setup.tabBar().setAutoHide(True)
-            self.model_setup.setTabVisible(1, False)
-            models = Workspace(self.model_setup, self._column([cleanup_card]))
-            text = Workspace(self._column([rules]), self._column([widgets[3]]))
-            application = Workspace(self._column([widgets[5]]), self._column(widgets[6:]))
-            self.settings_section_stack = book([
-                ("Audio and models", [models]),
-                ("Text and terms", [text]),
-                ("API keys", [widgets[0]]),
-                ("Application", [application]),
-            ])
-            # Compatibility for navigation and language-rebuild state, while
-            # visible navigation is now the horizontal category strip.
-            menu = QListWidget(self.settings_section_stack)
-            menu.addItems([t(name) for name in ("Audio and models", "Text and terms", "API keys", "Application")])
-            menu.hide()
-            menu.currentRowChanged.connect(self.settings_section_stack.setCurrentIndex)
-            self.settings_section_stack.currentChanged.connect(menu.setCurrentRow)
-            menu.setCurrentRow(0)
-            self.settings_section_menu = menu
-            widgets[4].deleteLater()
-            original.deleteLater()
-            return self.settings_section_stack
-
-        if kind == "dictation":
-            controls = card("Dictation", [
-                ("Microphone", self._row(self.mic, self.refresh_audio_devices)),
-                ("Speech language", self.language), ("Shortcut", self.shortcut),
-                self.shortcut_status, self.cleanup_enabled,
-                self.duck_background, ("Reduction", self.duck_reduction),
-            ])
-            left = self._column([self._record_controls(kind), controls])
-            recording = card("Recording", [
-                ("Longest recording", self.max_seconds),
-                ("Silence threshold", self.silence_db), self.skip_silent,
-                self.filter_hallucinations, self.keep_audio,
-            ])
-            output = card("Output", [self.auto_paste, ("Paste key", self.paste_shortcut), self.restore_clipboard])
-            text = card("Cleanup", [self.translate_enabled, self.translate_mode, self._shared_ai_note()])
-            self.dictation_output = QPlainTextEdit()
-            self.dictation_output.setReadOnly(True)
-            editor(self.dictation_output, 160)
-            self.dictation_output.setPlaceholderText(t("Your next dictation appears here."))
-            copy = QPushButton(t("Copy"))
-            copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.dictation_output.toPlainText()))
-            result = card("Latest dictation", [self.dictation_output, copy])
-            result.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-            self.history.setMinimumHeight(80)
-            self.history.setMaximumHeight(150)
-            # Mockup A: no sub-tabs; every section is a card on one page.
-            right = self._column([recording, output, text, result, widgets[5]])
-            for stale in widgets[:5]:
-                stale.deleteLater()
-        elif kind == "meeting":
-            # Sound sources remain visible. People, recording limits, model
-            # and the long minutes instruction each have a bounded local page.
-            left = self._column([self._record_controls(kind), widgets[0]])
-            editor(self.meeting_prompt, 180)
-            editor(self.meeting_participants, 60)
-            self.meeting_participants.setMaximumHeight(100)
-            self.minutes_list.setMinimumHeight(70)
-            self.minutes_list.setMaximumHeight(110)
-            editor(self.minutes_view, 100)
-            widgets[5].setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-            right = self._column([widgets[3], widgets[1], widgets[2],
-                                  widgets[4], widgets[5]])
-        else:
-            # File options and prompt are peers; opening the prompt cannot push
-            # timestamps, the result or the run button below the window.
-            options = widgets[3]
-            prompt_row = self.file_cleanup_prompt.parentWidget()
-            body = options.layout().itemAt(0).layout()
-            body.removeWidget(prompt_row)
-            reset = body.takeAt(body.count() - 1)
-            reset_holder = QWidget()
-            reset_holder.setLayout(reset.layout())
-            editor(self.file_cleanup_prompt, 160)
-            rules = card("Cleanup rules", [prompt_row, reset_holder])
-            widgets[4].setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-            left = self._column([widgets[1], widgets[2], options, rules])
-            right = self._column(widgets[4:])
-            editor(self.file_output, 140)
-            widgets[0].deleteLater()
-        original.deleteLater()
-        return Workspace(left, right)
-
-    def _wrap_page(self, page, description, scroll=True):
+        settings is a (section_id, button_key) pair from PAGE_SETTINGS: the
+        one header button every tool page carries, opening that tool's own
+        settings section. The settings page itself passes nothing.
+        """
         page.setObjectName("pageCard")
         page.setMinimumWidth(0)
         page.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
@@ -1529,10 +1479,28 @@ class SettingsWindow(QDialog):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(4, 18, 4, 8)
         layout.setSpacing(12)
-        detail = QLabel(t(description))
-        detail.setObjectName("pageDescription")
-        detail.setWordWrap(True)
-        layout.addWidget(detail)
+        if settings is None:
+            detail = QLabel(t(description))
+            detail.setObjectName("pageDescription")
+            detail.setWordWrap(True)
+            layout.addWidget(detail)
+        else:
+            head = QWidget()
+            head_layout = QHBoxLayout(head)
+            head_layout.setContentsMargins(0, 0, 0, 0)
+            head_layout.setSpacing(8)
+            detail = QLabel(t(description))
+            detail.setObjectName("pageDescription")
+            detail.setWordWrap(True)
+            head_layout.addWidget(detail, 1)
+            section_id, button_key = settings
+            entry = QPushButton(t(button_key))
+            entry.setObjectName("pageSettingsButton")
+            entry.clicked.connect(
+                lambda _checked=False, target=section_id:
+                self.navigate_to("settings", target))
+            head_layout.addWidget(entry)
+            layout.addWidget(head)
         scroller = None
         if scroll:
             scroller = QScrollArea()
@@ -1546,17 +1514,6 @@ class SettingsWindow(QDialog):
         else:
             layout.addWidget(page, 1)
         return container, scroller
-
-    def _show_page(self, page_id):
-        index = self._tab_index.get(page_id)
-        if index is None:
-            return
-        self.tabs.setCurrentIndex(index)
-        # A tab is a different amount of content: the one that was open may
-        # have left the window where it fit, and the one now open may be the
-        # one whose last dropdown has no room. Re-fitting on every switch costs
-        # nothing and keeps a later click from opening a list off the screen.
-        self._fit_on_screen()
 
     def _opening_size(self, avail_width, avail_height):
         """Opening size: remembered when valid, clamped to the screen."""
@@ -1620,14 +1577,40 @@ class SettingsWindow(QDialog):
             return
         self.setGeometry(x, y, rect.width(), height)
 
-    def navigate_to(self, page_id):
-        """Open the tab holding one logical page."""
-        if page_id not in self._tab_index:
+    def navigate_to(self, page_id, section=None):
+        """Open a tool page, optionally at one settings section.
+
+        Old logical ids keep working: "history" lands on dictation,
+        "minutes" on meeting, "shared_ai"/"application" on the matching
+        settings section.
+        """
+        target = self.PAGE_ALIASES.get(page_id, page_id)
+        if target not in self._page_index:
             return False
-        self._show_page(page_id)
-        if page_id in ("shared_ai", "application"):
-            self.settings_section_menu.setCurrentRow(3 if page_id == "application" else 0)
+        for row in range(self.nav.count()):
+            if self.nav.item(row).data(Qt.ItemDataRole.UserRole) == target:
+                self.nav.setCurrentRow(row)
+                break
+        if target == "settings":
+            section_key = section or page_id
+            self.select_section(self.SECTION_ALIASES.get(section_key, section_key))
         return True
+
+    def select_section(self, section_id):
+        """Select a settings section by stable id; unknown ids keep place."""
+        selector = getattr(self, "settings_section_list", None)
+        if selector is None:
+            return False
+        for row in range(selector.count()):
+            if selector.item(row).data(Qt.ItemDataRole.UserRole) == section_id:
+                selector.setCurrentRow(row)
+                combo = getattr(self, "settings_section_combo", None)
+                if combo is not None:
+                    combo.blockSignals(True)
+                    combo.setCurrentIndex(combo.findData(section_id))
+                    combo.blockSignals(False)
+                return True
+        return False
 
     def _shared_ai_note(self):
         holder = QWidget()
@@ -1640,9 +1623,14 @@ class SettingsWindow(QDialog):
         label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._shared_ai_labels.append(label)
         row.addWidget(label, 1)
-        open_ai = QPushButton(t("Open shared AI settings"))
-        open_ai.clicked.connect(lambda: self.navigate_to("shared_ai"))
-        row.addWidget(open_ai)
+        models = QPushButton(t("Audio and models"))
+        models.clicked.connect(
+            lambda: self.navigate_to("settings", "audio_models"))
+        row.addWidget(models)
+        rules = QPushButton(t("Text and terms"))
+        rules.clicked.connect(
+            lambda: self.navigate_to("settings", "text_rules"))
+        row.addWidget(rules)
         return holder
 
     def _refresh_shared_ai_summaries(self, *_):
@@ -1930,9 +1918,7 @@ class SettingsWindow(QDialog):
         """The scan found no models: close it and show the model download."""
         if self._engine_scan_dialog is not None:
             self._engine_scan_dialog.accept()
-        self.navigate_to("settings")
-        if self.settings_section_menu is not None:
-            self.settings_section_menu.setCurrentRow(0)
+        self.navigate_to("settings", "audio_models")
 
     def _toggle_all_cleanup(self, checked):
         """Master switch: set dictation, meeting and file cleanup together."""
@@ -2154,71 +2140,70 @@ class SettingsWindow(QDialog):
     # ---- pages ---------------------------------------------------------
 
     def _dictation_tab(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setSpacing(14)
+        """Dictation workspace: capture on the left, transcript on the right.
 
-        start, body = self._section_card(
-            "Start", "The key that starts and stops dictation.")
+        The page is built final, in place: no later pass moves these
+        controls around, so every widget the window keeps a reference to
+        stays alive as long as the window does.
+        """
         self.shortcut = self._shortcut_box("Ctrl+Space")
-        body.addWidget(self._label_row("Shortcut", self.shortcut))
         self.shortcut_status = QLabel("")
         self.shortcut_status.setObjectName("muted")
         self.shortcut_status.setWordWrap(True)
-        body.addWidget(self.shortcut_status)
-        layout.addWidget(start)
 
-        sound, body = self._section_card(
-            "Sound", "Where your voice comes in.")
         self.mic = FitsOnScreenCombo()
         self.mic.setProperty("searchable", True)
         self.refresh_audio_devices = QPushButton(t("Reload"))
         self.refresh_audio_devices.clicked.connect(self._refresh_audio_devices)
-        body.addWidget(self._label_row(
-            "Microphone", self._row(self.mic, self.refresh_audio_devices)))
         self.language = FitsOnScreenCombo()
         for label, code in LANGUAGES:
             self.language.addItem(t(label), code)
-        body.addWidget(self._label_row("Speech language", self.language))
         self.duck_background = QCheckBox(
             t("Lower background audio while dictating"))
         self.duck_background.setToolTip(t(
             "Lowers the speaker/headphone volume while recording, then "
             "restores it. Playback keeps playing."))
-        body.addWidget(self.duck_background)
         self.duck_reduction = QSpinBox()
         self.duck_reduction.setRange(5, 95)
         self.duck_reduction.setSuffix(" %")
         self.duck_background.toggled.connect(self.duck_reduction.setEnabled)
-        body.addWidget(self._label_row("Reduction", self.duck_reduction))
-        layout.addWidget(sound)
+        self.cleanup_enabled = QCheckBox(t("Clean the transcript with a model"))
+        controls = self._card("Dictation", [
+            ("Microphone", self._row(self.mic, self.refresh_audio_devices)),
+            ("Speech language", self.language),
+            self.duck_background,
+            ("Reduction", self.duck_reduction),
+            ("Shortcut", self.shortcut),
+            self.shortcut_status,
+            self.cleanup_enabled,
+        ])
+        left = self._column([self._record_controls("dictation"), controls])
 
-        output, body = self._section_card(
-            "Output", "Where the finished text goes.")
-        self.auto_paste = QCheckBox(t("Paste the text into the focused window"))
-        body.addWidget(self.auto_paste)
-        self.paste_shortcut = self._shortcut_box()
-        self.paste_shortcut.setToolTip(
-            t("Terminals usually want Ctrl+Shift+V. Change this if pasting does nothing.")
-        )
-        body.addWidget(self._label_row("Paste key", self.paste_shortcut))
-        self.restore_clipboard = QCheckBox(t("Restore the previous clipboard after pasting"))
-        body.addWidget(self.restore_clipboard)
-        layout.addWidget(output)
+        self.dictation_output = QPlainTextEdit()
+        self.dictation_output.setReadOnly(True)
+        self._editor(self.dictation_output, 160)
+        self.dictation_output.setPlaceholderText(t("Your next dictation appears here."))
+        copy = QPushButton(t("Copy"))
+        copy.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.dictation_output.toPlainText()))
+        result = self._card("Latest dictation", [self.dictation_output, copy])
+        result.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
 
-        recording, body = self._section_card(
-            "Recording", "How long a recording may run, and what is kept.")
+        right = self._column([
+            result, self._history_box(),
+        ])
+        return Workspace(left, right)
+
+    def _dictation_section_cards(self):
+        """Rarely-touched dictation cards: limits, output and cleanup rules.
+
+        Built here, placed in the Dictation settings section; the tool page
+        keeps only action, status, result and history.
+        """
         self.max_seconds = QSpinBox()
         self.max_seconds.setRange(10, 3600)
         self.max_seconds.setSuffix(t(" s"))
-        body.addWidget(self._label_row("Longest recording", self.max_seconds))
         self.skip_silent = QCheckBox(t("Skip silent recordings (don't call the API)"))
-        body.addWidget(self.skip_silent)
         self.keep_audio = QCheckBox(t("Keep audio files (%LOCALAPPDATA%\\WordArc\\recordings)"))
-        body.addWidget(self.keep_audio)
-
-        advanced = QGroupBox(t("Advanced"))
-        advanced_form = QFormLayout(advanced)
         self.silence_db = QSpinBox()
         self.silence_db.setRange(-80, -20)
         self.silence_db.setSuffix(" dB")
@@ -2228,39 +2213,84 @@ class SettingsWindow(QDialog):
             "speech gets dropped; raise it if noise still gets through.",
             margin=10,
         ))
-        advanced_form.addRow(t("Silence threshold"), self.silence_db)
         self.filter_hallucinations = QCheckBox(
             t("Discard stock phrases models invent for near-silent audio")
         )
         self.filter_hallucinations.setToolTip(
             t("Whisper answers silence with things like “Thanks for watching”.")
         )
-        advanced_form.addRow("", self.filter_hallucinations)
+        advanced = QGroupBox(t("Advanced"))
+        advanced_layout = QVBoxLayout(advanced)
+        advanced_form = QFormLayout()
+        advanced_form.setContentsMargins(0, 0, 0, 0)
+        advanced_form.addRow(t("Silence threshold"), self.silence_db)
+        advanced_layout.addLayout(advanced_form)
+        # Beside the threshold row the checkbox would lose the whole label
+        # column and elide; full card width fits it.
+        advanced_layout.addWidget(self.filter_hallucinations)
+        recording, body = self._section_card(
+            "Recording", "How long a recording may run, and what is kept.")
+        body.addWidget(self._label_row("Longest recording", self.max_seconds))
+        body.addWidget(self.skip_silent)
+        body.addWidget(self.keep_audio)
         body.addWidget(advanced)
-        layout.addWidget(recording)
 
-        cleanup, body = self._section_card(
-            "Cleanup", "An optional second pass that tidies the transcript.")
-        self.cleanup_enabled = QCheckBox(t("Clean the transcript with a model"))
-        body.addWidget(self.cleanup_enabled)
+        self.auto_paste = QCheckBox(t("Paste the text into the focused window"))
+        self.paste_shortcut = self._shortcut_box()
+        self.paste_shortcut.setToolTip(
+            t("Terminals usually want Ctrl+Shift+V. Change this if pasting does nothing.")
+        )
+        self.restore_clipboard = QCheckBox(t("Restore the previous clipboard after pasting"))
+        output = self._card("Output", [
+            self.auto_paste,
+            ("Paste key", self.paste_shortcut),
+            self.restore_clipboard,
+        ])
+
         self.translate_enabled = QCheckBox(t("Translate dictation to English"))
-        body.addWidget(self.translate_enabled)
         self.translate_mode = FitsOnScreenCombo()
         self.translate_mode.addItem(t("Academic English"), "academic")
         self.translate_mode.addItem(t("Game English"), "game")
-        body.addWidget(self.translate_mode)
-        body.addWidget(self._shared_ai_note())
-        layout.addWidget(cleanup)
-        layout.addWidget(self._history_box())
-        layout.addStretch(1)
-        return page
+        cleanup = self._card("Cleanup", [
+            self.translate_enabled,
+            self.translate_mode,
+            self._shared_ai_note(),
+        ])
+        return [recording, output, cleanup]
 
-    def _general_tab(self, page=None, embedded=False):
-        page = page if page is not None else QWidget()
-        # A page that already carries the shared AI sections keeps its layout:
-        # Qt refuses a second one and these rows would never appear.
-        layout = page.layout() or QVBoxLayout(page)
-        layout.setSpacing(14)
+    def _speak_section_cards(self):
+        """The voice output cards: one home for format, speed and shortcuts.
+
+        Moved out of the Application section so the Speak tool owns them;
+        the page kept a second copy of format/speed, which is gone.
+        """
+        reading, body = self._section_card(
+            "Reading aloud", "Turkish text-to-speech on the Speak tab.")
+        self.tts_status = QLabel("")
+        self.tts_status.setWordWrap(True)
+        self.tts_status.setObjectName("muted")
+        body.addWidget(self._label_row("Model status", self.tts_status))
+        self.tts_format = FitsOnScreenCombo()
+        for value in ("opus", "mp3", "wav"):
+            self.tts_format.addItem(value, value)
+        body.addWidget(self._label_row("Default format", self.tts_format))
+        self.tts_speed = FitsOnScreenCombo()
+        for label, value in (("0.9x", 0.9), ("1x", 1.0), ("1.5x", 1.5), ("2x", 2.0)):
+            self.tts_speed.addItem(label, value)
+        body.addWidget(self._label_row("Default speed", self.tts_speed))
+        self.tts_autoplay = QCheckBox(t("Play automatically when ready"))
+        body.addWidget(self.tts_autoplay)
+        self.tts_shortcut = self._shortcut_box("Ctrl+Shift+O")
+        body.addWidget(self._label_row(
+            "Read-selection shortcut", self.tts_shortcut))
+        self.tts_stop_shortcut = self._shortcut_box("Ctrl+Shift+X")
+        body.addWidget(self._label_row("Stop shortcut", self.tts_stop_shortcut))
+        return [reading]
+
+    def _general_cards(self):
+        """Application cards, in section order. Built once, placed by the
+        settings composer; nothing here depends on page position."""
+        cards = []
         interface, body = self._section_card(
             "Interface", "Language and appearance.")
         self.ui_language = FitsOnScreenCombo()
@@ -2307,7 +2337,7 @@ class SettingsWindow(QDialog):
             previews.addWidget(holder)
         previews.addStretch(1)
         body.addWidget(previews_row)
-        layout.addWidget(interface)
+        cards.append(interface)
 
         selection, body = self._section_card(
             "Text selection bar", "Show a small toolbar next to selected text.")
@@ -2315,7 +2345,7 @@ class SettingsWindow(QDialog):
         self.selection_bar_enabled.setToolTip(t(
             "Off by default. Applies as soon as you save; no restart needed."))
         body.addWidget(self.selection_bar_enabled)
-        layout.addWidget(selection)
+        cards.append(selection)
 
         breaks, body = self._section_card(
             "Break reminder", "Take regular breaks from the screen.")
@@ -2346,7 +2376,7 @@ class SettingsWindow(QDialog):
         self.break_corner.setToolTip(
             t("Where the small timer sits. Drag it anywhere; the position is kept."))
         body.addWidget(self._label_row("Corner", self.break_corner))
-        layout.addWidget(breaks)
+        cards.append(breaks)
 
         def highlight_preview():
             """Keep the selected format's preview visibly marked."""
@@ -2372,7 +2402,7 @@ class SettingsWindow(QDialog):
             "When disabled, the title-bar close button, Escape and Alt+F4 quit WordArc."
         ))
         body.addWidget(self.close_to_tray)
-        layout.addWidget(startup_box)
+        cards.append(startup_box)
 
         updates, body = self._section_card(
             "Updates", "Newer versions of WordArc.")
@@ -2402,30 +2432,7 @@ class SettingsWindow(QDialog):
         update_row.addStretch(1)
         body.addLayout(update_row)
         self.show_update_current()
-        layout.addWidget(updates)
-
-        reading, body = self._section_card(
-            "Reading aloud", "Turkish text-to-speech on the Speak tab.")
-        self.tts_status = QLabel("")
-        self.tts_status.setWordWrap(True)
-        self.tts_status.setObjectName("muted")
-        body.addWidget(self._label_row("Model status", self.tts_status))
-        self.tts_format = FitsOnScreenCombo()
-        for value in ("opus", "mp3", "wav"):
-            self.tts_format.addItem(value, value)
-        body.addWidget(self._label_row("Default format", self.tts_format))
-        self.tts_speed = FitsOnScreenCombo()
-        for label, value in (("0.9x", 0.9), ("1x", 1.0), ("1.5x", 1.5), ("2x", 2.0)):
-            self.tts_speed.addItem(label, value)
-        body.addWidget(self._label_row("Default speed", self.tts_speed))
-        self.tts_autoplay = QCheckBox(t("Play automatically when ready"))
-        body.addWidget(self.tts_autoplay)
-        self.tts_shortcut = self._shortcut_box("Ctrl+Shift+O")
-        body.addWidget(self._label_row(
-            "Read-selection shortcut", self.tts_shortcut))
-        self.tts_stop_shortcut = self._shortcut_box("Ctrl+Shift+X")
-        body.addWidget(self._label_row("Stop shortcut", self.tts_stop_shortcut))
-        layout.addWidget(reading)
+        cards.append(updates)
 
         support, body = self._section_card(
             "Support", "When something breaks.")
@@ -2435,16 +2442,11 @@ class SettingsWindow(QDialog):
         diag_row.addWidget(diagnostics)
         diag_row.addStretch(1)
         body.addLayout(diag_row)
-        layout.addWidget(support)
-        if not embedded:
-            layout.addStretch(1)
-        return page
+        cards.append(support)
+        return cards
 
-    def _shared_ai_tab(self, page=None, embedded=False):
-        page = page if page is not None else QWidget()
-        outer = QVBoxLayout(page)
-        outer.setSpacing(14)
-
+    def _api_keys_card(self):
+        """API keys section card: the key list with its own actions."""
         # API keys first, then model selection. Two rows: the list with its two
         # main actions on top, the row actions underneath.
         keys, keys_body = self._section_card(
@@ -2502,8 +2504,11 @@ class SettingsWindow(QDialog):
         self.gemini_test_label.setObjectName("muted")
         self.gemini_test_label.setWordWrap(True)
         keys_body.addWidget(self.gemini_test_label)
-        outer.addWidget(keys)
+        self._editor(self.gemini_keys_list, 120)
+        return keys
 
+    def _speech_card(self):
+        """Speech-to-text card plus its download panel (separate tab)."""
         stt, stt_body = self._section_card(
             "Speech to text", "The model that turns speech into text.")
 
@@ -2625,8 +2630,10 @@ class SettingsWindow(QDialog):
         self.transcribe_status.setWordWrap(True)
         stt_body.addWidget(self.transcribe_status)
         self._refresh_local_controls()
-        outer.addWidget(stt)
+        return stt, self.download_panel
 
+    def _cleanup_master_card(self):
+        """Transcript cleanup options without the long instruction editor."""
         orr, orr_body = self._section_card(
             "Transcript cleanup", "The model that tidies transcripts.")
         self.cleanup_all = QCheckBox(t("Clean all transcripts with a model"))
@@ -2672,16 +2679,42 @@ class SettingsWindow(QDialog):
         self.cleanup_prompt = QPlainTextEdit()
         self.cleanup_prompt.setMinimumHeight(180)
         orr_body.addWidget(self.cleanup_prompt)
+        return orr
+
+    def _cleanup_rules_card(self):
+        """The long cleanup instruction with its own editor page."""
         reset_cleanup = QPushButton(t("Reset to default"))
         reset_cleanup.clicked.connect(
             lambda: self.cleanup_prompt.setPlainText(cfg.default_cleanup_prompt())
         )
-        reset_row = QHBoxLayout()
+        holder = QWidget()
+        reset_row = QHBoxLayout(holder)
         reset_row.addStretch(1)
         reset_row.addWidget(reset_cleanup)
-        orr_body.addLayout(reset_row)
-        outer.addWidget(orr)
+        return self._card("Cleanup rules", [
+            self._editor(self.cleanup_prompt, 180), holder,
+        ])
 
+    def _file_rules_card(self):
+        """Audio file cleanup instruction (subtitle-oriented, separate rules)."""
+        self.file_cleanup_prompt = QPlainTextEdit()
+        self.file_cleanup_prompt.setMaximumHeight(110)
+        reset_file_prompt = QPushButton(t("Reset to default"))
+        reset_file_prompt.clicked.connect(
+            lambda: self.file_cleanup_prompt.setPlainText(cfg.default_file_cleanup_prompt())
+        )
+        holder = QWidget()
+        reset_row = QHBoxLayout(holder)
+        reset_row.addStretch(1)
+        reset_row.addWidget(reset_file_prompt)
+        return self._card("Audio file cleanup", [
+            self._label_row(
+                "Audio file cleanup instruction", self.file_cleanup_prompt),
+            holder,
+        ])
+
+    def _glossary_card(self):
+        """Names-and-terms glossary card."""
         glossary, glossary_body = self._section_card(
             "Names and terms", "Words the models should spell right.")
         glossary_hint = QLabel(t(
@@ -2695,16 +2728,11 @@ class SettingsWindow(QDialog):
         self.transcribe_prompt = QPlainTextEdit()
         self.transcribe_prompt.setMaximumHeight(100)
         glossary_body.addWidget(self.transcribe_prompt)
-        outer.addWidget(glossary)
-        if not embedded:
-            outer.addStretch(1)
-        return page
+        self._editor(self.transcribe_prompt, 140)
+        return glossary
 
     def _meeting_tab(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setSpacing(14)
-
+        """Meeting workspace: sources on the left, minutes on the right."""
         sound, body = self._section_card(
             "Sound", "Your microphone plus whatever comes out of your speakers.")
         self.meeting_mic = FitsOnScreenCombo()
@@ -2731,7 +2759,6 @@ class SettingsWindow(QDialog):
         sound.setToolTip(note.text())
         note.hide()
         body.addWidget(note)
-        layout.addWidget(sound)
 
         people, body = self._section_card(
             "Who is talking", "Labels for the two sides of the conversation.")
@@ -2745,6 +2772,7 @@ class SettingsWindow(QDialog):
         self.meeting_participants.setMaximumHeight(70)
         self.meeting_participants.setPlaceholderText(t("One name per line"))
         body.addWidget(self._label_row("Expected", self.meeting_participants))
+        self._editor(self.meeting_participants, 60)
         people_note = QLabel(t(
             "Everyone on the far end shares one label: they reach you as a single "
             "mixed signal. The names go to the transcription model so they come "
@@ -2754,35 +2782,21 @@ class SettingsWindow(QDialog):
         people_note.setObjectName("muted")
         people_note.setWordWrap(True)
         body.addWidget(people_note)
-        layout.addWidget(people)
 
-        models, body = self._section_card(
-            "Minutes", "The model that turns the transcript into minutes.")
-        self.meeting_model = FitsOnScreenCombo()
-        self.meeting_model.setEditable(True)
-        self.meeting_model.addItems(MEETING_MODELS)
-        body.addWidget(self._label_row("Model", self.meeting_model))
-        self.meeting_reasoning = FitsOnScreenCombo()
-        for label, value in REASONING_LEVELS:
-            self.meeting_reasoning.addItem(t(label), value)
-        self.meeting_reasoning.setToolTip(t(
-            "Unlike cleanup, this one is worth some thinking: it has to hold a "
-            "whole meeting in its head and work out what was actually decided."
-        ))
-        body.addWidget(self._label_row("Thinking", self.meeting_reasoning))
-        self.meeting_language = FitsOnScreenCombo()
-        self.meeting_language.addItem(t("Same as dictation"), "")
-        for label, code in LANGUAGES:
-            self.meeting_language.addItem(t(label), code)
-        body.addWidget(self._label_row("Speech language", self.meeting_language))
-        self.meeting_cleanup = QCheckBox(t("Clean the transcript up first"))
-        self.meeting_cleanup.setToolTip(t(
-            "Runs the cleanup model over the transcript before the minutes are "
-            "written, keeping the timestamps and the speaker labels."
-        ))
-        body.addWidget(self.meeting_cleanup)
-        layout.addWidget(models)
+        left = self._column([self._record_controls("meeting"), sound])
+        right = self._column([
+            people, self._minutes_box(),
+        ])
+        # The cards below were built straight into this page; grouping them
+        # into columns only reparents them, nothing is torn down.
+        return Workspace(left, right)
 
+    def _meeting_section_cards(self):
+        """Rarely-touched meeting cards: limits, models and the instruction.
+
+        Built here, placed in the Meeting settings section; the tool page
+        keeps only action, status, sources, names and minutes.
+        """
         recording, body = self._section_card(
             "Recording", "How long a meeting may run, and what is kept.")
         self.meeting_max_minutes = QSpinBox()
@@ -2809,12 +2823,39 @@ class SettingsWindow(QDialog):
         self.meeting_shortcut_status.setObjectName("muted")
         self.meeting_shortcut_status.setWordWrap(True)
         body.addWidget(self.meeting_shortcut_status)
-        layout.addWidget(recording)
+
+        models, body = self._section_card(
+            "Minutes", "The model that turns the transcript into minutes.")
+        self.meeting_model = FitsOnScreenCombo()
+        self.meeting_model.setEditable(True)
+        self.meeting_model.addItems(MEETING_MODELS)
+        body.addWidget(self._label_row("Model", self.meeting_model))
+        self.meeting_reasoning = FitsOnScreenCombo()
+        for label, value in REASONING_LEVELS:
+            self.meeting_reasoning.addItem(t(label), value)
+        self.meeting_reasoning.setToolTip(t(
+            "Unlike cleanup, this one is worth some thinking: it has to hold a "
+            "whole meeting in its head and work out what was actually decided."
+        ))
+        body.addWidget(self._label_row("Thinking", self.meeting_reasoning))
+        self.meeting_language = FitsOnScreenCombo()
+        self.meeting_language.addItem(t("Same as dictation"), "")
+        for label, code in LANGUAGES:
+            self.meeting_language.addItem(t(label), code)
+        body.addWidget(self._label_row("Speech language", self.meeting_language))
+        self.meeting_cleanup = QCheckBox(t("Clean the transcript up first"))
+        self.meeting_cleanup.setToolTip(t(
+            "Runs the cleanup model over the transcript before the minutes are "
+            "written, keeping the timestamps and the speaker labels."
+        ))
+        body.addWidget(self.meeting_cleanup)
+        body.addWidget(self._shared_ai_note())
 
         prompt_card, prompt_body = self._section_card(
             "Minutes instruction", "System instruction given to the minutes model.")
         self.meeting_prompt = QPlainTextEdit()
         self.meeting_prompt.setMinimumHeight(200)
+        self._editor(self.meeting_prompt, 180)
         prompt_body.addWidget(self.meeting_prompt)
         reset = QPushButton(t("Reset to default"))
         reset.clicked.connect(
@@ -2824,41 +2865,124 @@ class SettingsWindow(QDialog):
         reset_row.addStretch(1)
         reset_row.addWidget(reset)
         prompt_body.addLayout(reset_row)
-        layout.addWidget(prompt_card)
-        layout.addWidget(self._minutes_box())
-
-        # Everything above is more than one screenful; let it scroll rather than
-        # squeezing the prompt box down to nothing.
-        return page
+        return [recording, models, prompt_card]
 
     def _cuda_changed(self):
         self._local_snapshots.clear()
         if hasattr(self, 'local_stt_device'):
             self.local_stt_device.setCurrentIndex(self.local_stt_device.findData('cpu'))
 
-    def _settings_tab(self):
-        """Shared AI and application sections built straight into one tab.
+    def _settings_page(self):
+        """Settings page: a stable section list, one section on screen.
 
-        (An earlier version built two throwaway pages and moved their rows
-        over; that dance crashed Qt on tab switches, so it is gone.)
+        Sections are composed from the card builders in place; nothing is
+        moved afterwards, so every widget the window keeps survives.
         """
+        keys = self._api_keys_card()
+        stt, download_panel = self._speech_card()
+        orr = self._cleanup_master_card()
+        rules = self._cleanup_rules_card()
+        file_rules = self._file_rules_card()
+        glossary = self._glossary_card()
+        general = self._general_cards()
+
+        self.model_setup = self._book([
+            ("Model", [stt]), ("Download", [download_panel]),
+        ])
+        self.model_setup.tabBar().setAutoHide(True)
+        self.model_setup.setTabVisible(1, False)
+
+        # Audio/model and text sections fit side by side at desktop sizes
+        # (the desktop-forms test pins this); the tall tool sections stay
+        # one scrolling column instead of collapsing behind generic tabs,
+        # which would hide settings instead of showing them.
+        tall = ("application", "dictation", "meeting")
+        bodies = {
+            "audio_models": [Workspace(self.model_setup,
+                                       self._column([orr]))],
+            "text_rules": [Workspace(self._column([rules]),
+                                     self._column([glossary]))],
+            "api_keys": [keys],
+            "application": general,
+            "dictation": self._dictation_section_cards(),
+            "meeting": self._meeting_section_cards(),
+            "audio_file": self._audio_file_section_cards() + [file_rules],
+            "speak": self._speak_section_cards(),
+            "screenshot": self._screenshot_section_cards(),
+        }
+        self.settings_section_list = QListWidget()
+        self.settings_section_list.setObjectName("settingsSectionList")
+        self.settings_sections = QStackedWidget()
+        self._section_index = {}
+        for section_id, title in self.SETTINGS_SECTIONS:
+            entry = QListWidgetItem(t(title))
+            entry.setData(Qt.ItemDataRole.UserRole, section_id)
+            entry.setToolTip(t(title))
+            self.settings_section_list.addItem(entry)
+            column = self._column(bodies[section_id])
+            if section_id in tall:
+                # Tall enough that its minimum would force the outer scroller
+                # on every other section too. The section scrolls in the page
+                # scroller instead.
+                column.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                     QSizePolicy.Policy.Ignored)
+            self._section_index[section_id] = self.settings_sections.addWidget(column)
+        self.settings_section_list.setCurrentRow(0)
+        self.settings_section_list.currentItemChanged.connect(
+            self._on_section_changed)
+        self.settings_section_list.setMaximumWidth(190)
+        # The layout squeezes a rail with no minimum, and a resize to the
+        # same size fires no event: pin the measured width at build.
+        section_width = self._rail_width(self.settings_section_list)
+        self.settings_section_list.setMinimumWidth(section_width)
+        self.settings_section_list.setMaximumWidth(
+            max(190, section_width))
+        # Narrow windows give the section rail no room: a compact picker
+        # takes its place and the sections use the full content width.
+        self.settings_section_combo = FitsOnScreenCombo()
+        for section_id, title in self.SETTINGS_SECTIONS:
+            self.settings_section_combo.addItem(t(title), section_id)
+        self.settings_section_combo.hide()
+        self.settings_section_combo.currentIndexChanged.connect(
+            self._on_section_picked)
         page = QWidget()
-        self._shared_ai_tab(page, embedded=True)
-        line = QFrame()
-        line.setObjectName("headerRule")
-        line.setFixedHeight(1)
-        page.layout().addWidget(line)
-        self._general_tab(page, embedded=True)
-        page.layout().addStretch(1)
+        self._settings_layout = QVBoxLayout(page)
+        self._settings_layout.setContentsMargins(0, 0, 0, 0)
+        self._settings_layout.setSpacing(12)
+        self._settings_layout.addWidget(self.settings_section_combo)
+        self._settings_body = QHBoxLayout()
+        self._settings_body.setContentsMargins(0, 0, 0, 0)
+        self._settings_body.setSpacing(12)
+        self._settings_body.addWidget(self.settings_section_list)
+        self._settings_body.addWidget(self.settings_sections, 1)
+        self._settings_layout.addLayout(self._settings_body, 1)
         return page
+
+    def _on_section_picked(self, index):
+        if index < 0:
+            return
+        self.select_section(self.settings_section_combo.itemData(index))
+
+    def _on_section_changed(self, current, _previous):
+        if current is None:
+            return
+        section_id = current.data(Qt.ItemDataRole.UserRole)
+        index = self._section_index.get(section_id)
+        if index is None:
+            return
+        self.settings_sections.setCurrentIndex(index)
+        self._fit_on_screen()
 
     def _minutes_box(self):
         box = QGroupBox(t("Minutes"))
+        box.setSizePolicy(QSizePolicy.Policy.Preferred,
+                          QSizePolicy.Policy.Expanding)
         layout = QVBoxLayout(box)
 
         self.minutes_list = EmptyListWidget(t("No meetings yet."))
         self.minutes_list.setWordWrap(True)
-        self.minutes_list.setMaximumHeight(170)
+        self.minutes_list.setMinimumHeight(70)
+        self.minutes_list.setMaximumHeight(110)
         self.minutes_list.currentItemChanged.connect(self._show_minutes)
         layout.addWidget(self.minutes_list)
 
@@ -2868,6 +2992,7 @@ class SettingsWindow(QDialog):
 
         self.minutes_view = QPlainTextEdit()
         self.minutes_view.setReadOnly(True)
+        self._editor(self.minutes_view, 100)
         self.minutes_view.setMinimumHeight(200)
         self.minutes_view.setPlaceholderText(t("Pick a meeting to read it."))
         layout.addWidget(self.minutes_view)
@@ -2903,13 +3028,7 @@ class SettingsWindow(QDialog):
         return box
 
     def _file_tab(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setSpacing(14)
-        intro = QLabel(t("Transcribe an existing audio or video file with the same models."))
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
-        layout.addWidget(self._shared_ai_note())
+        """Audio file workspace: pick a file on the left, read on the right."""
 
         file_card, body = self._section_card(
             "File", "Pick an audio or video file to transcribe.")
@@ -2921,40 +3040,11 @@ class SettingsWindow(QDialog):
         row.addWidget(pick)
         row.addWidget(self.file_label, 1)
         body.addLayout(row)
-        layout.addWidget(file_card)
-
-        options, body = self._section_card(
-            "Options", "How the transcript should look.")
-        self.file_timestamps = QCheckBox(t("Add timestamps"))
-        self.file_timestamps.setToolTip(
-            t("Prefixes every chunk with [mm:ss], so the transcript can be "
-              "saved as subtitles (.srt).")
-        )
-        body.addWidget(self.file_timestamps)
-
-        self.file_cleanup = QCheckBox(t("Run the cleanup model afterwards"))
-        self.file_cleanup.setToolTip(
-            t("With its own rules, under Cleanup rules: written for subtitles, so "
-              "the lines keep their place and nothing is shortened.")
-        )
-        body.addWidget(self.file_cleanup)
-
-        self.file_cleanup_prompt = QPlainTextEdit()
-        self.file_cleanup_prompt.setMaximumHeight(110)
-        body.addWidget(self._label_row(
-            "Audio file cleanup instruction", self.file_cleanup_prompt))
-        reset_file_prompt = QPushButton(t("Reset to default"))
-        reset_file_prompt.clicked.connect(
-            lambda: self.file_cleanup_prompt.setPlainText(cfg.default_file_cleanup_prompt())
-        )
-        reset_row = QHBoxLayout()
-        reset_row.addStretch(1)
-        reset_row.addWidget(reset_file_prompt)
-        body.addLayout(reset_row)
-        layout.addWidget(options)
 
         transcript, body = self._section_card(
             "Transcript", "The finished text.")
+        transcript.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                 QSizePolicy.Policy.Expanding)
         self.file_run = QPushButton(t("Transcribe"))
         self.file_run.setObjectName("primaryButton")
         self.file_run.clicked.connect(self._run_file)
@@ -2974,6 +3064,7 @@ class SettingsWindow(QDialog):
         self.file_output = QPlainTextEdit()
         self.file_output.setPlaceholderText("…")
         self.file_output.setMinimumHeight(200)
+        self._editor(self.file_output, 140)
         body.addWidget(self.file_output)
 
         copy = QPushButton(t("Copy"))
@@ -2994,8 +3085,37 @@ class SettingsWindow(QDialog):
         out_row.addWidget(self.file_save_srt)
         out_row.addStretch(1)
         body.addLayout(out_row)
-        layout.addWidget(transcript)
-        return page
+        left = self._column([file_card])
+        right = self._column([
+            transcript,
+        ])
+        # The cards above were built straight into this page; grouping them
+        # into columns only reparents them, nothing is torn down.
+        return Workspace(left, right)
+
+    def _audio_file_section_cards(self):
+        """Rarely-touched file cards: output options and cleanup rules.
+
+        Built here, placed in the Audio file settings section; the tool page
+        keeps only picking the file, starting the run and reading it.
+        """
+        options, body = self._section_card(
+            "Options", "How the transcript should look.")
+        self.file_timestamps = QCheckBox(t("Add timestamps"))
+        self.file_timestamps.setToolTip(t(
+            "Prefixes every chunk with [mm:ss], so the transcript can be "
+            "saved as subtitles (.srt)."
+        ))
+        body.addWidget(self.file_timestamps)
+
+        self.file_cleanup = QCheckBox(t("Run the cleanup model afterwards"))
+        self.file_cleanup.setToolTip(t(
+            "With its own rules, under Cleanup rules: written for subtitles, so "
+            "the lines keep their place and nothing is shortened."
+        ))
+        body.addWidget(self.file_cleanup)
+        body.addWidget(self._shared_ai_note())
+        return [options]
 
     def _speak_tab(self):
         page = QWidget()
@@ -3019,17 +3139,6 @@ class SettingsWindow(QDialog):
         self.speak_read = QPushButton(t("Read aloud"))
         self.speak_read.setObjectName("primaryButton")
         self.speak_read.clicked.connect(self._run_speak)
-        self.speak_format = FitsOnScreenCombo()
-        for value in ("opus", "mp3", "wav"):
-            self.speak_format.addItem(value, value)
-        self.speak_speed = FitsOnScreenCombo()
-        for label, value in (("0.9x", 0.9), ("1x", 1.0), ("1.5x", 1.5), ("2x", 2.0)):
-            self.speak_speed.addItem(label, value)
-        controls = QHBoxLayout()
-        controls.addWidget(self._label_row("Format", self.speak_format))
-        controls.addWidget(self._label_row("Speed", self.speak_speed))
-        controls.addStretch(1)
-        body.addLayout(controls)
 
         recent, body = self._section_card(
             "Recent readings", "Audio files saved from this tab.")
@@ -3096,13 +3205,6 @@ class SettingsWindow(QDialog):
         self.tts.progress.connect(self.speak_status.setText)
         self.tts.finished.connect(self._on_speak_done)
         self.tts.failed.connect(self._on_speak_failed)
-        self._select_data(self.speak_format, self.conf.get("tts_format", "opus"))
-        try:
-            speed_index = ("0.9", "1.0", "1.5", "2.0").index(
-                str(float(self.conf.get("tts_speed", 0.9))))
-        except (TypeError, ValueError):
-            speed_index = 0
-        self.speak_speed.setCurrentIndex(speed_index)
         self._load_speak_recent()
         return page
 
@@ -3115,7 +3217,7 @@ class SettingsWindow(QDialog):
 
     def _speak_speed(self):
         try:
-            return float(self.speak_speed.currentData() or 0.9)
+            return float(self.tts_speed.currentData() or 0.9)
         except (TypeError, ValueError):
             return 0.9
 
@@ -3142,7 +3244,7 @@ class SettingsWindow(QDialog):
         if self.tts.busy:
             self.speak_status.setText(t("Already reading…"))
             return
-        fmt = self.speak_format.currentData() or self.conf["tts_format"]
+        fmt = self.tts_format.currentData() or self.conf["tts_format"]
         start = os.path.join(self.conf["tts_last_dir"] or str(self._speak_dir()),
                              f"reading.{fmt}")
         path, _ = QFileDialog.getSaveFileName(
@@ -3231,12 +3333,12 @@ class SettingsWindow(QDialog):
         self.speak_status.setText(t("Reading…"))
         self.tts.convert_files(
             paths, self._speak_dir(),
-            self.speak_format.currentData() or self.conf["tts_format"],
+            self.tts_format.currentData() or self.conf["tts_format"],
             self._speak_speed())
         # Batch membership is tracked by output path; pre-register the
         # expected outputs so completion marks the right rows.
         import pathlib
-        fmt = self.speak_format.currentData() or self.conf["tts_format"]
+        fmt = self.tts_format.currentData() or self.conf["tts_format"]
         self._batch = [str(self._speak_dir() / f"{pathlib.Path(p).stem}.{fmt}")
                        for p in paths]
 
@@ -3301,7 +3403,15 @@ class SettingsWindow(QDialog):
         self.screenshot_failed.connect(self._show_screenshot_error)
         body.addWidget(self.screenshot_status)
         layout.addWidget(capture)
+        layout.addStretch(1)
+        return page
 
+    def _screenshot_section_cards(self):
+        """Rarely-touched screenshot cards: folder and format.
+
+        Built here, placed in the Screenshot settings section; the tool page
+        keeps only capturing and its status.
+        """
         options, body = self._section_card(
             "Screenshot options", "Choose where new screenshots are saved by default.")
         self.screenshot_directory = QLineEdit()
@@ -3318,9 +3428,7 @@ class SettingsWindow(QDialog):
         self.screenshot_format.addItem("JPEG", "JPEG")
         self.screenshot_format.addItem("JPEG XL (.jxl)", "JXL")
         body.addWidget(self._label_row("Image format", self.screenshot_format))
-        layout.addWidget(options)
-        layout.addStretch(1)
-        return page
+        return [options]
 
     def _choose_screenshot_directory(self):
         current = self.screenshot_directory.text().strip()
@@ -3785,6 +3893,109 @@ class SettingsWindow(QDialog):
         banner = getattr(self, "save_banner", None)
         if banner is not None and banner.isVisible():
             banner.place()
+        self._reflow_navigation()
+        # Fonts, stylesheets and polish settle after the resize is handled;
+        # one deferred pass re-measures with everything settled. Guarded:
+        # the deferred run must not queue another.
+        if not getattr(self, "_reflow_queued", False):
+            self._reflow_queued = True
+            QTimer.singleShot(0, self._finish_reflow)
+
+    def _finish_reflow(self):
+        self._reflow_queued = False
+        if self.isVisible():
+            self._reflow_navigation()
+
+    @staticmethod
+    def _rail_width(rail):
+        """Widest row text plus icon and frame: rows must never elide.
+
+        Measured from the live font after polish, not from the column
+        hint, which sizes for the icon alone and starves translated
+        titles. Runs at build (per language) and on every resize.
+        """
+        rail.ensurePolished()
+        metrics = rail.fontMetrics()
+        width = max((metrics.horizontalAdvance(rail.item(row).text())
+                     for row in range(rail.count())), default=0)
+        icon = rail.item(0).icon() if rail.count() else None
+        if icon is not None and not icon.isNull():
+            width += max(rail.iconSize().width(), 16)
+        return width + 34
+
+    def _reflow_navigation(self):
+        """Slim rails on narrow windows, full rails otherwise.
+
+        The arrangement never changes — only the fixed dimension does — so
+        keyboard focus and tab order survive. The tool rail always shows
+        every entry with no scrolling; the longer section rail scrolls.
+        Only widths are touched: moving widgets between layouts on every
+        resize is churn the window does not need.
+        """
+        if not hasattr(self, "_nav_layout"):
+            return
+        narrow = self.width() < 720
+        rail, layout, target = (getattr(self, "nav", None),
+                                self._nav_layout, self.pages)
+        if rail is not None and layout is not None and target is not None:
+            if narrow:
+                rail.setSizeAdjustPolicy(
+                    QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
+                # Every tool one tap away, never scrolled: widths and
+                # heights are measured from the laid-out rows (polished
+                # first, so fonts and stylesheets are settled), plus the
+                # live frame/viewport chrome. Font-arithmetic guesses
+                # miss by pixels on every other style; this converges
+                # instead, with the estimate as the floor for stale
+                # first passes.
+                rail.setIconSize(QSize(16, 16))
+                rail.ensurePolished()
+                metrics = rail.fontMetrics()
+                estimate = (max((metrics.horizontalAdvance(
+                    rail.item(row).text())
+                    for row in range(rail.count())), default=0)
+                    + 16 + 34)
+                widths = [rail.visualItemRect(rail.item(row)).width()
+                          for row in range(rail.count())]
+                measured = max(widths) if widths and min(widths) > 0 else 0
+                chrome_w = rail.width() - rail.viewport().width()
+                chrome_h = rail.height() - rail.viewport().height()
+                content_w = max(measured, estimate) + max(0, chrome_w) + 2
+                content_h = (sum(rail.sizeHintForRow(index)
+                                for index in range(rail.count()))
+                             + max(0, chrome_h) + 2)
+                rail.setMinimumWidth(content_w)
+                rail.setMaximumWidth(content_w)
+                rail.setMinimumHeight(content_h)
+                rail.setMaximumHeight(content_h)
+                # A stale scroll position from before the list stopped
+                # scrolling would strand rows out of view with no way
+                # back; the only valid position is the top.
+                rail.verticalScrollBar().setValue(0)
+                rail.setVerticalScrollBarPolicy(
+                    Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            else:
+                width = self._rail_width(rail)
+                rail.setMaximumWidth(max(190, width))
+                rail.setMinimumWidth(width)
+                rail.setIconSize(getattr(self, "_nav_icon_size",
+                                         QSize(16, 16)))
+                rail.setMinimumHeight(0)
+                rail.setMaximumHeight(16777215)
+                rail.setSizeAdjustPolicy(
+                    QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
+                rail.setVerticalScrollBarPolicy(
+                    Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._reflow_settings(narrow)
+
+    def _reflow_settings(self, narrow):
+        """Narrow settings trade the section rail for a compact picker."""
+        combo = getattr(self, "settings_section_combo", None)
+        section_list = getattr(self, "settings_section_list", None)
+        if combo is None or section_list is None:
+            return
+        combo.setVisible(narrow)
+        section_list.setVisible(not narrow)
 
     @staticmethod
     def _select_data(combo, value):
