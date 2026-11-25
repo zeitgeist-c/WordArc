@@ -1,8 +1,8 @@
 """Behavior contracts for the redesigned workspace."""
 from unittest import mock
 import pytest
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtWidgets import QDialog, QLineEdit, QListWidget, QApplication
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QLineEdit, QListWidget, QApplication
 from tests import test_settings_smoke as smoke
 import settings_ui
 import wordarc

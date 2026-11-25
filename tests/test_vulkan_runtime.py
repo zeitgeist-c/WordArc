@@ -1,7 +1,6 @@
 """Engine recovery contracts using isolated files, no user config or drivers."""
 import hashlib
 import json
-from pathlib import Path
 from unittest import mock
 import zipfile
 

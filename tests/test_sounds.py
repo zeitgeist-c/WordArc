@@ -1,5 +1,4 @@
 """The chime survives temp cleaners: it plays from a persistent cache copy."""
-import os
 import sys
 import tempfile
 from pathlib import Path

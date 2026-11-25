@@ -349,7 +349,6 @@ class LifecycleTests(unittest.TestCase):
         controller.settings_window.show_update_latest.assert_called_once()
 
     def test_timeout_releases_check_and_ignores_late_result(self):
-        import time
         from PyQt6.QtWidgets import QApplication
         app = QApplication.instance() or QApplication([])
         controller = self._controller()
@@ -398,7 +397,6 @@ class LifecycleTests(unittest.TestCase):
         controller.settings_window.show_update_error.assert_called_once()
 
     def test_app_waits_for_setup_readiness_before_quitting(self):
-        import wordarc
         from PyQt6.QtWidgets import QApplication
         import time
         app = QApplication.instance() or QApplication([])
@@ -426,7 +424,6 @@ class LifecycleTests(unittest.TestCase):
         controller.app.quit.assert_called_once()
 
     def test_failed_setup_handoff_keeps_old_app_open(self):
-        import wordarc
         from PyQt6.QtWidgets import QApplication
         import time
         app = QApplication.instance() or QApplication([])

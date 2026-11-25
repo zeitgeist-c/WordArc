@@ -151,7 +151,6 @@ def test_server_error_sets_redacted_error():
 def _server_send(sock, payload):
     """Write an unmasked frame like the server does (test helper)."""
     import json
-    from livespeech import _send_frame, _Socket
     raw = json.dumps(payload).encode("utf-8")
     header = bytearray([0x80 | 1])
     assert len(raw) < 126

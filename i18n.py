@@ -11,8 +11,6 @@ Contract (13-language task):
   release time means that language is NOT done.
 """
 
-import os
-
 from i18n_tables import (
     DE1 as _DE1, DE2 as _DE2, DE3 as _DE3, DE4 as _DE4, DE5 as _DE5, DE6 as _DE6, DE7 as _DE7, ES1 as _ES1, ES2 as _ES2, ES3 as _ES3, ES4 as _ES4, ES5 as _ES5, ES6 as _ES6, ES7 as _ES7, FR1 as _FR1, FR2 as _FR2, FR3 as _FR3, FR4 as _FR4, FR5 as _FR5, FR6 as _FR6, FR7 as _FR7, IT1 as _IT1, IT2 as _IT2, IT3 as _IT3, IT4 as _IT4, IT5 as _IT5, IT6 as _IT6, IT7 as _IT7, PB1 as _PB1, PB2 as _PB2, PB3 as _PB3, PB4 as _PB4, PB5 as _PB5, PB6 as _PB6, PB7 as _PB7, RU1 as _RU1, RU2 as _RU2, RU3 as _RU3, RU4 as _RU4, RU5 as _RU5, RU6 as _RU6, RU7 as _RU7, PL1 as _PL1, PL2 as _PL2, PL3 as _PL3, PL4 as _PL4, PL5 as _PL5, PL6 as _PL6, PL7 as _PL7, NL1 as _NL1, NL2 as _NL2, NL3 as _NL3, NL4 as _NL4, NL5 as _NL5, NL6 as _NL6, NL7 as _NL7, ZH1 as _ZH1, ZH2 as _ZH2, ZH3 as _ZH3, ZH4 as _ZH4, ZH5 as _ZH5, ZH6 as _ZH6, ZH7 as _ZH7, JA1 as _JA1, JA2 as _JA2, JA3 as _JA3, JA4 as _JA4, JA5 as _JA5, JA6 as _JA6, JA7 as _JA7, KO1 as _KO1, KO2 as _KO2, KO3 as _KO3, KO4 as _KO4, KO5 as _KO5, KO6 as _KO6, KO7 as _KO7,
 )

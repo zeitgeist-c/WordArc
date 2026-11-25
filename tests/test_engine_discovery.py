@@ -1,5 +1,4 @@
 """Discovery works across stores without executing unknown files or changing them."""
-import json
 from pathlib import Path
 import subprocess
 import sys

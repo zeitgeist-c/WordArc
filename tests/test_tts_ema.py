@@ -143,7 +143,6 @@ class TestFiles(unittest.TestCase):
 
 class TestPlaybackWatchdog(unittest.TestCase):
     def _fake_sd(self, stall=True):
-        import sys
         import types
         fake = types.ModuleType("sounddevice")
 
@@ -181,8 +180,6 @@ class TestPlaybackWatchdog(unittest.TestCase):
     def test_stalled_device_raises_timeout_and_frees(self):
         import sys
         import threading
-        import time
-        import numpy as np
         fake = self._fake_sd(stall=True)
         old = sys.modules.get("sounddevice")
         sys.modules["sounddevice"] = fake

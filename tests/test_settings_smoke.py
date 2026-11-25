@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from PyQt6.QtCore import QPoint, QRect, QEvent, QTimer, Qt
+from PyQt6.QtCore import QRect, QEvent, QTimer, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QImage
 from PyQt6.QtWidgets import QApplication, QComboBox
 

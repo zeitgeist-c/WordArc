@@ -104,7 +104,6 @@ def test_tray_stop_action_follows_speaking_state():
 
 
 def test_ocr_result_lands_in_the_clipboard_or_the_warning_tray():
-    from PyQt6.QtWidgets import QApplication
 
     controller = _controller(True)
     messages = []
@@ -144,7 +143,6 @@ def _speak_controller(**overrides):
 
 
 def test_speak_empty_result_warns_without_calling_tts():
-    from PyQt6.QtWidgets import QApplication
 
     controller, messages, clipboard = _speak_controller()
     with mock.patch.object(wordarc.QApplication, "clipboard",
@@ -156,7 +154,6 @@ def test_speak_empty_result_warns_without_calling_tts():
 
 
 def test_speak_result_reads_when_tts_is_free():
-    from PyQt6.QtWidgets import QApplication
 
     controller, messages, clipboard = _speak_controller()
     with mock.patch.object(wordarc.QApplication, "clipboard",
@@ -168,7 +165,6 @@ def test_speak_result_reads_when_tts_is_free():
 
 
 def test_speak_result_waits_when_tts_is_busy():
-    from PyQt6.QtWidgets import QApplication
 
     controller, messages, clipboard = _speak_controller()
     controller.tts.busy = True
