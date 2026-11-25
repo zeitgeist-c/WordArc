@@ -147,6 +147,7 @@ def test_live_stop_finishes_and_delivers_transcript():
     controller.live_streamer.wav_path = "take-live.wav"
     with mock.patch.object(wordarc.threading, "Thread", _InlineThread):
         controller.stop()
+        controller._on_stop_tail()
     session.finish.assert_called_once_with()
     session.push.assert_called_once_with(b"tail-pcm")
     controller.pipeline.run_transcript.assert_called_once_with(
@@ -171,6 +172,7 @@ def test_live_stop_short_recording_cancels_without_delivery():
     controller.live_start_slot = 0
     controller.live_streamer.stop.return_value = None
     controller.stop()
+    controller._on_stop_tail()
     session.cancel.assert_called_once_with()
     controller.pipeline.run_transcript.assert_not_called()
     controller.conf.record_api_attempt.assert_called_once_with(0, 2)
@@ -183,6 +185,7 @@ def test_live_stop_while_connecting_discards_late_session():
     controller.dictation_operation.begin()
     controller._live_opener = mock.Mock()
     controller.stop()
+    controller._on_stop_tail()
     assert controller.state == wordarc.IDLE
     assert controller._live_opener is None
     late = mock.Mock()

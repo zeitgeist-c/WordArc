@@ -430,6 +430,7 @@ class TestLiveControllerRescue(unittest.TestCase):
         controller.live_streamer.stop.return_value = (2.0, [], b"")
         with mock.patch.object(wordarc.threading, "Thread", _InlineThread):
             controller.stop()
+            controller._on_stop_tail()
             first = controller._live_finisher
             controller.stop()
         assert controller._live_finisher is first
@@ -442,6 +443,7 @@ class TestLiveControllerRescue(unittest.TestCase):
         controller.dictation_operation.begin()
         controller._live_opener = mock.Mock()
         controller.stop()
+        controller._on_stop_tail()
         assert controller.state == wordarc.IDLE
         session = mock.Mock()
         session.finish.return_value = "yazi"

@@ -988,30 +988,65 @@ class TranslationResultDialog(QDialog):
     """Small readable window for a screenshot translation.
 
     The clipboard is written only when the user presses Copy: showing the
-    window never touches it.
+    window never touches it. Copy sits on the left, Close on the right, both
+    the same size; the width grows with the text while the height stays put.
     """
+
+    MIN_WIDTH = 380
+    MAX_WIDTH = 680
+    HEIGHT = 250
 
     def __init__(self, text, parent=None):
         super().__init__(parent)
         self._text = str(text or "")
         self.setWindowTitle(t("Screenshot translation"))
-        self.setMinimumSize(380, 220)
+        self.setMinimumSize(self.MIN_WIDTH, 220)
+        self.setStyleSheet("""
+            TranslationResultDialog {
+                background: #20242e;
+            }
+            QTextEdit {
+                background: #262c38; color: #e9edf5;
+                border: 1px solid #444b5c; border-radius: 8px;
+                padding: 10px 12px;
+                font-size: 14px;
+            }
+            QPushButton {
+                background: #383f50; color: #e9edf5;
+                border: 1px solid #59647b; border-radius: 6px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover { background: #454d63; }
+            QPushButton:default { border-color: #7c8aff; }
+        """)
         layout = QVBoxLayout(self)
-        view = QTextEdit(self)
-        view.setReadOnly(True)
-        view.setPlainText(self._text)
-        view.setAccessibleName(t("Screenshot translation"))
-        layout.addWidget(view)
+        self._view = QTextEdit(self)
+        self._view.setReadOnly(True)
+        self._view.setPlainText(self._text)
+        self._view.setAccessibleName(t("Screenshot translation"))
+        layout.addWidget(self._view)
         row = QHBoxLayout()
-        row.addStretch(1)
         self.copy_button = QPushButton(t("Copy"), self)
         self.copy_button.setDefault(True)
         self.copy_button.clicked.connect(self._copy)
         row.addWidget(self.copy_button)
+        row.addStretch(1)
         close_button = QPushButton(t("Close"), self)
         close_button.clicked.connect(self.reject)
         row.addWidget(close_button)
         layout.addLayout(row)
+        width = max(self.copy_button.sizeHint().width(),
+                    close_button.sizeHint().width(), 110)
+        self.copy_button.setFixedWidth(width)
+        close_button.setFixedWidth(width)
+        metrics = self._view.fontMetrics()
+        longest = 0
+        for line in self._text.splitlines():
+            advance = metrics.horizontalAdvance(line)
+            if advance > longest:
+                longest = advance
+        fitted = min(max(longest + 70, self.MIN_WIDTH), self.MAX_WIDTH)
+        self.resize(int(fitted), self.HEIGHT)
 
     def _copy(self):
         from PyQt6.QtWidgets import QApplication
@@ -1027,6 +1062,10 @@ class ScreenshotController(QWidget):
     ocr_done = pyqtSignal(str)
     speak_done = pyqtSignal(str)
     translate_done = pyqtSignal(str)
+    # Fired on the GUI thread the moment a screenshot translation leaves for
+    # the network, so the owner can say "waiting" (tray balloon). The overlay
+    # is already gone by then, so nothing on screen says what is happening.
+    translate_started = pyqtSignal()
 
     def __init__(self, conf, parent=None):
         super().__init__(None)
@@ -1224,6 +1263,7 @@ class ScreenshotController(QWidget):
         # Gemini, never the image.
         self._close_overlay()
         self._restore_owner()
+        self.translate_started.emit()
         self._enqueue_ocr(("translate", image, ""))
 
     def _enqueue_ocr(self, request):

@@ -90,6 +90,12 @@ _ONE_SHOT_COMMANDS = frozenset((
     "meeting-cancel",
 ))
 
+# Post-roll after the stop keypress: the microphone stays open this long
+# before the take is closed, so the final word — spoken in the same instant
+# as the keypress — is fully captured instead of clipped. 400 ms covers a
+# trailing syllable without the wait feeling laggy (1 s already does).
+STOP_TAIL_MS = 400
+
 
 def _restart_args(argv):
     """Argv for the replacement process: flags kept, commands dropped."""
@@ -353,6 +359,14 @@ class WordArc:
         self.meeting_ticker = QTimer()
         self.meeting_ticker.setInterval(500)
         self.meeting_ticker.timeout.connect(self._meeting_tick)
+        # Post-roll after the stop keypress: single-shot, armed by stop(),
+        # fired by _on_stop_tail(). _stop_tail_job says which capture to
+        # close: "file" (dictation recorder) or "live" (live streamer).
+        # Plain QTimer: WordArc is not a QObject, so no parent.
+        self._stop_tail = QTimer()
+        self._stop_tail.setSingleShot(True)
+        self._stop_tail.timeout.connect(self._on_stop_tail)
+        self._stop_tail_job = None
 
         self.tray = QSystemTrayIcon()
         self.tray.activated.connect(self._tray_clicked)
@@ -374,9 +388,13 @@ class WordArc:
         self.screenshot_controller.speak_done.connect(self._on_screenshot_speak)
         self.screenshot_controller.translate_done.connect(
             self._on_screenshot_translate)
+        self.screenshot_controller.translate_started.connect(
+            self._on_screenshot_translate_started)
         self.selection_controller = selection_bar.SelectionBarController(
             self.conf)
         self.selection_controller.failed.connect(self._on_selection_failed)
+        self.selection_controller.action_started.connect(
+            self._on_selection_busy)
         self.selection_controller.result_ready.connect(
             self._on_selection_result)
         self.breaks = break_reminder.BreakController(self.conf, self.overlay)
@@ -711,7 +729,29 @@ class WordArc:
                   "explain": t("Explain"), "summarize": t("Summarize")}
         dialog = selection_bar.SelectionResultDialog(
             titles.get(kind, t("Translate to Turkish")), text)
+        try:
+            anchor = self.selection_controller.popup_rect()
+        except Exception:  # noqa: BLE001 - positioning is best effort
+            anchor = None
+        if anchor is not None:
+            dialog.position_near(anchor)
         dialog.exec()
+
+    def _on_selection_busy(self, kind):
+        # The bar already says it in place; the balloon covers the case where
+        # the user looked away (slow servers answer late).
+        titles = {"translate": t("Translate to Turkish"),
+                  "explain": t("Explain"), "summarize": t("Summarize")}
+        if self.tray.isVisible():
+            self.tray.showMessage(
+                BRAND.name, titles.get(kind, t("Translating…")) + "…",
+                QSystemTrayIcon.MessageIcon.Information, 3000)
+
+    def _on_screenshot_translate_started(self):
+        if self.tray.isVisible():
+            self.tray.showMessage(BRAND.name, t("Translating…"),
+                                  QSystemTrayIcon.MessageIcon.Information,
+                                  3000)
 
     def _on_screenshot_ocr(self, text):
         # Queued in from the OCR worker thread; safe on the GUI thread.
@@ -954,7 +994,42 @@ class WordArc:
         self.dictation_operation.transition(operation.State.PROCESSING)
         self._set_state(BUSY)
         self.overlay.show_busy(t("Transcribing…"))
-        self.recorder.stop()
+        # The last word is often spoken together with the keypress: keep the
+        # microphone open for a short post-roll instead of cutting the take
+        # at this instant. _on_stop_tail() closes it.
+        self._arm_stop_tail("file")
+
+    def _arm_stop_tail(self, job):
+        """(Re)arm the post-roll timer; the previous take never overlaps.
+
+        The timer is created lazily: bare test harnesses build the
+        controller without __init__, and they get a working tail too.
+        """
+        timer = getattr(self, "_stop_tail", None)
+        if timer is None:
+            timer = QTimer()
+            timer.setSingleShot(True)
+            timer.timeout.connect(self._on_stop_tail)
+            self._stop_tail = timer
+        self._stop_tail_job = job
+        timer.start(STOP_TAIL_MS)
+
+    def _disarm_stop_tail(self):
+        timer = getattr(self, "_stop_tail", None)
+        if timer is not None:
+            timer.stop()
+        self._stop_tail_job = None
+
+    def _on_stop_tail(self):
+        """Close the capture after the post-roll. The state guard drops a
+        tail whose take was cancelled or failed meanwhile."""
+        job, self._stop_tail_job = self._stop_tail_job, None
+        if self.state != BUSY or job is None:
+            return
+        if job == "live":
+            self._finish_live_stop()
+        else:
+            self.recorder.stop()
 
     def _live_slot(self, session):
         """Absolute rotation slot the live session spoke with."""
@@ -971,6 +1046,12 @@ class WordArc:
         self.dictation_operation.transition(operation.State.PROCESSING)
         self._set_state(BUSY)
         self._live_generation += 1
+        self.overlay.show_busy(t("Finishing live transcription…"))
+        # Same post-roll as a file take: the microphone keeps capturing the
+        # final word while the session winds down.
+        self._arm_stop_tail("live")
+
+    def _finish_live_stop(self):
         session, self.live_session = self.live_session, None
         self._live_opener = None
         operation_id = self.dictation_operation.operation_id
@@ -982,7 +1063,6 @@ class WordArc:
             self.overlay.dismiss()
             self._set_state(IDLE)
             return
-        self.overlay.show_busy(t("Finishing live transcription…"))
         result = self.live_streamer.stop()
         # The WAV belongs to this take, not to the shared streamer: snapshot
         # it here so a newer recording can never be touched through it, and
@@ -1068,6 +1148,23 @@ class WordArc:
 
     def cancel(self):
         """Throw away the current dictation recording."""
+        if getattr(self, "_stop_tail_job", None) is not None:
+            # The stop keypress already landed and the post-roll is still
+            # running: drop the take instead of letting the tail close it
+            # and send it to transcription.
+            job = self._stop_tail_job
+            self._disarm_stop_tail()
+            if job == "live":
+                self._cancel_live()
+                return
+            self._duck_stop()
+            self.ticker.stop()
+            self.recorder.cancel()
+            self.dictation_operation.transition(operation.State.CANCELLED)
+            self.dictation_operation.transition(operation.State.IDLE)
+            self.overlay.dismiss()
+            self._set_state(IDLE)
+            return
         if not self.recording:
             return
         if self._live_engine():

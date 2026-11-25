@@ -20,9 +20,9 @@ import os
 import threading
 
 from PyQt6.QtCore import QObject, QPoint, QRect, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QGuiApplication, QIcon, QPixmap
+from PyQt6.QtGui import QGuiApplication, QIcon, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
-from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QPushButton, QTextEdit,
+from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton, QTextEdit,
                              QToolButton, QVBoxLayout, QWidget)
 
 import api
@@ -449,33 +449,107 @@ def _bar_icon(name, color="#e9edf5"):
 
 
 class SelectionResultDialog(QDialog):
-    """Small readable window for one AI answer.
+    """Small readable window for one AI answer, parked by the selection.
 
     The clipboard is written only when the user presses Copy: showing the
-    window never touches it.
+    window never touches it. Copy sits on the left, Close on the right, both
+    the same size; the width grows with the text while the height stays put.
     """
+
+    MIN_WIDTH = 380
+    MAX_WIDTH = 680
+    HEIGHT = 250
 
     def __init__(self, title, text, parent=None):
         super().__init__(parent)
         self._text = str(text or "")
         self.setWindowTitle(title)
-        self.setMinimumSize(380, 220)
+        self.setMinimumSize(self.MIN_WIDTH, 220)
+        self.setStyleSheet("""
+            SelectionResultDialog {
+                background: #20242e;
+            }
+            QTextEdit {
+                background: #262c38; color: #e9edf5;
+                border: 1px solid #444b5c; border-radius: 8px;
+                padding: 10px 12px;
+                font-size: 14px;
+            }
+            QPushButton {
+                background: #383f50; color: #e9edf5;
+                border: 1px solid #59647b; border-radius: 6px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover { background: #454d63; }
+            QPushButton:default { border-color: #7c8aff; }
+        """)
         layout = QVBoxLayout(self)
-        view = QTextEdit(self)
-        view.setReadOnly(True)
-        view.setPlainText(self._text)
-        view.setAccessibleName(title)
-        layout.addWidget(view)
+        self._view = QTextEdit(self)
+        self._view.setReadOnly(True)
+        self._view.setPlainText(self._text)
+        self._view.setAccessibleName(title)
+        layout.addWidget(self._view)
         row = QHBoxLayout()
-        row.addStretch(1)
         self.copy_button = QPushButton(t("Copy"), self)
         self.copy_button.setDefault(True)
         self.copy_button.clicked.connect(self._copy)
         row.addWidget(self.copy_button)
+        row.addStretch(1)
         close_button = QPushButton(t("Close"), self)
         close_button.clicked.connect(self.reject)
         row.addWidget(close_button)
         layout.addLayout(row)
+        self._match_button_sizes(self.copy_button, close_button)
+        self._fit_width()
+
+    @staticmethod
+    def _match_button_sizes(first, second):
+        """Both buttons the same size: the wider hint wins."""
+        width = max(first.sizeHint().width(), second.sizeHint().width(),
+                    110)
+        first.setFixedWidth(width)
+        second.setFixedWidth(width)
+
+    def _fit_width(self):
+        """Width follows the text; height stays the same."""
+        metrics = self._view.fontMetrics()
+        longest = 0
+        for line in self._text.splitlines():
+            advance = metrics.horizontalAdvance(line)
+            if advance > longest:
+                longest = advance
+        width = min(max(longest + 70, self.MIN_WIDTH), self.MAX_WIDTH)
+        screen = QGuiApplication.primaryScreen()
+        if screen is not None:
+            width = min(width,
+                        max(screen.availableGeometry().width() - 40,
+                            self.MIN_WIDTH))
+        self.resize(int(width), self.HEIGHT)
+
+    def position_near(self, rect):
+        """Park the window by the selection instead of the screen centre.
+
+        ``rect`` is the physical-pixel selection frame; below the selection
+        when there is room, otherwise above it, always inside the screen.
+        A missing rect leaves the default position alone.
+        """
+        if rect is None:
+            return
+        logical = _to_logical(rect)
+        screen = (QGuiApplication.screenAt(logical.center())
+                  or QGuiApplication.primaryScreen())
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        width, height = self.width(), self.height()
+        x = min(max(logical.left(), area.left()),
+                max(area.right() - width, area.left()))
+        y = logical.bottom() + 8
+        if y + height > area.bottom():
+            y = logical.top() - 8 - height
+            if y < area.top():
+                y = max(area.top(), area.bottom() - height)
+        self.move(x, max(y, area.top()))
 
     def _copy(self):
         QGuiApplication.clipboard().setText(self._text)
@@ -543,16 +617,38 @@ class SelectionBar(QWidget):
                     self.action_requested.emit(action, self._text))
             self.buttons[kind] = button
             row.addWidget(button)
+        self._busy_label = QLabel(self)
+        self._busy_label.setStyleSheet("color: #e9edf5; padding: 4px 8px;")
+        self._busy_label.hide()
+        row.addWidget(self._busy_label)
         self.hide()
+
+    def show_busy(self, message):
+        """Swap the buttons for a waiting line while the AI answers."""
+        for button in self.buttons.values():
+            button.hide()
+        self._busy_label.setText(message)
+        self._busy_label.show()
+        self.adjustSize()
+        if not self.isVisible():
+            self.show()
+
+    def show_idle(self):
+        """Bring the buttons back; the bar keeps whatever visibility it has."""
+        self._busy_label.hide()
+        for button in self.buttons.values():
+            button.show()
 
     def show_for(self, selection: Selection):
         self._text = selection.text
+        self.show_idle()
         self._place(selection.rect, selection.lines, selection.anchor)
         self.show()
 
     def refresh(self, selection: Selection):
         """Follow a changed selection; the caller re-arms any pending action."""
         self._text = selection.text
+        self.show_idle()
         self._place(selection.rect, selection.lines, selection.anchor)
         if not self.isVisible():
             self.show()
@@ -659,10 +755,19 @@ class SelectionBarController(QObject):
 
     failed = pyqtSignal(str)
     result_ready = pyqtSignal(str, str)
+    # Fired on the GUI thread the moment an AI job leaves for the network,
+    # so the owner can say "waiting" somewhere the bar itself cannot reach
+    # (tray balloon). Carries the action kind: translate/explain/summarize.
+    action_started = pyqtSignal(str)
 
     PROMPTS = {"translate": (SELECTION_TRANSLATE_PROMPT, "Translate to Turkish"),
                "explain": (SELECTION_EXPLAIN_PROMPT, "Explain"),
                "summarize": (SELECTION_SUMMARIZE_PROMPT, "Summarize")}
+
+    # Waiting line shown in place of the buttons, per action. Built from the
+    # existing button labels so no new translation entry is needed.
+    BUSY_TITLES = {"translate": "Translate to Turkish",
+                   "explain": "Explain", "summarize": "Summarize"}
 
     def __init__(self, conf, parent=None):
         super().__init__(parent)
@@ -680,6 +785,9 @@ class SelectionBarController(QObject):
         self._gen = 0
         self._polling = False
         self._working = False
+        # The selection frame a running job belongs to: the answer window
+        # parks by it instead of the screen centre.
+        self._last_rect = None
         self._timer = QTimer(self)
         self._timer.setInterval(POLL_MS)
         self._timer.timeout.connect(self._poll)
@@ -761,8 +869,18 @@ class SelectionBarController(QObject):
     def _hide(self):
         self._current = None
         self._gen += 1
+        self.bar.show_idle()
         self.bar.hide_bar()
         self._watch_escape(False)
+
+    def popup_rect(self):
+        """The selection frame the last job was sent from (or None).
+
+        Read by the owner after ``result_ready`` to park the answer window
+        by the selection. A defensive copy: the worker thread never touches
+        it, both ends run on the GUI thread.
+        """
+        return QRect(self._last_rect) if self._last_rect is not None else None
 
     def _on_bar_dismissed(self):
         self._hide()
@@ -785,11 +903,17 @@ class SelectionBarController(QObject):
         gen = self._gen
         shown = self._current
         if shown is not None:
-            # The job is taken: go away now, and do not come back for this
-            # selection. A plain hide keeps the generation intact so the
-            # worker's answer is still accepted when it lands.
+            # The job is taken: stay where the bar is and say what is
+            # happening instead of going quiet, and do not come back for
+            # this selection. A plain hide keeps the generation intact so
+            # the worker's answer is still accepted when it lands.
             self._consumed = shown
-            self.bar.hide()
+            self._last_rect = QRect(shown.rect)
+            if kind != "copy":
+                self.bar.show_busy(t(self.BUSY_TITLES[kind]) + "…")
+                self.action_started.emit(kind)
+            else:
+                self.bar.hide()
 
         def work():
             try:
@@ -838,12 +962,16 @@ class SelectionBarController(QObject):
         self._working = False
         if gen != self._gen:
             # Hidden or replaced while the worker ran: never act on the old.
+            # Still restore the buttons so a later show starts clean.
+            self._hide()
             log.info("dropping late selection result (%s)", kind)
         elif kind == "stale":
             self._apply_stale(payload)
         elif kind == "fail":
+            self._hide()
             self.failed.emit(payload)
         elif kind == "done":
+            self._hide()
             self.result_ready.emit(*payload)
         elif kind == "copy-ok":
             QGuiApplication.clipboard().setText(payload.text)
@@ -859,6 +987,7 @@ class SelectionBarController(QObject):
             # The selection moved under us: follow it, do not answer the old.
             self._consumed = None
             self._current = fresh
+            self.bar.show_idle()
             self.bar.refresh(fresh)
 
     # ---- escape ---------------------------------------------------------

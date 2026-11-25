@@ -48,7 +48,8 @@ class TestScreenshotTranslatePrompt(unittest.TestCase):
 
     def test_prompt_preserves_meaning_numbers_names_and_structure(self):
         lowered = cfg.SCREENSHOT_TRANSLATE_PROMPT.lower()
-        for word in ("numbers", "proper names", "list", "paragraph"):
+        for word in ("numbers", "proper names", "bullet", "numbered",
+                     "paragraph"):
             self.assertIn(word, lowered)
 
 
@@ -481,6 +482,30 @@ class TestTranslationResultDialog(unittest.TestCase):
         QTest.mouseClick(dialog.copy_button, Qt.MouseButton.LeftButton)
         self.app.processEvents()
         self.assertEqual(QA.clipboard().text(), "merhaba dünya")
+
+    def test_copy_on_the_left_close_on_the_right_same_size(self):
+        dialog = screenshot_capture.TranslationResultDialog("kısa metin")
+        self.addCleanup(dialog.close)
+        dialog.show()
+        self.app.processEvents()
+        self.assertLess(dialog.copy_button.x(), 200)
+        close_button = [button for button in dialog.findChildren(
+            dialog.copy_button.__class__)
+            if button is not dialog.copy_button][0]
+        self.assertGreater(close_button.x(), dialog.copy_button.x())
+        self.assertEqual(dialog.copy_button.width(), close_button.width())
+
+    def test_width_follows_text_height_stays(self):
+        short = screenshot_capture.TranslationResultDialog("kısa")
+        long_text = screenshot_capture.TranslationResultDialog(
+            "uzun bir satır " * 20)
+        self.addCleanup(short.close)
+        self.addCleanup(long_text.close)
+        short.show()
+        long_text.show()
+        self.app.processEvents()
+        self.assertGreater(long_text.width(), short.width())
+        self.assertEqual(long_text.height(), short.height())
 
 
 class TestTranslateI18n(unittest.TestCase):

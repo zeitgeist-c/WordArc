@@ -624,3 +624,84 @@ def test_setup_language_names_map_to_codes():
     assert wordarc._setup_language_arg(["--setup-language", "turkish"]) == "tr"
     assert wordarc._setup_language_arg(["--setup-language", "english"]) == "en"
     assert wordarc._setup_language_arg(["--setup-language", "gibberish"]) == ""
+
+
+def _dictation_controller(live=False):
+    """A WordArc with mocked edges, real state machine and stop-tail timer."""
+    from PyQt6.QtCore import QTimer
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    controller = wordarc.WordArc.__new__(wordarc.WordArc)
+    controller.app = app
+    controller.conf = {"transcribe_engine": "live" if live else "cloud"}
+    controller.state = wordarc.RECORDING
+    controller.meeting_state = wordarc.M_IDLE
+    controller.settings_window = mock.Mock()
+    controller._ducker = None
+    controller.ticker = mock.Mock()
+    controller.live_timer = mock.Mock()
+    controller.dictation_operation = mock.Mock()
+    controller.overlay = mock.Mock()
+    controller.recorder = mock.Mock()
+    controller.live_streamer = mock.Mock()
+    controller.live_streamer.stop.return_value = None
+    controller.live_session = mock.Mock()
+    controller.live_keys = []
+    controller.live_start_slot = 0
+    controller._live_generation = 0
+    controller._live_opener = None
+    controller._live_finisher = None
+    controller._finishing_session = None
+    controller._stop_tail = QTimer()
+    controller._stop_tail.setSingleShot(True)
+    controller._stop_tail.timeout.connect(controller._on_stop_tail)
+    controller._stop_tail_job = None
+    controller._sync_workspace = mock.Mock()
+    controller._refresh_cancel_hotkey = mock.Mock()
+    controller._refresh_tray = mock.Mock()
+    return controller
+
+
+def test_stop_tail_leaves_time_for_the_last_word():
+    # 400 ms: a trailing syllable fits, a full second would feel laggy.
+    assert wordarc.STOP_TAIL_MS == 400
+
+
+def test_stop_keeps_the_microphone_open_until_the_tail_fires():
+    controller = _dictation_controller()
+    controller.stop()
+    # Nothing is closed at the keypress: the take keeps capturing.
+    controller.recorder.stop.assert_not_called()
+    assert controller._stop_tail_job == "file"
+    assert controller._stop_tail.isActive()
+    controller._on_stop_tail()
+    controller.recorder.stop.assert_called_once_with()
+
+
+def test_cancel_during_the_tail_drops_the_take():
+    controller = _dictation_controller()
+    controller.stop()
+    controller.cancel()
+    controller.recorder.cancel.assert_called_once_with()
+    assert controller._stop_tail_job is None
+    assert controller.state == wordarc.IDLE
+    controller._on_stop_tail()
+    controller.recorder.stop.assert_not_called()
+
+
+def test_stale_tail_after_an_error_closes_nothing():
+    controller = _dictation_controller()
+    controller.stop()
+    controller.state = wordarc.IDLE
+    controller._on_stop_tail()
+    controller.recorder.stop.assert_not_called()
+    assert controller._stop_tail_job is None
+
+
+def test_live_stop_closes_the_streamer_after_the_tail():
+    controller = _dictation_controller(live=True)
+    controller.stop()
+    controller.live_streamer.stop.assert_not_called()
+    assert controller._stop_tail_job == "live"
+    controller._on_stop_tail()
+    controller.live_streamer.stop.assert_called_once_with()

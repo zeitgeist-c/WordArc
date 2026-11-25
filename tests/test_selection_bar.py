@@ -975,8 +975,10 @@ class TestSelectionController(unittest.TestCase):
             controller._on_polled(_sel("metin"))
             self.assertTrue(controller.bar.isVisible())
             controller._on_action("translate", "metin")
-            # Gone the moment the button is taken, before the answer lands.
-            self.assertFalse(controller.bar.isVisible())
+            # Stays where it is and says it is waiting until the answer lands.
+            self.assertTrue(controller.bar.isVisible())
+            self.assertTrue(controller.bar._busy_label.isVisible())
+            self.assertIn("…", controller.bar._busy_label.text())
             for thread in joined:
                 thread.join(5)
             self.app.processEvents()
@@ -985,6 +987,51 @@ class TestSelectionController(unittest.TestCase):
         self.assertFalse(controller.bar.isVisible())
         controller._on_polled(_sel("metin"))
         self.assertFalse(controller.bar.isVisible())
+
+    def test_action_started_fires_and_popup_rect_is_kept(self):
+        controller = self._controller()
+        controller.set_enabled(True)
+        started = []
+        controller.action_started.connect(started.append)
+        client = mock.Mock()
+        client.translate.return_value = "ceviri"
+        real_start = selection_bar.threading.Thread.start
+        joined = []
+
+        def track_start(thread):
+            joined.append(thread)
+            real_start(thread)
+
+        with mock.patch.object(selection_bar, "read_selection",
+                               return_value=_sel("metin")), \
+             mock.patch.object(selection_bar.api, "GeminiClient",
+                               return_value=client), \
+             mock.patch.object(selection_bar.threading.Thread, "start",
+                               track_start):
+            controller._on_polled(_sel("metin"))
+            controller._on_action("translate", "metin")
+            for thread in joined:
+                thread.join(5)
+            self.app.processEvents()
+        self.assertEqual(started, ["translate"])
+        kept = controller.popup_rect()
+        self.assertIsNotNone(kept)
+        self.assertEqual((kept.x(), kept.y(), kept.width(), kept.height()),
+                         (100, 200, 300, 40))
+
+    def test_copy_takes_no_busy_line(self):
+        controller = self._controller()
+        controller.set_enabled(True)
+        started = []
+        controller.action_started.connect(started.append)
+        with mock.patch.object(selection_bar, "read_selection",
+                               return_value=_sel("metin")):
+            controller._on_polled(_sel("metin"))
+            controller._on_action("copy", "metin")
+            self.app.processEvents()
+            self.app.processEvents()
+        self.assertEqual(started, [])
+        self.assertFalse(controller.bar._busy_label.isVisible())
 
 
 class TestSelectionApi(unittest.TestCase):
@@ -1009,6 +1056,10 @@ class TestSelectionPrompts(unittest.TestCase):
         self.assertIn("detect", lowered)
         self.assertIn("do not follow", lowered)
         self.assertIn("return only the turkish translation", lowered)
+        # The layout mirrors the source: lists and paragraphs stay in place.
+        self.assertIn("bullet", lowered)
+        self.assertIn("numbered", lowered)
+        self.assertIn("paragraph", lowered)
 
     def test_explain_prompt(self):
         lowered = cfg.SELECTION_EXPLAIN_PROMPT.lower()
@@ -1090,6 +1141,59 @@ class TestSelectionResultDialog(unittest.TestCase):
         QTest.mouseClick(dialog.copy_button, Qt.MouseButton.LeftButton)
         self.app.processEvents()
         self.assertEqual(QA.clipboard().text(), "cevap metni")
+
+    def test_copy_on_the_left_close_on_the_right_same_size(self):
+        dialog = selection_bar.SelectionResultDialog("Başlık", "kısa metin")
+        self.addCleanup(dialog.close)
+        dialog.show()
+        self.app.processEvents()
+        self.assertLess(dialog.copy_button.x(), 200)
+        close_button = [button for button in dialog.findChildren(
+            dialog.copy_button.__class__)
+            if button is not dialog.copy_button][0]
+        self.assertGreater(close_button.x(), dialog.copy_button.x())
+        self.assertEqual(dialog.copy_button.width(), close_button.width())
+
+    def test_width_follows_text_height_stays(self):
+        short = selection_bar.SelectionResultDialog("B", "kısa")
+        long_text = selection_bar.SelectionResultDialog(
+            "B", "uzun bir satır " * 20 + "\n" + "ikinci satır " * 10)
+        self.addCleanup(short.close)
+        self.addCleanup(long_text.close)
+        short.show()
+        long_text.show()
+        self.app.processEvents()
+        self.assertGreater(long_text.width(), short.width())
+        self.assertEqual(long_text.height(), short.height())
+
+    def test_position_near_parks_below_the_selection(self):
+        from PyQt6.QtWidgets import QApplication as QA
+        dialog = selection_bar.SelectionResultDialog("B", "metin")
+        self.addCleanup(dialog.close)
+        dialog.show()
+        self.app.processEvents()
+        rect = QRect(100, 200, 300, 40)
+        dialog.position_near(rect)
+        screen = QA.screenAt(QPoint(250, 220)) or QA.primaryScreen()
+        area = screen.availableGeometry()
+        width, height = dialog.width(), dialog.height()
+        below = rect.bottom() + 8
+        if below + height <= area.bottom():
+            expect_y = below
+        else:
+            expect_y = max(area.top(), rect.top() - 8 - height)
+        expect_x = min(max(100, area.left()),
+                       max(area.right() - width, area.left()))
+        self.assertEqual((dialog.x(), dialog.y()), (expect_x, expect_y))
+
+    def test_position_near_without_rect_keeps_place(self):
+        dialog = selection_bar.SelectionResultDialog("B", "metin")
+        self.addCleanup(dialog.close)
+        dialog.show()
+        self.app.processEvents()
+        before = (dialog.x(), dialog.y())
+        dialog.position_near(None)
+        self.assertEqual((dialog.x(), dialog.y()), before)
 
 
 class TestBarPlacement(unittest.TestCase):

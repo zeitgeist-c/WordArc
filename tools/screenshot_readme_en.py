@@ -1,4 +1,8 @@
-"""English README screenshots for WordArc (1950x1400, light/dark)."""
+"""English README screenshots for WordArc (1950x1400, light/dark).
+
+Fresh-profile captures: a temp config dir, no real microphones, an empty
+credential store. Nothing personal ever reaches the images.
+"""
 import os
 import sys
 import tempfile
@@ -15,16 +19,16 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 OUT = Path(__file__).resolve().parent.parent / "docs" / "screenshots"
 
 SHOTS = [
-    # (file, tab index, theme)
-    ("01-dikte.png", 0, "light"),
-    ("02-toplanti.png", 1, "light"),
-    ("03-ses-dosyasi.png", 2, "light"),
-    ("04-seslendir.png", 3, "light"),
-    ("05-ekran-goruntusu.png", 4, "light"),
-    ("06-ayarlar.png", 5, "light"),
-    ("07-koyu-tema-dikte.png", 0, "dark"),
-    ("08-koyu-tema-toplanti.png", 1, "dark"),
-    ("09-english-dictation.png", 0, "light"),
+    # (file, page id, settings section, theme)
+    ("01-dictation.png", "dictation", None, "light"),
+    ("02-meeting.png", "meeting", None, "light"),
+    ("03-audio-file.png", "audio_file", None, "light"),
+    ("04-speak.png", "speak", None, "light"),
+    ("05-screenshot.png", "screenshot", None, "light"),
+    ("06-settings.png", "settings", None, "light"),
+    ("07-dictation-dark.png", "dictation", None, "dark"),
+    ("08-meeting-dark.png", "meeting", None, "dark"),
+    ("09-api-keys.png", "settings", "api_keys", "dark"),
 ]
 
 
@@ -39,6 +43,7 @@ def shoot(which=None):
          mock.patch.object(cfg, "MEETINGS_DIR", root / "data" / "meetings"), \
          mock.patch.object(cfg, "HISTORY_FILE", root / "data" / "history.jsonl"), \
          mock.patch.object(cfg, "RECORDINGS_DIR", root / "data" / "recordings"), \
+         mock.patch.object(cfg.credential_store, "read_all", return_value=[]), \
          mock.patch.object(settings_ui.audio, "list_sources", return_value=[]), \
          mock.patch.object(settings_ui.audio, "refresh_devices"), \
          mock.patch.object(settings_ui.audio, "list_monitors", return_value=[]), \
@@ -49,15 +54,14 @@ def shoot(which=None):
         import i18n
         import theme
         i18n.set_language("en")
-        for name, tab, theme_name in SHOTS:
+        for name, page, section, theme_name in SHOTS:
             if which and name != which:
                 continue
             conf["theme_mode"] = theme_name
             theme.ThemeManager.apply(theme_name, app)
-            from PyQt6.QtCore import QTimer
             window = settings_ui.SettingsWindow(conf, "wordarc toggle")
             window.resize(1950, 1400)
-            window.tabs.setCurrentIndex(tab)
+            window.navigate_to(page, section)
             window.setAttribute(
                 __import__("PyQt6.QtCore", fromlist=["Qt"]).Qt.WidgetAttribute.WA_DontShowOnScreen, True)
             window.show()
