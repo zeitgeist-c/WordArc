@@ -308,9 +308,15 @@ class SaveBanner(QFrame):
     FADE_IN_MS = 150
     FADE_OUT_MS = 320
 
-    def __init__(self, parent):
+    def __init__(self, parent, anchor=None):
         super().__init__(parent)
         self.setObjectName("saveBanner")
+        # The exact Save button to park by. Never looked up by objectName:
+        # several page buttons share "primaryButton", and findChild returns
+        # whichever comes first — that is why the pill used to jump around.
+        self._anchor = anchor
+        if parent is not None:
+            parent.installEventFilter(self)
         self.setFixedHeight(self.HEIGHT)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         row = QHBoxLayout(self)
@@ -357,17 +363,31 @@ class SaveBanner(QFrame):
         self._animate(0.0, self.FADE_OUT_MS)
 
     def place(self):
-        """Float just above Save: a compact pill near the action.
+        """Float left of Save, vertically centred with it.
 
-        The button row itself is style-dependent (on some styles Save fills
-        the row), so the pill sits above the row, right-aligned with it —
-        the same spot on every style, never covering the button.
+        Anchored to the exact button widget (never an objectName lookup),
+        so repeated saves park in the same spot on every style, and a
+        resize/move of the window re-parks through the event filter
+        instead of stranding the pill over the text.
         """
         window = self.parentWidget()
         if window is None:
             return
         width = min(360, max(180, self.sizeHint().width()))
         margin = 22
+        anchor = None
+        try:
+            if self._anchor is not None and self._anchor.isVisible():
+                anchor = self._anchor
+        except RuntimeError:
+            anchor = None
+        if anchor is not None:
+            corner = anchor.mapTo(window, QPoint(0, 0))
+            top = corner.y() + (anchor.height() - self.HEIGHT) // 2
+            top = max(0, min(top, max(0, window.height() - self.HEIGHT)))
+            left = max(margin, corner.x() - 12 - width)
+            self.setGeometry(left, top, width, self.HEIGHT)
+            return
         save = window.findChild(QPushButton, "primaryButton")
         if save is not None:
             box = save.parentWidget()
@@ -379,6 +399,13 @@ class SaveBanner(QFrame):
         left = max(margin, min(row_right, window.width() - margin) - width)
         self.setGeometry(left, max(0, row_top - 8 - self.HEIGHT),
                          width, self.HEIGHT)
+
+    def eventFilter(self, watched, event):  # noqa: N802 (Qt naming)
+        if (watched is self.parentWidget() and self.isVisible()
+                and event.type() in (QEvent.Type.Resize, QEvent.Type.Move,
+                                     QEvent.Type.LayoutRequest)):
+            self.place()
+        return super().eventFilter(watched, event)
 
     # ---- internals -----------------------------------------------------
 
@@ -1209,8 +1236,9 @@ class SettingsWindow(QDialog):
         # cross (or Escape) instead. A "Cancel" next to it would be a lie: the
         # settings are already on disk by then.
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save)
-        buttons.button(QDialogButtonBox.StandardButton.Save).setText(t("Save"))
-        buttons.button(QDialogButtonBox.StandardButton.Save).setObjectName("primaryButton")
+        save_button = buttons.button(QDialogButtonBox.StandardButton.Save)
+        save_button.setText(t("Save"))
+        save_button.setObjectName("primaryButton")
         buttons.accepted.connect(self._save)
 
         layout = QVBoxLayout(self)
@@ -1223,7 +1251,7 @@ class SettingsWindow(QDialog):
 
         # Floats over the tab strip rather than taking a row of its own: a
         # confirmation that shoves the window around costs more than it says.
-        self.save_banner = SaveBanner(self)
+        self.save_banner = SaveBanner(self, anchor=save_button)
 
         self._models_loaded.connect(self._on_models_loaded)
         self._transcribe_models_loaded.connect(self._on_transcribe_models_loaded)

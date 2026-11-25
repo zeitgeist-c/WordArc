@@ -757,30 +757,39 @@ class TestSettingsSmoke(unittest.TestCase):
         banner = window.save_banner
         banner.show_saved(t("Settings saved"))
         self.app.processEvents()
-        save = window.findChild(settings_ui.QPushButton, "primaryButton")
+        save = window.findChild(settings_ui.QPushButton, "primaryButton",
+                                settings_ui.Qt.FindChildOption.FindDirectChildrenOnly)
+        if save is None:
+            boxes = window.findChildren(settings_ui.QDialogButtonBox)
+            save = boxes[0].button(
+                settings_ui.QDialogButtonBox.StandardButton.Save)
         self.assertTrue(banner.isVisible())
         self.assertLessEqual(banner.width(), 360)
         self.assertGreaterEqual(banner.width(), 180)
-        # Above the button row, right-aligned with it: near Save on every
-        # style, never covering the button, inside the window.
-        box = save.parentWidget()
-        row_top = box.mapTo(window, settings_ui.QPoint(0, 0)).y()
-        row_right = box.mapTo(window, settings_ui.QPoint(box.width(), 0)).x()
-        self.assertLessEqual(banner.y() + banner.height(), row_top)
-        self.assertLessEqual(banner.x() + banner.width(),
-                             min(row_right, window.width() - 22) + 1)
+        # Left of the exact Save button, vertically centred with it: the
+        # same spot on every save, never covering the button or the text.
+        corner = save.mapTo(window, settings_ui.QPoint(0, 0))
+        self.assertEqual(banner.x() + banner.width(), corner.x() - 12)
+        centre = corner.y() + (save.height() - banner.height()) // 2
+        centre = max(0, min(centre, max(0, window.height() - banner.height())))
+        self.assertEqual(banner.y(), centre)
         self.assertGreaterEqual(banner.x(), 0)
-        self.assertGreater(banner.y(), 0)
         # Nothing to click, and it leaves on its own.
         self.assertTrue(banner.testAttribute(
             settings_ui.Qt.WidgetAttribute.WA_TransparentForMouseEvents))
         self.assertTrue(banner._hold.isActive())
-        # A resize while it is up keeps it above the row.
+        # A resize while it is up keeps it left of Save.
         window.resize(760, 600)
         self.app.processEvents()
-        box = save.parentWidget()
-        row_top = box.mapTo(window, settings_ui.QPoint(0, 0)).y()
-        self.assertLessEqual(banner.y() + banner.height(), row_top)
+        corner = save.mapTo(window, settings_ui.QPoint(0, 0))
+        self.assertEqual(banner.x() + banner.width(), corner.x() - 12)
+        self.assertGreaterEqual(banner.x(), 0)
+        # A second save parks in exactly the same place.
+        first = (banner.x(), banner.y(), banner.width(), banner.height())
+        banner.show_saved(t("Settings saved"))
+        self.app.processEvents()
+        self.assertEqual((banner.x(), banner.y(), banner.width(),
+                          banner.height()), first)
         banner.fade_out()
         self.assertEqual(banner._animation.endValue(), 0.0)
 
